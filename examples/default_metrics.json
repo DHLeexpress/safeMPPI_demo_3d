@@ -1,0 +1,72 @@
+[
+  {
+    "gamma": 0.1,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 6.2,
+    "avg_plan_time_ms": 12.04741687604016
+  },
+  {
+    "gamma": 0.2,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.7,
+    "avg_plan_time_ms": 6.90467822107863
+  },
+  {
+    "gamma": 0.3,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.2,
+    "avg_plan_time_ms": 7.0883817083778835
+  },
+  {
+    "gamma": 0.4,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.2,
+    "avg_plan_time_ms": 7.059505785859767
+  },
+  {
+    "gamma": 0.5,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.2,
+    "avg_plan_time_ms": 7.072954527324154
+  },
+  {
+    "gamma": 0.7,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.2,
+    "avg_plan_time_ms": 7.061035594060307
+  },
+  {
+    "gamma": 1.0,
+    "episodes": 1,
+    "SR": 1.0,
+    "CR": 0.0,
+    "taskspace_violation_rate": 0.0,
+    "avg_min_clearance_m": null,
+    "avg_time_to_goal_s": 4.4,
+    "avg_plan_time_ms": 6.865106925198978
+  }
+]
