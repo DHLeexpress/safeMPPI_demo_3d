@@ -49,9 +49,22 @@ gamma-colored rollout overlay, and a BLUE nominal-level-set figure.
 
 [`ball_below_config.json`](ball_below_config.json) + [`docs/BALL_BELOW.md`](docs/BALL_BELOW.md)
 define a second experiment: start `(0,0,2)` to goal `(3,0,2)` with a 20-inch ball at `(1.5,0,2)`,
-an exponential altitude penalty `w exp((z-2)/T)` that biases every rollout below the ball's
-latitude-0 circle, a `1 m/s^2` demonstration cap, and a `[0.1,0,0]` warm-start bias. Analyze a
-finished run with `python -m safe_mppi.ball_analysis --run <output_dir>`.
+an exponential altitude penalty `w exp((z-2)/T)` that keeps every rollout below the ball's
+latitude-0 circle while the seed family fans out across passage angles, a `1 m/s^2`
+demonstration cap, and a `[0.1,0,0]` warm-start bias. Analyze a finished run with
+`python -m safe_mppi.ball_analysis --run <output_dir>` and render the animated rollouts with
+`python -m safe_mppi.ball_gif --run <output_dir>`.
+
+All ten seeds per gamma with the evolving translucent nominal polytope (camera orbits so the
+level bands are seen from different angles); right panel is the head-on view from the start:
+
+| gamma 0.1 | gamma 0.3 |
+|---|---|
+| ![ball-below gamma 0.1](docs/assets/ball_below/ball_evolve_g0.1.gif) | ![ball-below gamma 0.3](docs/assets/ball_below/ball_evolve_g0.3.gif) |
+
+| gamma 0.5 | gamma 1.0 |
+|---|---|
+| ![ball-below gamma 0.5](docs/assets/ball_below/ball_evolve_g0.5.gif) | ![ball-below gamma 1.0](docs/assets/ball_below/ball_evolve_g1.gif) |
 
 ## Default experiment
 

@@ -23,11 +23,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 import numpy as np
+from scipy.spatial import ConvexHull
 
 from .config import load_config
 from .environment import TaskEnvironment
-from .visualize import PLASMA, _add_levelsets, _draw_box, _draw_obstacles, _poly_from_saved, _style
+from .geometry import hull_edges, polytope_vertices
+from .visualize import BLUE, PLASMA, _draw_box, _draw_obstacles, _poly_from_saved, _style
 
 
 def _load(run_dir: Path):
@@ -48,6 +51,34 @@ def _ball(env: TaskEnvironment):
     return sphere[:3], float(sphere[3])
 
 
+def draw_polytope_soft(ax, polytope, gamma, color="#3f7ad0"):
+    """Nominal polytope as translucent nested volume: level sets are soft tinted fills, not wire."""
+    vertices = polytope_vertices(polytope)
+    if vertices is None:
+        ax.text2D(0.04, 0.90, "polytope is not strict-interior", transform=ax.transAxes,
+                  color="#b3261e")
+        return
+    hull = ConvexHull(vertices)
+    _, edges = hull_edges(vertices)
+    ax.add_collection3d(Line3DCollection(vertices[edges], colors=color, linewidths=0.25,
+                                         alpha=0.14))
+    alphas = (1.0 - float(gamma)) ** np.arange(1, 11)
+    indices = [9] if np.allclose(alphas, alphas[0]) else range(10)
+    for h0 in indices:
+        beta = 1.0 - alphas[h0]
+        level_vertices = polytope.center + beta * (vertices - polytope.center)
+        shade = BLUE(0.30 + 0.65 * h0 / 9.0)
+        faces = [level_vertices[simplex] for simplex in hull.simplices]
+        ax.add_collection3d(Poly3DCollection(faces, facecolor=shade, alpha=0.06,
+                                             edgecolor="none"))
+        if h0 == indices[0]:
+            ax.add_collection3d(Line3DCollection(level_vertices[edges], colors=[shade],
+                                                 linewidths=0.45, alpha=0.45))
+    if gamma == 1.0:
+        ax.text2D(0.04, 0.90, "10 levels coincide at H_P=0", transform=ax.transAxes,
+                  fontsize=7.5, color="#174f92")
+
+
 def run_metrics(env: TaskEnvironment, row, data, half_window=0.75):
     """Symmetry, below-latitude compliance, and smoothness numbers for one rollout."""
     center, radius = _ball(env)
@@ -64,6 +95,10 @@ def run_metrics(env: TaskEnvironment, row, data, half_window=0.75):
     crossed_under_disk = bool(under_disk.any()
                               and float(dense[under_disk, 2].max()) < center[2] - 0.5 * radius)
     max_abs_y_at_ball = (float(np.abs(dense[footprint, 1]).max()) if footprint.any() else None)
+    crossing = int(np.argmin(np.abs(dense[:, 0] - center[0])))
+    dy = float(dense[crossing, 1] - center[1])
+    dz = float(dense[crossing, 2] - center[2])
+    passage_angle = float(np.degrees(np.arctan2(-dz, -dy)))
 
     window = np.abs(dense[:, 0] - center[0]) <= half_window
     symmetry_error = None
@@ -85,6 +120,8 @@ def run_metrics(env: TaskEnvironment, row, data, half_window=0.75):
         "min_clearance_m": float(clearance.min()),
         "max_z_under_ball_m": max_z_under, "below_latitude0": below_latitude,
         "crossed_under_disk": crossed_under_disk, "max_abs_y_at_ball_m": max_abs_y_at_ball,
+        "passage_angle_deg": passage_angle, "passage_radius_m": float(np.hypot(dy, dz)),
+        "crossing_y_m": center[1] + dy, "crossing_z_m": center[2] + dz,
         "max_abs_y_m": float(np.abs(dense[:, 1]).max()),
         "symmetry_error_m": symmetry_error,
         "mean_delta_u": smoothness, "saturation_fraction": saturation,
@@ -106,6 +143,10 @@ def aggregate(per_run, gammas):
             "all_below_latitude0": bool(all(r["below_latitude0"] for r in rows)),
             "all_crossed_under_disk": bool(all(r["crossed_under_disk"] for r in rows)),
             "avg_max_abs_y_at_ball_m": _mean(rows, "max_abs_y_at_ball_m"),
+            "angle_mean_deg": _mean(rows, "passage_angle_deg"),
+            "angle_std_deg": float(np.std([r["passage_angle_deg"] for r in rows])),
+            "angle_min_deg": float(np.min([r["passage_angle_deg"] for r in rows])),
+            "angle_max_deg": float(np.max([r["passage_angle_deg"] for r in rows])),
             "avg_min_clearance_m": _mean(rows, "min_clearance_m"),
             "avg_time_to_goal_s": _mean(rows, "time_to_goal_s"),
             "avg_max_z_under_ball_m": _mean(rows, "max_z_under_ball_m"),
@@ -169,7 +210,7 @@ def plot_gamma_panel(env, gamma, runs, output_dir):
     index = _polytope_index(reference, center[0])
     polytope = _poly_from_saved(reference, index)
     ax3d.scatter(*polytope.center, marker="o", color="#111111", s=18)
-    _add_levelsets(ax3d, polytope, gamma)
+    draw_polytope_soft(ax3d, polytope, gamma)
     ax3d.scatter(*env.start[:3], marker="s", color="#111111", s=42, label="start")
     ax3d.scatter(*env.goal, marker="*", color="#ffca28", edgecolor="#6a4e00", s=180, label="goal")
     _style(ax3d, env)
@@ -220,6 +261,46 @@ def plot_all_gammas(env, manifest, runs_by_gamma, output_dir):
     ax2d.set_title("x-z side view — all gammas", fontsize=11)
     fig.tight_layout()
     out = Path(output_dir) / "ball_all_gammas.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_crossing_fan(env, per_run, runs, gammas, output_dir):
+    """Head-on view from the start toward the goal: where each rollout crosses the ball plane."""
+    center, radius = _ball(env)
+    norm = Normalize(min(gammas), max(gammas))
+    fig, ax = plt.subplots(figsize=(7.0, 6.2), facecolor="white")
+    theta = np.linspace(0.0, 2.0 * np.pi, 200)
+    ax.fill(center[1] + radius * np.cos(theta), center[2] + radius * np.sin(theta),
+            color="#8f969f", alpha=0.45, zorder=2)
+    ax.axhline(center[2], color="#cc3311", lw=1.1, ls="--", zorder=3,
+               label="latitude 0 (z=2 m)")
+    for row, data in runs:
+        dense = env.dense_positions(np.asarray(data["states"], float),
+                                    np.asarray(data["controls"], float))
+        ax.plot(dense[:, 1], dense[:, 2], color=PLASMA(norm(row["gamma"])), lw=0.7,
+                alpha=0.28, zorder=4)
+    for r in per_run:
+        ax.scatter(r["crossing_y_m"], r["crossing_z_m"], color=PLASMA(norm(r["gamma"])),
+                   s=46, edgecolor="white", linewidth=0.7, zorder=5)
+    ax.scatter(0.0, center[2], marker="*", color="#ffca28", edgecolor="#6a4e00", s=180,
+               zorder=6, label="start/goal line")
+    ax.set_xlim(1.15, -1.15)
+    ax.set_ylim(center[2] - 1.05, center[2] + 0.55)
+    ax.set_aspect("equal")
+    ax.grid(alpha=0.25)
+    ax.set_xlabel("y [m]  (+y on the left: viewed from the start toward the goal)")
+    ax.set_ylabel("z [m]")
+    ax.set_title("Crossing fan at the ball plane x=1.5 m\n"
+                 "dots = where each rollout crosses; lines = head-on trajectories",
+                 fontsize=11, weight="bold")
+    scalar = plt.cm.ScalarMappable(norm=norm, cmap=PLASMA)
+    scalar.set_array([])
+    fig.colorbar(scalar, ax=ax, fraction=0.04, pad=0.04).set_label(r"safety level $\gamma$")
+    ax.legend(loc="lower left", fontsize=8)
+    fig.tight_layout()
+    out = Path(output_dir) / "ball_crossing_fan.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -277,12 +358,14 @@ def analyze(run_dir):
     figures = [plot_gamma_panel(env, gamma, runs_by_gamma[gamma], run_dir)
                for gamma in sorted(runs_by_gamma)]
     figures.append(plot_all_gammas(env, manifest, runs_by_gamma, run_dir))
+    figures.append(plot_crossing_fan(env, per_run, runs, manifest["gammas"], run_dir))
     figures.append(plot_trends(per_run, aggregates, run_dir))
 
     for row in aggregates:
         print(f"gamma={row['gamma']:g} SR={row['SR']} all_below_latitude0="
-              f"{row['all_below_latitude0']} under_disk={row['all_crossed_under_disk']} "
-              f"y_at_ball={row['avg_max_abs_y_at_ball_m']:.3f} "
+              f"{row['all_below_latitude0']} "
+              f"angles=[{row['angle_min_deg']:.0f},{row['angle_max_deg']:.0f}]deg "
+              f"(mean {row['angle_mean_deg']:.0f} std {row['angle_std_deg']:.0f}) "
               f"clearance={row['avg_min_clearance_m']} "
               f"time={row['avg_time_to_goal_s']} sym_err={row['avg_symmetry_error_m']} "
               f"mean_du={row['avg_mean_delta_u']} sat={row['avg_saturation_fraction']}",
