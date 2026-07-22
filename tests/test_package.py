@@ -29,6 +29,24 @@ def test_default_contract():
     assert cfg.safemppi.obstacle_margin == cfg.safemppi.safety_margin == 0.0
 
 
+def test_default_config_keeps_new_fields_inactive():
+    cfg = load_config(ROOT / "default_config.json")
+    assert cfg.safemppi.z_bias_weight == 0.0
+    assert cfg.safemppi.initial_control == (0.0, 0.0, 0.0)
+
+
+def test_ball_below_contract():
+    cfg = load_config(ROOT / "ball_below_config.json")
+    assert cfg.taskspace.start[:3] == (0.0, 0.0, 2.0)
+    assert cfg.taskspace.goal == (3.0, 0.0, 2.0)
+    assert cfg.obstacles.spheres == ((1.5, 0.0, 2.0, 0.254),)
+    assert cfg.safemppi.demo_u_max == 1.0
+    assert cfg.safemppi.initial_control == (0.1, 0.0, 0.0)
+    assert cfg.safemppi.z_bias_weight > 0.0 and cfg.safemppi.z_bias_temperature <= 0.05
+    assert cfg.safemppi.soft_clearance_weight == 0.0 and cfg.safemppi.progress_weight == 0.0
+    assert cfg.data.gammas == (0.1, 0.3, 0.5, 1.0)
+
+
 def test_uniform_triangular_base():
     vertices, faces, normals, offsets = triangular_geometry()
     assert vertices.shape == (42, 3)
