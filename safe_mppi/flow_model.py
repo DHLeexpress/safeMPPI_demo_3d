@@ -9,12 +9,14 @@ from torch import nn
 
 class ConditionalFlowMLP(nn.Module):
     def __init__(self, context_dim: int, plan_shape: tuple[int, ...], hidden: int = 96,
-                 representation_dim: int = 32, control_limit: float | None = None):
+                 representation_dim: int = 32, control_limit: float | None = None,
+                 nfe: int = 8):
         super().__init__()
         self.context_dim = int(context_dim)
         self.plan_shape = tuple(int(value) for value in plan_shape)
         self.plan_dim = math.prod(self.plan_shape)
         self.control_limit = control_limit
+        self.nfe = int(nfe)
         self.trunk = nn.Sequential(
             nn.Linear(self.plan_dim + self.context_dim + 8, hidden), nn.SiLU(),
             nn.Linear(hidden, hidden), nn.SiLU(),
@@ -54,7 +56,7 @@ class ConditionalFlowMLP(nn.Module):
                generator: torch.Generator) -> torch.Tensor:
         context = context.reshape(1, -1).expand(count, -1)
         x = torch.randn(count, self.plan_dim, device=context.device, generator=generator)
-        nfe = 8
+        nfe = self.nfe
         for index in range(nfe):
             t = torch.full((count,), index / nfe, device=x.device)
             x = x + self(x, t, context) / nfe
@@ -64,9 +66,12 @@ class ConditionalFlowMLP(nn.Module):
 
     @torch.no_grad()
     def embed(self, context: torch.Tensor, candidates: torch.Tensor,
-              flow_time: float = 0.9) -> torch.Tensor:
+              flow_time: float = 0.9, base: torch.Tensor | None = None) -> torch.Tensor:
+        """Penultimate features at the flow-path point; ``base`` is the optional CFM base noise."""
         if context.ndim == 1:
             context = context[None].expand(len(candidates), -1)
         point = flow_time * candidates.reshape(len(candidates), self.plan_dim)
+        if base is not None:
+            point = point + (1.0 - flow_time) * base.reshape(len(candidates), self.plan_dim)
         t = torch.full((len(candidates),), flow_time, device=point.device)
         return self._features(point, t, context)

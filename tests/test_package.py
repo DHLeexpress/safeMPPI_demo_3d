@@ -82,6 +82,51 @@ def test_ball_demo_contract():
     assert cfg.safemppi.soft_clearance_weight == cfg.safemppi.progress_weight == 0.0
 
 
+def test_ball_flow_context_verifier_and_route_modes():
+    from safe_mppi.ball_flow_task import (BallFlowTask, build_context, context_state,
+                                          route_mode)
+    cfg = load_config(ROOT / "configs" / "ball_biased_demo.json")
+    task = BallFlowTask(cfg)
+    env = task.env
+    state = task.reset(0.5, 0, 0)
+    context = task.context(state, 0.5)
+    assert context.shape == (10,)
+    assert float(context[9]) == 0.5
+    recovered = context_state(env, context.numpy())
+    np.testing.assert_allclose(recovered, env.start, atol=1e-5)
+
+    near = np.array([1.0, 0.0, 2.0, 0.6, 0.0, 0.0], np.float32)
+    ctx = torch.from_numpy(build_context(env, near, 0.5))
+    through = torch.zeros(1, 10, 3)
+    through[0, :, 0] = 1.0
+    verdict = task.verify(ctx, through, 0.5)[0]
+    assert not verdict.valid and verdict.margin < 0.0
+    gentle = torch.zeros(1, 10, 3)
+    gentle[0, :, 0] = 0.1
+    start_ctx = task.context(task.reset(0.3, 0, 0), 0.3)
+    assert task.verify(start_ctx, gentle, 0.3)[0].valid
+
+    def crossing(second):
+        return np.array([[1.4, 0.0, 2.0], [1.4, 0.0, 2.0], second], float)
+
+    assert route_mode(env, np.array([[1.4, 0.0, 1.9], [1.6, 0.0, 1.5]])) == "below"
+    assert route_mode(env, np.array([[1.4, 0.0, 2.1], [1.6, 0.0, 2.5]])) == "above"
+    assert route_mode(env, np.array([[1.4, 0.0, 2.0], [1.6, 0.8, 2.0]])) == "left"
+    assert route_mode(env, np.array([[1.4, 0.0, 2.0], [1.6, -0.8, 2.0]])) == "right"
+    assert route_mode(env, np.array([[0.2, 0.0, 2.0], [0.9, 0.0, 2.0]])) == "none"
+
+
+def test_flow_embed_noised_base_changes_features():
+    torch.manual_seed(0)
+    policy = ConditionalFlowMLP(10, (10, 3), hidden=32, representation_dim=16)
+    context = torch.randn(4, 10)
+    plans = torch.randn(4, 10, 3)
+    plain = policy.embed(context, plans)
+    noised = policy.embed(context, plans, base=torch.randn(4, 30))
+    assert plain.shape == (4, 16)
+    assert not torch.allclose(plain, noised)
+
+
 def test_rbf_uncertainty_and_fixed_beta():
     features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
     ell = mean_pairwise_lengthscale(features)

@@ -344,6 +344,20 @@ The task adapter converts candidate controls to 3D paths and nominal/verifier po
 before constructing `MechanismFrame`; the generic core does not guess that geometry.
 
 Reference mechanism video: [B1 rounds 0/5/10/15](docs/assets/b1_expansion_mechanism_reference.mp4).
+
+### Ball-task deployment: pretraining + expansion + representation audit
+
+[`docs/BALL_FLOW_EXPANSION.md`](docs/BALL_FLOW_EXPANSION.md) deploys this loop end to end on the
+20-inch-ball task with the 10-D context `c_t = [g-p, v, b_near-p, gamma]` and a 30-D plan flow
+(`scripts/pretrain_ball_flow.py`, `scripts/run_ball_expansion.py`,
+`scripts/evaluate_ball_expansion.py`, `safe_mppi/ball_flow_diagnostics.py`). It reports raw
+temperature-1 success/collision, above/below/left/right route coverage, untilted GREEN-verifier
+validity, gamma trends against the SafeMPPI demonstrator, sigma-tilted acquisition anatomy, and
+an automated fixed-bank audit of the penultimate noised representation (t-SNE panels, local
+probes, and the high-sigma new-mode discovery rate). Curated figures live in
+[`docs/assets/ball_flow/`](docs/assets/ball_flow/).
+
+![Mode presence: tilted acquisition vs raw sampling](docs/assets/ball_flow/mode_timeline.png)
 It is a format reference, not evidence for this new 3D ball task.
 
 ## Code reading order
