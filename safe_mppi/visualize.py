@@ -40,6 +40,9 @@ def _draw_obstacles(ax, env: TaskEnvironment, alpha=0.18):
         Y = y + radius * np.outer(np.sin(u), np.sin(v))
         Z = z + radius * np.outer(np.ones_like(u), np.cos(v))
         ax.plot_surface(X, Y, Z, color="#8f969f", alpha=alpha, linewidth=0, shade=True)
+        theta = np.linspace(0, 2 * np.pi, 100)
+        ax.plot(x + radius * np.cos(theta), y + radius * np.sin(theta),
+                np.full_like(theta, z), color="#6f7680", lw=0.8, alpha=0.65)
     z0, z1 = env.bounds[2]
     for x, y, radius in env.cylinders:
         theta = np.linspace(0, 2 * np.pi, 20)
@@ -95,6 +98,35 @@ def plot_gamma_rollouts(manifest, env: TaskEnvironment, output_dir):
     ax.legend(loc="upper left")
     out = output_dir / "gamma_rollouts_3d.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def plot_rollouts_by_gamma(manifest, env: TaskEnvironment, output_dir):
+    output_dir = Path(output_dir)
+    runs = _load_runs(manifest, output_dir)
+    gammas = sorted(float(value) for value in manifest["gammas"])
+    norm = Normalize(min(gammas), max(gammas))
+    columns = 2
+    rows = math.ceil(len(gammas) / columns)
+    fig = plt.figure(figsize=(12.0, 5.4 * rows), facecolor="white")
+    for panel, gamma in enumerate(gammas):
+        ax = fig.add_subplot(rows, columns, panel + 1, projection="3d")
+        _draw_box(ax, env.bounds, alpha=0.24, linewidth=0.45)
+        _draw_obstacles(ax, env, alpha=0.24)
+        for row, data in runs:
+            if abs(float(row["gamma"]) - gamma) > 1e-9:
+                continue
+            path = np.asarray(data["states"], float)[:, :3]
+            ax.plot(*path.T, color=PLASMA(norm(gamma)), lw=1.35, alpha=0.70)
+        ax.scatter(*env.start[:3], marker="s", color="#111111", s=28)
+        ax.scatter(*env.goal, marker="*", color="#ffca28", edgecolor="#6a4e00", s=120)
+        _style(ax, env)
+        ax.set_title(rf"$\gamma={gamma:g}$", fontsize=13)
+    fig.suptitle("Paired SafeMPPI demonstrations below the sphere equator", fontsize=15)
+    fig.tight_layout()
+    out = output_dir / "gamma_rollouts_by_gamma.png"
+    fig.savefig(out, dpi=155, bbox_inches="tight")
     plt.close(fig)
     return out
 
@@ -171,4 +203,5 @@ def plot_nominal_levelsets(manifest, env: TaskEnvironment, output_dir):
 
 def make_all_figures(manifest, env, output_dir):
     return [plot_gamma_rollouts(manifest, env, output_dir),
+            plot_rollouts_by_gamma(manifest, env, output_dir),
             plot_nominal_levelsets(manifest, env, output_dir)]

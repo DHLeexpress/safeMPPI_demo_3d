@@ -60,6 +60,8 @@ def run_episode(env, controller, gamma, seed):
     time_to_goal = (float(reach_indices[0] * env.mppi.dt) if len(reach_indices) else None)
     finite_clearance = clearance[np.isfinite(clearance)]
     min_clearance = float(finite_clearance.min()) if len(finite_clearance) else None
+    internal_z = states[1:-1, 2]
+    control_variation = np.linalg.norm(np.diff(controls, axis=0), axis=1)
     row = {
         "gamma": float(gamma), "seed": int(seed), "success": bool(success),
         "collision": collision, "taskspace_violation": taskspace_violation,
@@ -68,6 +70,13 @@ def run_episode(env, controller, gamma, seed):
         "mean_feasible_fraction": float(np.mean(feasible)),
         "minimum_online_one_step_slack": float(np.min(slacks)),
         "mean_plan_time_ms": float(1000.0 * np.mean(plan_times)),
+        "mean_control_variation_mps2": (
+            float(control_variation.mean()) if len(control_variation) else 0.0
+        ),
+        "fraction_internal_states_below_z_bias_plane": (
+            float(np.mean(internal_z < env.mppi.z_bias_plane)) if len(internal_z) else None
+        ),
+        "mean_internal_z_m": float(internal_z.mean()) if len(internal_z) else None,
     }
     arrays = dict(states=states, controls=controls, poly_A=_object_array(poly_A),
                   poly_b=_object_array(poly_b), feasible_fraction=np.asarray(feasible, np.float32),
@@ -82,6 +91,10 @@ def aggregate_metrics(rows, gammas):
         group = [row for row in rows if abs(row["gamma"] - gamma) < 1e-9]
         clearances = [row["min_clearance_m"] for row in group if row["min_clearance_m"] is not None]
         times = [row["time_to_goal_s"] for row in group if row["time_to_goal_s"] is not None]
+        below = [row["fraction_internal_states_below_z_bias_plane"] for row in group
+                 if row["fraction_internal_states_below_z_bias_plane"] is not None]
+        mean_z = [row["mean_internal_z_m"] for row in group
+                  if row["mean_internal_z_m"] is not None]
         output.append({
             "gamma": float(gamma), "episodes": len(group),
             "SR": sum(row["success"] for row in group) / len(group),
@@ -90,6 +103,13 @@ def aggregate_metrics(rows, gammas):
             "avg_min_clearance_m": (float(np.mean(clearances)) if clearances else None),
             "avg_time_to_goal_s": (float(np.mean(times)) if times else None),
             "avg_plan_time_ms": float(np.mean([row["mean_plan_time_ms"] for row in group])),
+            "avg_control_variation_mps2": float(np.mean([
+                row["mean_control_variation_mps2"] for row in group
+            ])),
+            "avg_fraction_internal_states_below_z_bias_plane": (
+                float(np.mean(below)) if below else None
+            ),
+            "avg_internal_z_m": float(np.mean(mean_z)) if mean_z else None,
         })
     return output
 
@@ -132,7 +152,7 @@ def acquire(config_path, output_dir, device="cpu"):
     with (output_dir / "metrics.json").open("w") as f:
         json.dump(metrics, f, indent=2)
     with (output_dir / "metrics.csv").open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(metrics[0]))
+        writer = csv.DictWriter(f, fieldnames=list(metrics[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(metrics)
     figures = make_all_figures(manifest, env, output_dir)

@@ -3,11 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from safe_mppi.config import load_config
 from safe_mppi.environment import TaskEnvironment
 from safe_mppi.geometry import build_nominal_polytope, hp_values, triangular_geometry
-from safe_mppi.expansion import run_safe_expansion
+from safe_mppi.expansion import (
+    ExpansionConfig, RBFPosterior, Verification, calibrate_fixed_beta,
+    mean_pairwise_lengthscale, run_safe_expansion,
+)
+from safe_mppi.flow_model import ConditionalFlowMLP
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +53,62 @@ def test_zero_margin_obstacle_tangency():
     assert abs(hp_values(poly, cylinder_tangent)[0]) < 1e-12
 
 
-def test_expansion_is_an_explicit_placeholder():
-    try:
-        run_safe_expansion("dataset", "output")
-    except NotImplementedError as error:
-        assert "next stage" in str(error)
-    else:
-        raise AssertionError("safe expansion must remain an explicit placeholder")
+def test_ball_demo_contract():
+    cfg = load_config(ROOT / "configs" / "ball_biased_demo.json")
+    assert cfg.taskspace.start[:3] == (0.0, 0.0, 2.0)
+    assert cfg.taskspace.goal == (3.0, 0.0, 2.0)
+    assert cfg.obstacles.spheres == ((1.5, 0.0, 2.0, 0.254),)
+    assert cfg.data.gammas == (0.1, 0.3, 0.5, 1.0)
+    assert cfg.safemppi.demo_u_max == 1.0
+    assert cfg.safemppi.initial_control == (0.1, 0.0, 0.0)
+    assert cfg.safemppi.soft_clearance_weight == cfg.safemppi.progress_weight == 0.0
+
+
+def test_rbf_uncertainty_and_fixed_beta():
+    features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
+    ell = mean_pairwise_lengthscale(features)
+    gp = RBFPosterior(ell, 1.0e-2)
+    prior = gp.sigma(features)
+    gp.set_buffer(features[:1])
+    posterior = gp.sigma(features)
+    assert posterior[0] < prior[0]
+    scores = [torch.tensor([0.0, 0.2, 0.8, 1.0])]
+    beta = calibrate_fixed_beta(scores, 0.5)
+    assert 0.0 < beta < 10.0
+
+
+class _OneStepTask:
+    def reset(self, gamma, episode, seed):
+        return 0
+
+    def context(self, state, gamma):
+        return torch.tensor([gamma], dtype=torch.float32)
+
+    def verify(self, context, candidates, gamma):
+        return [Verification(True, True, 1.0, float(row.square().sum()))
+                for row in candidates]
+
+    def advance(self, state, candidate):
+        return state + 1
+
+    def terminal(self, state):
+        return "SUCCESS" if state else None
+
+
+def test_standalone_expansion_smoke(tmp_path):
+    torch.manual_seed(0)
+    policy = ConditionalFlowMLP(1, (2,), hidden=16, representation_dim=8)
+    cfg = ExpansionConfig(
+        rounds=1, gammas=(0.1,), parallel_episodes=1, max_steps=1,
+        K=4, B=2, batch_size=2, gp_buffer_cap=8,
+    )
+    result = run_safe_expansion(
+        policy, _OneStepTask(), tmp_path, config=cfg,
+        calibration_features=torch.randn(12, 8),
+    )
+    assert result["D"] == 2
+    assert result["D_plus"] == 2
+    assert result["rounds"][0]["round"] == 1
+    assert result["rounds"][0]["success"] == 1
+    assert (tmp_path / "checkpoint_000.pt").is_file()
+    assert (tmp_path / "checkpoint_001.pt").is_file()

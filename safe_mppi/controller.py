@@ -77,7 +77,9 @@ class Mode1SafeMPPI:
         if cfg.warm_start and self._previous_sequence is not None:
             nominal = torch.cat([self._previous_sequence[1:], self._previous_sequence[-1:]], dim=0)
         else:
-            nominal = torch.zeros(H, 3, device=self.device)
+            nominal = torch.tensor(
+                cfg.initial_control, dtype=torch.float32, device=self.device
+            ).repeat(H, 1)
         generator = torch.Generator(device=self.device)
         generator.manual_seed(int(seed))
         noise = torch.randn(N, H, 3, generator=generator, device=self.device) * self.sigma
@@ -122,6 +124,11 @@ class Mode1SafeMPPI:
             clearance = _clearance(next_states[:, :3], self.spheres, self.cylinders)
             costs += cfg.soft_clearance_weight * torch.relu(
                 cfg.soft_clearance_target - clearance).square()
+            if cfg.z_bias_weight:
+                exponent = (
+                    (next_states[:, 2] - cfg.z_bias_plane) / cfg.z_bias_temperature
+                ).clamp(max=20.0)
+                costs += cfg.z_bias_weight * torch.exp(exponent)
             states = next_states
             previous_action = controls[:, step]
         costs += cfg.terminal_goal_weight * torch.linalg.norm(states[:, :3] - goal_t, dim=1).square()

@@ -1,0 +1,32 @@
+{
+  "status": "BALL_DEMO_AUDIT_COMPLETE",
+  "audit_x_interval_m": [
+    1.1,
+    1.9
+  ],
+  "equator_z_m": 2.0,
+  "maximum_z_near_ball_m": 1.9425954818725586,
+  "all_trajectories_below_equator_near_ball": true,
+  "per_gamma": {
+    "0.1": {
+      "episodes": 8,
+      "maximum_z_near_ball_m": 1.8992058038711548,
+      "all_below_equator": true
+    },
+    "0.3": {
+      "episodes": 8,
+      "maximum_z_near_ball_m": 1.9223085641860962,
+      "all_below_equator": true
+    },
+    "0.5": {
+      "episodes": 8,
+      "maximum_z_near_ball_m": 1.9386816024780273,
+      "all_below_equator": true
+    },
+    "1": {
+      "episodes": 8,
+      "maximum_z_near_ball_m": 1.9425954818725586,
+      "all_below_equator": true
+    }
+  }
+}

@@ -48,6 +48,7 @@ class MPPIConfig:
     sigma_aniso: float
     urgency_floor: float
     warm_start: bool
+    initial_control: tuple[float, float, float]
     running_goal_weight: float
     terminal_goal_weight: float
     control_weight: float
@@ -55,6 +56,9 @@ class MPPIConfig:
     soft_clearance_weight: float
     soft_clearance_target: float
     progress_weight: float
+    z_bias_plane: float
+    z_bias_temperature: float
+    z_bias_weight: float
     robot_radius: float
     obstacle_margin: float
     safety_margin: float
@@ -100,6 +104,10 @@ def load_config(path: str | Path) -> ExperimentConfig:
     mppi = MPPIConfig(**{
         **m,
         "noise_sigma": tuple(map(float, m["noise_sigma"])),
+        "initial_control": tuple(map(float, m.get("initial_control", [0.0, 0.0, 0.0]))),
+        "z_bias_plane": float(m.get("z_bias_plane", 0.0)),
+        "z_bias_temperature": float(m.get("z_bias_temperature", 1.0)),
+        "z_bias_weight": float(m.get("z_bias_weight", 0.0)),
     })
     data = DataConfig(gammas=tuple(map(float, d["gammas"])),
                       episodes_per_gamma=int(d["episodes_per_gamma"]),
@@ -126,6 +134,10 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("the current standalone spec fixes H=10 and 80 triangular nominal faces")
     if len(m.noise_sigma) != 3 or min(m.noise_sigma) <= 0:
         raise ValueError("noise_sigma must contain three positive values")
+    if len(m.initial_control) != 3:
+        raise ValueError("initial_control must contain three values")
+    if m.z_bias_temperature <= 0.0 or m.z_bias_weight < 0.0:
+        raise ValueError("z_bias_temperature must be positive and z_bias_weight nonnegative")
     if min(m.robot_radius, m.obstacle_margin, m.safety_margin, m.predict_gain, m.zoh_guard) != 0.0 \
             or max(m.robot_radius, m.obstacle_margin, m.safety_margin, m.predict_gain, m.zoh_guard) != 0.0:
         raise ValueError("robot radius and every hard obstacle/gain/guard margin must remain exactly 0")
