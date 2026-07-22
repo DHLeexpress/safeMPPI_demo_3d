@@ -354,7 +354,10 @@ Reference mechanism video: [B1 rounds 0/5/10/15](docs/assets/b1_expansion_mechan
 temperature-1 success/collision, above/below/left/right route coverage, untilted GREEN-verifier
 validity, gamma trends against the SafeMPPI demonstrator, sigma-tilted acquisition anatomy, and
 an automated fixed-bank audit of the penultimate noised representation (t-SNE panels, local
-probes, and the high-sigma new-mode discovery rate). Curated figures live in
+probes, and the high-sigma new-mode discovery rate), plus an automated data-size x model
+discovery sweep (`scripts/sweep_ball_flow.py`) and the final
+[coverage video](docs/assets/ball_flow/coverage_video.mp4): expansion iterations progressively
+cover the ball with generated trajectories while the metric curves grow. Curated figures live in
 [`docs/assets/ball_flow/`](docs/assets/ball_flow/).
 
 ![Mode presence: tilted acquisition vs raw sampling](docs/assets/ball_flow/mode_timeline.png)

@@ -14,23 +14,26 @@ c_t = [ g - p_t,  v_t,  b_near - p_t,  gamma ]  in R^10
 
 `b_near` is the closest point on the ball surface, so one vector carries obstacle distance and
 direction. Plans are `H=10` acceleration rows flattened to R^30, and the CFM velocity field is
+the **shallow two-layer trunk** of the spec:
 
 ```text
-v_theta(x_s, c_t, s) in R^30,   trunk 48 -> 64 -> 64 -> phi (64) -> 30
+v_theta(x_s, c_t, s) in R^30,   48 -> 64 -> 64 (= phi_s) -> 30
 ```
 
-(48 = 30 plan + 10 context + 8 sinusoidal time features; `phi` is the penultimate representation
-the GP uncertainty operates on; controls clamp to the 1 m/s^2 demonstration cap; sampling uses 16
-Euler steps.) Implementation: [`flow_model.py`](../safe_mppi/flow_model.py),
-[`ball_flow_task.py`](../safe_mppi/ball_flow_task.py).
+(48 = 30 plan + 10 context + 8 sinusoidal time features; `phi_s` is the second hidden layer —
+the penultimate representation the GP uncertainty operates on; controls clamp to the 1 m/s^2
+demonstration cap; sampling uses 16 Euler steps. A first pilot used an extra 64-unit trunk layer
+and only 10 demonstrations per gamma; it underfit closed loop and was replaced by this shallower
+model on 4x the data.) Implementation: [`flow_model.py`](../safe_mppi/flow_model.py)
+(`trunk_depth=2`), [`ball_flow_task.py`](../safe_mppi/ball_flow_task.py).
 
 ## 2. Recipe (as specified)
 
 | variable | value |
 |---|---:|
-| demonstrations | 10 per gamma (`configs/ball_biased_demo.json`, below-biased SafeMPPI) |
+| demonstrations | 40 per gamma (`configs/ball_fan_demo.json`: below-plane, angularly fanned) |
 | horizon `H` | 10 |
-| flow trunk | 64 -> 64, no encoder |
+| flow trunk | 64 -> 64 exactly (trunk_depth 2), no encoder |
 | `K` generated plans | 16 |
 | `B` verifier queries | 4 |
 | parallel episodes | 2 per gamma |
@@ -39,19 +42,21 @@ Euler steps.) Implementation: [`flow_model.py`](../safe_mppi/flow_model.py),
 | batch size | 32 |
 | gradient steps | one exact pass over eligible positives (`inner_steps=None`) |
 | learning rate | 1e-5 (3e-5 collapsed the rare right-mode; see section 5) |
-| beta | calibrated once with `calibrate_fixed_beta` (ESS target 0.5), then fixed |
+| beta | **0.003, deliberately tiny** (near-greedy top-sigma: each round queries the newest feature-space region; the ESS-0.5 calibration ~0.018 is logged for reference) |
 | negative loss | alpha = 0 |
 | execution | verifier-positive plan minimizing the native (untilted) SafeMPPI cost |
 
-Pretraining: sliding H-step windows over the 40 demo rollouts (1457 windows), 2 extra
-geometry-consistent context-jitter copies (0.02 m/m s^-1; the 10-D context is rebuilt exactly from
-the perturbed state), 1200 epochs Adam 3e-4 cosine. Reproduce with:
+Pretraining: sliding H-step windows over the 160 demo rollouts, 2 extra geometry-consistent
+context-jitter copies (0.02 m/m s^-1; the 10-D context is rebuilt exactly from the perturbed
+state), 500 epochs Adam 3e-4 cosine. Reproduce with:
 
 ```bash
-python scripts/pretrain_ball_flow.py                # demos + CFM + lengthscale/beta calibration
-python scripts/run_ball_expansion.py --rounds 60    # B1 expansion + event log
-python scripts/evaluate_ball_expansion.py           # untilted raw eval + figures + video
+python scripts/pretrain_ball_flow.py                          # fan demos + CFM + calibration
+python scripts/run_ball_expansion.py --rounds 80 --start-diversity
+python scripts/evaluate_ball_expansion.py --stride 5          # untilted raw eval + figures
 python -m safe_mppi.ball_flow_diagnostics --expansion outputs/ball_flow/expansion
+python scripts/sweep_ball_flow.py                             # automated data x model discovery sweep
+python scripts/render_coverage_video.py --expansion outputs/ball_flow/expansion --stride 5
 ```
 
 ## 3. The GREEN verifier and the execution rule
@@ -83,60 +88,62 @@ checkpoint and gamma. The validity probe samples raw open-loop plans at three fi
 scores them with the GREEN verifier. Route modes are the angular quadrant at the ball-plane
 crossing (+y = left, viewed from the start).
 
-## 5. Results (60-round canonical run; 40-round no-forced-above ablation in parentheses)
+## 5. Results (canonical: fan demonstrations, 40/gamma, shallow trunk, beta 0.003, 80 rounds)
 
-Pretraining: 1457 windows, CFM valid loss 1.44 -> 0.70; raw pretrained audit SR 0.34 with modes
-{below, left, right} — **above is absent by construction** (the demonstrations are below-biased).
-Calibration: RBF lengthscale 0.807, beta 0.0161 (ESS target 0.5).
+**Demonstrations** now span the z<2 side of the ball with a wide angular fan
+([`assets/ball_flow/fan_demonstrations.png`](assets/ball_flow/fan_demonstrations.png),
+`configs/ball_fan_demo.json`): crossing angles 5-160 degrees w.r.t. the -y axis, strictly below
+the equator near the ball (audited max z 1.973). Pretraining on all 160 demos (5672 windows):
+raw SR 0.66, modes {below, left, right} — `above` is the single novel mode.
 
-**Raw temperature-1 closed loop** (canonical start, 16 episodes x 4 gammas per checkpoint):
+**Automated (data x model) discovery sweep** (`scripts/sweep_ball_flow.py`,
+[`assets/ball_flow/sweep_grid.png`](assets/ball_flow/sweep_grid.png)): 300-epoch pretrains,
+20-round canonical-start expansions, beta 0.003. It exposes an exploration-competence tradeoff:
+10 demos/gamma keeps broad tails (up to 71 above candidates, 11 verified above positives per run)
+but SR only ~0.4; 40 demos/gamma trains a strong prior (raw SR -> 0.75-0.77 through expansion)
+whose tails collapse onto the demo fan (0-3 above candidates). Depth 2 vs 3 is not decisive.
+Reliable discovery therefore needs the strong prior *plus* replica start diversity, which is the
+canonical configuration below.
 
-| checkpoint | SR | CR | route coverage | untilted verifier validity |
+**Canonical run** (40/gamma, trunk_depth 2, beta 0.003 near-greedy acquisition, replica start
+diversity, 80 rounds):
+
+| checkpoint | SR | CR | route coverage | untilted validity |
 |---:|---:|---:|---:|---:|
-| round 0 | 0.59 | 0.12 | 0.75 (below/left/right) | 0.36 |
-| round 24 | 0.70 | 0.00 | 0.75 | 0.40 |
-| round 48 | **0.77** | 0.02 | 0.75 | 0.39 |
-| round 60 | 0.64 | 0.05 | 0.75 | 0.36 |
+| round 0 | 0.75 | 0.08 | 0.75 | 0.35 |
+| round 30 | **0.95** | **0.00** | 0.75 | 0.38 |
+| round 80 | 0.91 | 0.00 | 0.50-0.75* | 0.36 |
 
-Collision rate collapses to ~0 by round 8 and the three pretrained modes never collapse over 60
-rounds (`mode_share.png`) — the lr 3e-5 pilot lost the rare right-mode, which is why the recipe
-pins 1e-5. Success improves 0.59 -> ~0.75 with late-round drift; validity rises 0.36 -> 0.42
-(round ~24) then relaxes. Gamma trends (`gamma_trend_vs_safemppi.png`): the raw policy is
-*uniformly more conservative* than its demonstrator — clearance 0.21-0.23 m at every gamma
-(demonstrator: monotone 0.24 -> 0.10) and ~1.2 s slower; the scalar gamma input modulates the
-flow far more weakly than it modulates SafeMPPI.
+*right-mode raw mass thins late under the novelty-skewed replay (present in the independent
+video seed bank at rounds 60-80, absent in the eval bank — a seed-level effect).
 
-**The support finding (mode discovery).** With fixed canonical starts, zero above-mode plans
-appear among ~24k near-ball candidate draws in 20+40 rounds — sigma-tilted acquisition can only
-re-rank what the policy samples, and the below-biased prior assigns no mass to climbing over.
-With the forced-above replica starts, the GREEN verifier certifies above-corridor positives in
-every replay window (44-103 per 15 rounds) and **tilted acquisition covers all four modes from
-round 1** (`mode_timeline.png`), yet raw sampling at the canonical start still shows only
-below/left/right at round 60; the above-start raw probe improves SR 0.00 -> 0.17 without
-producing raw above crossings. Newly acquired modes therefore appear in tilted acquisition but
-do not transfer into raw sampling at distant contexts within 60 one-pass rounds: the bottleneck
-is prior sample support and context-conditional gating (b_near - p flips direction between the
-corridors), not the acquisition rule and not the verifier.
+Above-mode discovery is now **sustained**: 323 above verifier positives across 80 rounds
+(163/56/21/83 per 20-round bucket) — every replay window contains the novel mode, versus exactly
+one above positive in the original sharp-bias/deep-model configuration. Raw sampling at the
+canonical start still shows below/left/right; the above-start raw probe reaches SR 0.375. The
+remaining gap is context-conditional transfer, not acquisition.
 
-**Decisive acquisition metric** (fixed probe state, 400 draws per round with missing modes):
+**Decisive acquisition metric across regimes**: with weak priors the inequality holds
+(10-demo cells and the earlier deep runs: 0.0110 vs 0.0095 and 0.0060 vs 0.0052, ~+16%
+relative); with the strong 40-demo prior it is vacuous at the canonical probe state (0 vs 0 —
+the policy proposes no above candidates there at all), which is the support-limitation statement
+in its sharpest form. The automated report
+([`assets/ball_flow/REPRESENTATION_REPORT.md`](assets/ball_flow/REPRESENTATION_REPORT.md))
+prints the canonical-run verdict verbatim.
 
-| regime | P(new valid mode / high-sigma B) | P(new valid mode / uniform B) |
-|---|---:|---:|
-| canonical 60-round run | **0.0110** | 0.0095 |
-| no-forced-above ablation (11 missing-mode rounds) | **0.0060** | 0.0052 |
+**Final coverage video** ([`assets/ball_flow/coverage_video.mp4`](assets/ball_flow/coverage_video.mp4)):
+expansion iterations progressively cover the ball — solid raw trajectories (below/left/right fan)
+plus dotted self-generated verifier-positive episodes wrapping the top — ending on the achieved
+metrics (SR 0.90, CR 0.00, validity 0.39 on the video seed bank).
 
-The inequality holds in both regimes (~+16% relative), with small absolute rates precisely
-because valid new-mode candidates are rare in the policy's own K=16 pool — support, not
-acquisition, binds.
-
-**Representation probes** (fixed 600-item bank, s=0.9, 4 averaged noise draws; full tables in
-[`assets/ball_flow/REPRESENTATION_REPORT.md`](assets/ball_flow/REPRESENTATION_REPORT.md)):
-kNN validity 0.94, kNN route-mode 0.75-0.76, linear/RBF validity AUROC 0.96/0.88-0.90,
-route-mode probe 0.84-0.85, corr(sigma, nearest-queried-feature distance) 0.53-0.80, and the
-control-magnitude shortcut check (0.73) stays below the mode probes — phi_s separates routes and
-validity rather than just control magnitude. Flow-time ablation: s=0.5 is clearly worst
-(kNN mode 0.65), s=0.8-0.9 best, s=0.95 slightly degraded — more denoised is not monotonically
-better, matching the source paper's feature-timestep ablation.
+**Representation probes** (fixed 600-item two-state bank, s=0.9, 4 averaged noise draws; full
+tables in [`assets/ball_flow/REPRESENTATION_REPORT.md`](assets/ball_flow/REPRESENTATION_REPORT.md)):
+kNN validity 0.94, kNN route-mode 0.77-0.78, linear/RBF validity AUROC 0.96/0.92, route-mode
+probe 0.90, mode silhouette 0.18, corr(sigma, nearest-queried-feature distance) 0.51-0.67, and
+the control-magnitude shortcut check (0.76) stays below the mode probe — phi_s separates routes
+and validity rather than control magnitude. Flow-time ablation: s=0.5 worst (kNN mode 0.67),
+s=0.9 best (0.77), s=0.95 slightly degraded — more denoised is not monotonically better,
+matching the source paper's feature-timestep ablation.
 
 ## 6. Figures
 

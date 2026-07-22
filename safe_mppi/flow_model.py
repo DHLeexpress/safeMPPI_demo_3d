@@ -10,18 +10,27 @@ from torch import nn
 class ConditionalFlowMLP(nn.Module):
     def __init__(self, context_dim: int, plan_shape: tuple[int, ...], hidden: int = 96,
                  representation_dim: int = 32, control_limit: float | None = None,
-                 nfe: int = 8):
+                 nfe: int = 8, trunk_depth: int = 3):
         super().__init__()
         self.context_dim = int(context_dim)
         self.plan_shape = tuple(int(value) for value in plan_shape)
         self.plan_dim = math.prod(self.plan_shape)
         self.control_limit = control_limit
         self.nfe = int(nfe)
-        self.trunk = nn.Sequential(
-            nn.Linear(self.plan_dim + self.context_dim + 8, hidden), nn.SiLU(),
-            nn.Linear(hidden, hidden), nn.SiLU(),
-            nn.Linear(hidden, representation_dim), nn.SiLU(),
-        )
+        input_dim = self.plan_dim + self.context_dim + 8
+        if trunk_depth == 3:
+            layers = [nn.Linear(input_dim, hidden), nn.SiLU(),
+                      nn.Linear(hidden, hidden), nn.SiLU(),
+                      nn.Linear(hidden, representation_dim), nn.SiLU()]
+        elif trunk_depth == 2:
+            # The shallow spec `input -> 64 -> 64 -> plan`: phi is the second hidden layer.
+            if representation_dim != hidden:
+                raise ValueError("trunk_depth=2 requires representation_dim == hidden")
+            layers = [nn.Linear(input_dim, hidden), nn.SiLU(),
+                      nn.Linear(hidden, hidden), nn.SiLU()]
+        else:
+            raise ValueError("trunk_depth must be 2 or 3")
+        self.trunk = nn.Sequential(*layers)
         self.head = nn.Linear(representation_dim, self.plan_dim)
 
     @staticmethod

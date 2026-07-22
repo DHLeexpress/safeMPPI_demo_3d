@@ -127,6 +127,15 @@ def test_flow_embed_noised_base_changes_features():
     assert not torch.allclose(plain, noised)
 
 
+def test_flow_shallow_trunk_matches_spec():
+    shallow = ConditionalFlowMLP(10, (10, 3), hidden=64, representation_dim=64,
+                                 trunk_depth=2)
+    linear_layers = [m for m in shallow.trunk if isinstance(m, torch.nn.Linear)]
+    assert len(linear_layers) == 2
+    assert shallow.embed(torch.randn(3, 10), torch.randn(3, 10, 3)).shape == (3, 64)
+    assert shallow(torch.randn(3, 30), torch.rand(3), torch.randn(3, 10)).shape == (3, 30)
+
+
 def test_rbf_uncertainty_and_fixed_beta():
     features = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
     ell = mean_pairwise_lengthscale(features)

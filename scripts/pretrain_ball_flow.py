@@ -29,8 +29,9 @@ from safe_mppi.flow_model import ConditionalFlowMLP
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def collect_demos(output: Path, episodes_per_gamma: int) -> Path:
-    config = json.loads((ROOT / "configs" / "ball_biased_demo.json").read_text())
+def collect_demos(output: Path, episodes_per_gamma: int,
+                  source: str = "ball_fan_demo.json") -> Path:
+    config = json.loads((ROOT / "configs" / source).read_text())
     config["data"]["episodes_per_gamma"] = int(episodes_per_gamma)
     config_path = output / "demo_config.json"
     output.mkdir(parents=True, exist_ok=True)
@@ -100,12 +101,13 @@ def audit_raw(policy, config, gammas, episodes: int, seed0: int):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "outputs" / "ball_flow")
-    parser.add_argument("--episodes-per-gamma", type=int, default=10)
-    parser.add_argument("--epochs", type=int, default=1200)
+    parser.add_argument("--episodes-per-gamma", type=int, default=40)
+    parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--hidden", type=int, default=64)
     parser.add_argument("--representation-dim", type=int, default=64)
+    parser.add_argument("--trunk-depth", type=int, default=2)
     parser.add_argument("--augment-copies", type=int, default=2)
     parser.add_argument("--augment-jitter", type=float, default=0.02)
     parser.add_argument("--nfe", type=int, default=16)
@@ -127,7 +129,8 @@ def main():
     policy = ConditionalFlowMLP(
         context_dim=contexts.shape[1], plan_shape=(PLAN_H, 3), hidden=args.hidden,
         representation_dim=args.representation_dim,
-        control_limit=config.safemppi.demo_u_max, nfe=args.nfe)
+        control_limit=config.safemppi.demo_u_max, nfe=args.nfe,
+        trunk_depth=args.trunk_depth)
     history = train(policy, contexts, plans, args.epochs, args.batch_size,
                     args.learning_rate, args.seed)
 
@@ -155,7 +158,8 @@ def main():
     torch.save({"model": policy.state_dict(),
                 "arch": {"context_dim": int(contexts.shape[1]), "plan_shape": [PLAN_H, 3],
                          "hidden": args.hidden, "representation_dim": args.representation_dim,
-                         "control_limit": config.safemppi.demo_u_max, "nfe": args.nfe}},
+                         "control_limit": config.safemppi.demo_u_max, "nfe": args.nfe,
+                         "trunk_depth": args.trunk_depth}},
                args.output / "pretrained.pt")
     torch.save(calibration, args.output / "calibration_features.pt")
     manifest = {

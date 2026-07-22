@@ -1,0 +1,36 @@
+[cell d10_d2h64_s0] SR 0.58->0.27 above cand/pos 3/0 raw-above 0.00 (2.9min)
+[cell d10_d3h64_s0] SR 0.46->0.48 above cand/pos 76/17 raw-above 0.00 (3.1min)
+[cell d10_d2h96_s0] SR 0.56->0.46 above cand/pos 0/0 raw-above 0.00 (2.9min)
+[cell d20_d2h64_s0] SR 0.54->0.62 above cand/pos 1/0 raw-above 0.00 (2.6min)
+[cell d20_d3h64_s0] SR 0.56->0.69 above cand/pos 0/0 raw-above 0.00 (3.0min)
+[cell d20_d2h96_s0] SR 0.46->0.56 above cand/pos 0/0 raw-above 0.00 (3.0min)
+[cell d40_d2h64_s0] SR 0.48->0.33 above cand/pos 2/1 raw-above 0.00 (2.7min)
+[cell d40_d3h64_s0] SR 0.44->0.25 above cand/pos 0/0 raw-above 0.00 (3.3min)
+[cell d40_d2h96_s0] SR 0.42->0.48 above cand/pos 0/0 raw-above 0.00 (2.7min)
+[winner] d10_d3h64_s0
+[cell d10_d3h64_s1] SR 0.85->0.35 above cand/pos 1/0 raw-above 0.06 (3.1min)
+[cell d10_d3h64_s2] SR 0.48->0.46 above cand/pos 0/0 raw-above 0.00 (3.3min)
+[
+  {
+    "seed": 0,
+    "above_positives": 17,
+    "discovered_in_acquisition": true,
+    "above_raw_share_final": 0.0,
+    "discovered_in_raw": false
+  },
+  {
+    "seed": 1,
+    "above_positives": 0,
+    "discovered_in_acquisition": false,
+    "above_raw_share_final": 0.058823529411764705,
+    "discovered_in_raw": true
+  },
+  {
+    "seed": 2,
+    "above_positives": 0,
+    "discovered_in_acquisition": false,
+    "above_raw_share_final": 0.0,
+    "discovered_in_raw": false
+  }
+]
+[reliability] acquisition 0.33 raw 0.33

@@ -32,7 +32,10 @@ def main():
                         default=ROOT / "outputs" / "ball_flow" / "expansion")
     parser.add_argument("--rounds", type=int, default=40)
     parser.add_argument("--learning-rate", type=float, default=1.0e-5)
-    parser.add_argument("--start-diversity", action="store_true", default=True)
+    parser.add_argument("--beta", type=float, default=0.003,
+                        help="really small = near-greedy top-sigma acquisition; each round "
+                             "incrementally queries the newest region of feature space")
+    parser.add_argument("--start-diversity", action="store_true", default=False)
     parser.add_argument("--no-start-diversity", dest="start_diversity", action="store_false")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
@@ -49,7 +52,7 @@ def main():
         max_steps=task_config.taskspace.max_steps, K=16, B=4, batch_size=32,
         inner_steps=None, learning_rate=args.learning_rate, replay_rounds=2,
         gp_buffer_cap=256, gp_noise=1.0e-2, rbf_lengthscale=None,
-        beta=float(pretrain["beta"]),
+        beta=float(args.beta),
         adaptive_beta=False, negative_alpha=0.0, seed=args.seed,
     )
 
