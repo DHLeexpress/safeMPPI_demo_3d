@@ -60,6 +60,10 @@ class MPPIConfig:
     safety_margin: float
     predict_gain: float
     zoh_guard: float
+    z_bias_weight: float = 0.0
+    z_bias_temperature: float = 0.05
+    z_bias_ref: float = 0.0
+    warm_start_bias: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -97,10 +101,10 @@ def load_config(path: str | Path) -> ExperimentConfig:
     obstacles = ObstacleConfig(
         spheres=_tuples(o.get("spheres", []), 4, "spheres"),
         cylinders=_tuples(o.get("cylinders", []), 3, "cylinders"))
-    mppi = MPPIConfig(**{
-        **m,
-        "noise_sigma": tuple(map(float, m["noise_sigma"])),
-    })
+    mppi_raw = {**m, "noise_sigma": tuple(map(float, m["noise_sigma"]))}
+    if "warm_start_bias" in mppi_raw:
+        mppi_raw["warm_start_bias"] = tuple(map(float, mppi_raw["warm_start_bias"]))
+    mppi = MPPIConfig(**mppi_raw)
     data = DataConfig(gammas=tuple(map(float, d["gammas"])),
                       episodes_per_gamma=int(d["episodes_per_gamma"]),
                       seed_start=int(d["seed_start"]))
@@ -131,6 +135,10 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("robot radius and every hard obstacle/gain/guard margin must remain exactly 0")
     if not (0.0 < m.demo_u_max <= m.platform_u_max) or m.num_samples < 1 or m.dt <= 0:
         raise ValueError("require 0 < demo_u_max <= platform_u_max, samples >=1, and dt >0")
+    if m.z_bias_weight < 0.0 or (m.z_bias_weight > 0.0 and m.z_bias_temperature <= 0.0):
+        raise ValueError("z_bias_weight must be >=0 and use a positive z_bias_temperature when active")
+    if len(m.warm_start_bias) != 3 or max(abs(v) for v in m.warm_start_bias) > m.demo_u_max:
+        raise ValueError("warm_start_bias must be a 3-vector within the demonstration control cap")
     if not d.gammas or any(not 0.0 < g <= 1.0 for g in d.gammas):
         raise ValueError("all gamma values must be in (0,1]")
     if d.episodes_per_gamma < 1:

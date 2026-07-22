@@ -45,6 +45,14 @@ CUDA_VISIBLE_DEVICES=2 python run.py \
 The run produces one NPZ file per episode, `manifest.json`, `metrics.csv`, `metrics.json`, a 3D
 gamma-colored rollout overlay, and a BLUE nominal-level-set figure.
 
+## Ball-below variant
+
+[`ball_below_config.json`](ball_below_config.json) + [`docs/BALL_BELOW.md`](docs/BALL_BELOW.md)
+define a second experiment: start `(0,0,2)` to goal `(3,0,2)` with a 20-inch ball at `(1.5,0,2)`,
+an exponential altitude penalty `w exp((z-2)/T)` that biases every rollout below the ball's
+latitude-0 circle, a `1 m/s^2` demonstration cap, and a `[0.1,0,0]` warm-start bias. Analyze a
+finished run with `python -m safe_mppi.ball_analysis --run <output_dir>`.
+
 ## Default experiment
 
 All user-facing values live in [`default_config.json`](default_config.json).

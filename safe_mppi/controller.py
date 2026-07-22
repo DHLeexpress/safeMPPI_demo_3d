@@ -32,6 +32,7 @@ class Mode1SafeMPPI:
         self.u_min = torch.full((3,), -config.demo_u_max, device=self.device)
         self.u_max = torch.full((3,), config.demo_u_max, device=self.device)
         self.sigma = torch.tensor(config.noise_sigma, device=self.device)
+        self.warm_bias = torch.tensor(config.warm_start_bias, device=self.device)
         self.spheres, self.cylinders = environment.torch_obstacles(self.device)
         self._previous_sequence = None
         self._last_action = None
@@ -77,7 +78,7 @@ class Mode1SafeMPPI:
         if cfg.warm_start and self._previous_sequence is not None:
             nominal = torch.cat([self._previous_sequence[1:], self._previous_sequence[-1:]], dim=0)
         else:
-            nominal = torch.zeros(H, 3, device=self.device)
+            nominal = self.warm_bias.repeat(H, 1)
         generator = torch.Generator(device=self.device)
         generator.manual_seed(int(seed))
         noise = torch.randn(N, H, 3, generator=generator, device=self.device) * self.sigma
@@ -119,6 +120,9 @@ class Mode1SafeMPPI:
             costs += cfg.control_weight * controls[:, step].square().sum(dim=1)
             costs += cfg.smooth_weight * (controls[:, step] - previous_action).square().sum(dim=1)
             costs -= cfg.progress_weight * (initial_distance - distance)
+            if cfg.z_bias_weight > 0.0:
+                altitude = (next_states[:, 2] - cfg.z_bias_ref) / cfg.z_bias_temperature
+                costs += cfg.z_bias_weight * torch.exp(altitude.clamp(max=60.0))
             clearance = _clearance(next_states[:, :3], self.spheres, self.cylinders)
             costs += cfg.soft_clearance_weight * torch.relu(
                 cfg.soft_clearance_target - clearance).square()
