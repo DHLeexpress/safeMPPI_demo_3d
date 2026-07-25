@@ -66,6 +66,38 @@ goes to motors; it is the acceleration feedforward. A reference governor keeps
 `p_ref` within `--max-lead` of the measured position so the setpoint can never
 run away.
 
+## What the plant looks like
+
+![plant characterisation](../docs/assets/plant_characterisation.png)
+
+Three equations, applied at 1 kHz:
+
+```python
+a = KP*(p_ref - p_est) + KD*(v_ref - v_est) + a_ff   # onboard loop, on the ESTIMATE
+a = clip(a, +-5.5 xy, +9/-5 z);  v += a*dt;  p += v*dt   # thrust limit, rigid body
+p_est += (dt/tau)*((p + noise) - p_est);  v_est = d/dt(p_est)   # lagged, noisy state
+```
+
+The important detail is that both the onboard loop *and* your controller see
+`p_est`, never `p` — that lag is where tracking error comes from.
+
+Regenerate the figure after changing any parameter:
+
+```bash
+python deploy_sim/characterise_plant.py
+```
+
+Left: both loops overshoot ~65 % and ring for seconds (altitude
+`omega_n = 1.12 rad/s`, `zeta = 0.18`; lateral is slower still at 0.63 rad/s).
+Middle: the estimate trails the truth. Right: overshoot grows with climb rate
+along `v_climb / omega_n`, which is why vertical speed gets its own tighter cap.
+
+**Not modelled:** attitude/inner-loop dynamics (acceleration is assumed
+achieved, subject to limits), motor dynamics, drag, ground effect and downwash,
+battery sag, yaw, and radio packet loss (lumped into the estimator lag). A real
+vehicle must rotate before it can accelerate laterally, which adds lag this
+model skips — one reason it under-predicts peak altitude overshoot.
+
 ## What the model includes
 
 | effect | why it matters |
