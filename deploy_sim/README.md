@@ -102,7 +102,7 @@ model skips — one reason it under-predicts peak altitude overshoot.
 
 | effect | why it matters |
 |---|---|
-| onboard position loop with real Mellinger gains | `kp_z=1.25, kd_z=0.4` ⇒ damping ratio ≈ 0.18, so altitude **overshoots ~56 %** |
+| onboard position loop with real Mellinger gains | `kp_z=1.25, kd_z=0.4` ⇒ damping ratio ≈ 0.18, so altitude **overshoots ~65 %** (56 % is the zero-lag ideal; the estimator lag adds the rest) |
 | finite thrust | bounded acceleration, asymmetric in ±z |
 | state-estimator lag | roughly half of the steady tracking error |
 | measurement noise (1.7 mm rms) | forces you to filter before differentiating |
