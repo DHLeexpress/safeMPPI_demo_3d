@@ -144,6 +144,31 @@ strictly monotone; the code does not add gamma-specific costs to manufacture tha
 
 ![Nominal polytopes and H_P levels](examples/ball_biased_demo/nominal_levelsets_by_gamma.png)
 
+## Deployment testing (`deploy_sim/`)
+
+The controller here has been flown on a real quadrotor. What breaks real flights
+is rarely the planning geometry — it is the deployment layer: a finite replan
+rate, setpoint streaming, a vehicle that lags and overshoots, noisy state
+estimates, geofences and dropouts.
+
+[`deploy_sim/`](deploy_sim/) runs a controller through **the same loop used on
+the vehicle**, against a quadrotor model with those properties (real onboard
+Mellinger gains, thrust limits, estimator lag, measurement noise, a jittery
+~90 Hz clock). It needs nothing beyond `requirements.txt` — no simulator, no
+ROS, no motion capture, no vehicle:
+
+```bash
+python deploy_sim/run_offline.py --config configs/crazyflie_mppi_corner.json
+python deploy_sim/run_offline.py --controller mymodule:MyController   # your own
+python deploy_sim/run_offline.py --fault-freeze-at 3.0                # dropout test
+```
+
+Any object with `reset()` and `plan(state, goal, gamma, seed) -> (accel, info)`
+can be tested. See [`deploy_sim/README.md`](deploy_sim/README.md) for the
+protocol, what the model does and does not capture, and how to read the safety
+summary; [`docs/EXPERIMENT_PARAMS.md`](docs/EXPERIMENT_PARAMS.md) records the
+parameters used in the real trials and the measurements behind them.
+
 ## Dynamics and task geometry
 
 The state is `x=[p,v]` in R6 and the controller commands acceleration `u` in R3:
