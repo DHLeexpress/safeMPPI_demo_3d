@@ -132,6 +132,58 @@ state and dense-position arrays with zero error.
 
 ![Lab-frame one-ball pretraining demonstrations](results/lab_ball_pretrain/native_governed_w075_50pg_s0/qualification/lab_ball_demo_overlay.png)
 
+### Accepted reference versus calibrated plant
+
+The accepted archive and the deployment plant answer two different questions.
+Every stored demonstration is a collision-free, in-bounds, goal-reaching
+reference by construction. To isolate the sim-to-plant tracking gap, the
+following replay streams each stored dense reference position, finite-difference
+reference velocity, and stored once-governed acceleration directly to the
+unchanged calibrated plant:
+
+```bash
+python scripts/replay_lab_ball_references.py \
+  --demo-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0 \
+  --output-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay
+```
+
+There is no SafeMPPI replanning and no second reference governor in this
+experiment. Command-position clipping is also off by default; its explicit
+`--clip-commanded-position` flag is an ablation. The plant still applies its
+native Mellinger position loop, estimator lag/noise, thrust limits, and measured
+clock jitter.
+
+For all 200 accepted references, the reference-domain SR/CR is `100%/0%` at
+every gamma. The calibrated plant reaches the goal region in every replay, but
+its geometric path is safe only at gamma `.1`:
+
+| gamma | reference SR / CR | plant goal reach | plant SR / CR | reference clearance [m] | plant clearance [m] | tracking RMSE [m] |
+|---:|---:|---:|---:|---:|---:|---:|
+| .1 | 1.00 / 0.00 | 1.00 | 1.00 / 0.00 | .159 | .083 | .159 |
+| .3 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .061 | -.147 | .244 |
+| .5 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .037 | -.174 | .263 |
+| 1 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .029 | -.177 | .286 |
+
+The user's “already clipped, therefore slow and easy to track” hypothesis does
+not hold for the present cost. The raw `.3 m/s^2` component cap is active on
+`81/65/61/60%` of 10 Hz steps, and the `.7 m/s` reference speed cap is active
+on `17/29/31/33%` of 100 Hz points for gamma `.1/.3/.5/1`. The resulting plant
+peaks at `.86--.92 m/s`. In particular, the high-gamma reference clearances
+(`.029--.061 m`) are much smaller than the observed tracking RMSE
+(`.244--.286 m`).
+
+![Reference and calibrated-plant trajectories](results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay/reference_vs_plant_trajectories.png)
+
+![Reference and calibrated-plant metrics](results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay/reference_vs_plant_metrics.png)
+
+The attempt pool must not be confused with this accepted-reference replay.
+Finite MPPI sampling occasionally makes all 512 H-step proposals infeasible;
+the current controller then executes its explicitly coded least-bad fallback.
+Those rejected attempts explain why obtaining the 50 accepted references took
+`85/90/120/153` attempts across gamma. They do not enter the pretraining
+archive, and they are not evidence that the nominal-polytope test itself passed
+an unsafe sequence.
+
 [`safe_mppi/lab_flow_task.py`](safe_mppi/lab_flow_task.py) is the only loader
 for training a future lab-frame raw-command flow policy from this archive. It
 uses a 13-D Markov context
