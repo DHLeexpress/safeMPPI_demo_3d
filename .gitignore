@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
-outputs/*/
+outputs/
+outputs_pretrain2.log
 .venv/
 .pytest_cache/
 .DS_Store

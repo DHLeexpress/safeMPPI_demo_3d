@@ -19,6 +19,7 @@ This repository intentionally contains one sampling implementation:
 | Acquire data for every gamma, compute metrics, and render figures | implemented | [`acquire.py`](safe_mppi/acquire.py), [`visualize.py`](safe_mppi/visualize.py) |
 | Task-agnostic B1 Safe Flow Expansion core | implemented | [`expansion.py`](safe_mppi/expansion.py), [`flow_model.py`](safe_mppi/flow_model.py) |
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
+| Frozen flow policy → unchanged offline flight plant | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -168,6 +169,24 @@ can be tested. See [`deploy_sim/README.md`](deploy_sim/README.md) for the
 protocol, what the model does and does not capture, and how to read the safety
 summary; [`docs/EXPERIMENT_PARAMS.md`](docs/EXPERIMENT_PARAMS.md) records the
 parameters used in the real trials and the measurements behind them.
+
+The temporary [`flow_deployment/`](flow_deployment/) adapter loads the
+canonical frozen flow checkpoint and calls it from that unchanged deployment
+loop. It maps the lab start/goal/sphere into the policy frame, retains the
+complete controller trace, and produces native `deploy_sim` outputs plus a
+frame-comparison figure:
+
+```bash
+python scripts/run_flow_deployment.py \
+  --episodes 20 \
+  --output outputs/flow_deployment/pretrained_corner \
+  --gif
+```
+
+This is an offline software-interconnection diagnostic. It performs no online
+expansion or motion-capture collection and supplies no flight-safety guarantee.
+The adapter pins every Minhyuk deployment file by SHA-256 and refuses to run if
+one changes.
 
 ## Dynamics and task geometry
 
