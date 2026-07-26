@@ -1,0 +1,10 @@
+[dataset] 5672 windows (+2x jitter copies -> 17016) from 160 demos
+epoch    0 train 1.3893 valid 1.3011
+epoch  100 train 0.7287 valid 0.7335
+epoch  200 train 0.7082 valid 0.7245
+epoch  300 train 0.7010 valid 0.6932
+epoch  400 train 0.6901 valid 0.6955
+epoch  499 train 0.6870 valid 0.6995
+[pretrained raw audit] SR=0.66 modes=['below', 'left', 'right']
+[calibration] lengthscale=0.8687 beta=0.01796
+[outputs] /home/dohyun/.claude/jobs/dcdce128/tmp/safeMPPI_demo_3d/outputs/ball_flow/pretrained.pt
