@@ -51,8 +51,9 @@ def _ball(env: TaskEnvironment):
     return sphere[:3], float(sphere[3])
 
 
-def draw_polytope_soft(ax, polytope, gamma, color="#3f7ad0"):
+def draw_polytope_soft(ax, polytope, gamma, color="#3f7ad0", cmap=None):
     """Nominal polytope as translucent nested volume: level sets are soft tinted fills, not wire."""
+    cmap = BLUE if cmap is None else cmap
     vertices = polytope_vertices(polytope)
     if vertices is None:
         ax.text2D(0.04, 0.90, "polytope is not strict-interior", transform=ax.transAxes,
@@ -67,7 +68,7 @@ def draw_polytope_soft(ax, polytope, gamma, color="#3f7ad0"):
     for h0 in indices:
         beta = 1.0 - alphas[h0]
         level_vertices = polytope.center + beta * (vertices - polytope.center)
-        shade = BLUE(0.30 + 0.65 * h0 / 9.0)
+        shade = cmap(0.30 + 0.65 * h0 / 9.0)
         faces = [level_vertices[simplex] for simplex in hull.simplices]
         ax.add_collection3d(Poly3DCollection(faces, facecolor=shade, alpha=0.06,
                                              edgecolor="none"))

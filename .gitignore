@@ -1,5 +1,19 @@
 __pycache__/
 *.py[cod]
-outputs/*/
+outputs/
+outputs_pretrain2.log
 .venv/
 .pytest_cache/
+.DS_Store
+tmp/
+
+# Generated expansion/evaluation runs are local artifacts.  Keep only the
+# canonical pretraining contract needed to load and reproduce the B1 policy.
+results/*
+!results/README.md
+!results/global50_reference/
+results/global50_reference/*
+!results/global50_reference/pretrain_global10_h48p32_s0/
+!results/global50_reference/pretrain_global10_h48p32_s0/**
+results/global50_reference/pretrain_global10_h48p32_s0/.DS_Store
+results/global50_reference/pretrain_global10_h48p32_s0/*.png

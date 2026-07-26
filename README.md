@@ -19,6 +19,7 @@ This repository intentionally contains one sampling implementation:
 | Acquire data for every gamma, compute metrics, and render figures | implemented | [`acquire.py`](safe_mppi/acquire.py), [`visualize.py`](safe_mppi/visualize.py) |
 | Task-agnostic B1 Safe Flow Expansion core | implemented | [`expansion.py`](safe_mppi/expansion.py), [`flow_model.py`](safe_mppi/flow_model.py) |
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
+| Frozen flow policy → unchanged offline flight plant | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -169,6 +170,24 @@ protocol, what the model does and does not capture, and how to read the safety
 summary; [`docs/EXPERIMENT_PARAMS.md`](docs/EXPERIMENT_PARAMS.md) records the
 parameters used in the real trials and the measurements behind them.
 
+The temporary [`flow_deployment/`](flow_deployment/) adapter loads the
+canonical frozen flow checkpoint and calls it from that unchanged deployment
+loop. It maps the lab start/goal/sphere into the policy frame, retains the
+complete controller trace, and produces native `deploy_sim` outputs plus a
+frame-comparison figure:
+
+```bash
+python scripts/run_flow_deployment.py \
+  --episodes 20 \
+  --output outputs/flow_deployment/pretrained_corner \
+  --gif
+```
+
+This is an offline software-interconnection diagnostic. It performs no online
+expansion or motion-capture collection and supplies no flight-safety guarantee.
+The adapter pins every Minhyuk deployment file by SHA-256 and refuses to run if
+one changes.
+
 ## Dynamics and task geometry
 
 The state is `x=[p,v]` in R6 and the controller commands acceleration `u` in R3:
@@ -281,8 +300,15 @@ expert fallback, demo replay, proximal leash, curriculum, recovery starts, rollb
 temperature search. [`ConditionalFlowMLP`](safe_mppi/flow_model.py) is a lightweight default, but a
 task can replace it while preserving the same expansion loop.
 
-For candidate plan `U` and context `c`, the current policy supplies a representation
-`phi_s(U,c)`. Normalize the representations and initialize the RBF length scale from 50 pretrained
+For candidate plan `U`, context `c`, and optionally its paired initial flow base `x_0`, the current
+policy supplies the penultimate noised representation
+
+```text
+phi_s(U,c,x_0) = trunk([(1-s)x_0+sU, c, time(s)]).
+```
+
+The paired form is enabled explicitly; endpoint-only `phi_s(U,c)` remains available for controlled
+ablations. Normalize the representations and initialize the RBF length scale from 50 pretrained
 samples:
 
 ```text
@@ -291,22 +317,29 @@ k(z,z') = exp(-||z-z'||^2 / (2 ell^2))
 sigma_n^2(z) = k(z,z) - k(z,Z+) [K(Z+,Z+) + lambda I]^{-1} k(Z+,z).
 ```
 
-`Z+` contains only full-H verifier positives from the previous `W` rounds. It is capped and sampled
-without replacement with equal round/gamma opportunity. At each active context, sample `K` plans
-and acquire `B` sequentially:
+The default `recent_current_phi` reference re-embeds recent full-verifier positives under the
+current round's policy. The implementation also exposes named, auditable frozen/cumulative/sliding
+references for experiments; a numerical GP matrix is never carried across a representation update.
+For successful-trajectory sliding references, rows are sampled uniformly over the complete
+successful trajectories rather than taking only late FIFO windows. At each active context, sample
+`K` plans and acquire `B` sequentially:
 
 ```text
 pi(j | pending) proportional to exp((sigma_j - max sigma) / beta).
 ```
 
-Every successfully evaluated selected-B query enters `D`; only full-H positives enter `D+` and the
-next-round GP. Among plans satisfying both the full-H verifier and the separate one-step nominal
-`H_P` gate, execute the plan with the smallest task-supplied SafeMPPI cost. Execute only its first
-action and replan. No eligible plan means `NVP`, and that episode terminates fail-closed.
+Every successfully evaluated selected-B query enters `D` under the default archive rule; only
+full-H safety positives enter `D+`. Archive rules that commit only complete successful executed
+trajectories are separate options and are never silently mixed with query-level replay. The
+task adapter, not the generic core, defines GREEN validity, progress, terminal-tail handling, and
+the execution ranking. No eligible plan means `NVP`; the BLUE nominal one-step value is diagnostic
+only.
 
 After a round, recent `D+` replay has equal mass over
-`gamma -> (round, episode) -> context -> positive query`. With `inner_steps=None`, every eligible
-positive is used exactly once without replacement. Optional negative gradients use
+`gamma -> (round, episode) -> context -> positive query`. With
+`optimizer_steps_per_round=None`, every eligible positive is used exactly once without
+replacement; `microbatch_repeats` controls repeated optimization on each microbatch separately.
+Optional negative gradients use
 
 ```text
 g = g_positive - rho g_negative,
@@ -322,27 +355,22 @@ checkpoints with a separate, untilted raw-policy seed bank.
 
 ### Variables to change first
 
-The “starter” column is intentionally cheap. The B1 reference column records the scale used in the
-2D study; it is not a claim that those values transfer to a new 3D verifier.
+These are code defaults, not a universal tuned recipe.
 
-| variable | starter default | B1 reference / meaning |
+| variable | default | meaning |
 |---|---:|---|
-| rounds | `10` | start with `10`; extend only after raw evaluation |
-| parallel episodes per gamma | `2` | `8`; independent synchronous replicas preserve route support |
-| `K` generated plans | `16` | `16` |
-| `B` verifier queries | `4` | `4`; all successful query results enter `D` |
-| batch size | `32` | `128` |
-| inner steps | `None` | exact one-pass; `ceil(|eligible D+|/batch)` |
-| learning rate | `3e-5` | B1 used `1e-5`; reduce before adding many passes |
-| replay window `W` | `2` rounds | `2` rounds |
-| RBF GP cap | `256` positives | `512` or `768`; affects GP cost, not `D+` replay |
-| GP noise `lambda` | `1e-2` | `1e-2` |
-| RBF length scale | required calibration | mean pairwise distance of 50 pretrained embeddings |
-| beta | `.05` smoke value | calibrate once on representative pools, then freeze |
-| adaptive beta | **false** | opt-in only; `true` retargets ESS after each round |
-| ESS target | `.5` | used by `calibrate_fixed_beta`; it is not a validity probability |
-| negative alpha | `0` | try `.001` or `.01` only with an audited NVP definition |
-| expert/demo fraction | `0` | remains `0` for self-generated expansion |
+| rounds / parallel episodes per gamma | `10 / 2` | independent synchronous trajectories |
+| `K / B` | `16 / 4` | generated plans / sequential full-verifier queries |
+| batch / optimizer steps / microbatch repeats | `32 / exact pass / 1` | replay optimization budget |
+| learning rate / first-layer scale | `3e-5 / 1` | first layer can move more slowly during expansion |
+| replay window `W` | `2` rounds | labeled replay horizon |
+| RBF GP cap / noise | `256 / 1e-2` | uncertainty reference size and regularization |
+| GP reference | `recent_current_phi` | re-embed recent positives under current `phi_s` |
+| sliding-row selector | `trajectory_uniform` | sample throughout each successful trajectory |
+| beta / adaptive beta / ESS target | `.05 / false / .5` | fixed tilt by default; adaptive ESS is opt-in |
+| flow base std / paired representation | `1 / false` | base sampling and noised-feature ablation |
+| archive / execution | `all_queries / min_cost` | query-level data; task-native ranking |
+| negative alpha | `0` | positive-only update |
 
 For a fixed initial beta, collect representative uncertainty score pools, call
 `calibrate_fixed_beta(pools, target=.5)`, write the returned scalar into `ExpansionConfig.beta`, and
@@ -351,10 +379,11 @@ leave `adaptive_beta=False`. Do not choose beta from the absolute magnitude of s
 ### Porting to another 3D task
 
 Implement the five methods in `ExpansionTask`: `reset`, `context`, `verify`, `advance`, and
-`terminal`. The verifier returns `Verification(valid, hp_eligible, margin, execution_cost, error)`.
-That is the only place where task-specific dynamics, a 3D nominal polytope, SOCP geometry, and the
-native SafeMPPI cost belong. Supply 50 pretrained embeddings or an explicitly justified RBF length
-scale, then call `run_safe_expansion`.
+`terminal`. The verifier returns
+`Verification(valid, hp_eligible, margin, execution_cost, progress, progress_eligible, error)`.
+That is the only place where task-specific dynamics, a 3D nominal polytope, SOCP geometry, progress,
+and the native SafeMPPI cost belong. Supply 50 pretrained embeddings or an explicitly justified RBF
+length scale, then call `run_safe_expansion`.
 
 [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) provides three task-neutral outputs:
 
@@ -369,7 +398,31 @@ The task adapter converts candidate controls to 3D paths and nominal/verifier po
 before constructing `MechanismFrame`; the generic core does not guess that geometry.
 
 Reference mechanism video: [B1 rounds 0/5/10/15](docs/assets/b1_expansion_mechanism_reference.mp4).
+
+### Ball-task deployment: pretraining + expansion + representation audit
+
+[`docs/BALL_FLOW_EXPANSION.md`](docs/BALL_FLOW_EXPANSION.md) deploys this loop end to end on the
+20-inch-ball task with the 10-D context `c_t = [g-p, v, b_near-p, gamma]` and a 30-D plan flow
+(`scripts/pretrain_ball_flow.py`, `scripts/run_ball_expansion.py`,
+`scripts/evaluate_ball_expansion.py`, `safe_mppi/ball_flow_diagnostics.py`). It reports raw
+temperature-1 success/collision, above/below/left/right route coverage, untilted GREEN-verifier
+validity, gamma trends against the SafeMPPI demonstrator, sigma-tilted acquisition anatomy, and
+an automated fixed-bank audit of the penultimate noised representation (t-SNE panels, local
+probes, and the high-sigma new-mode discovery rate), plus an automated data-size x model
+discovery sweep (`scripts/sweep_ball_flow.py`) and the final
+[coverage video](docs/assets/ball_flow/coverage_video.mp4): expansion iterations progressively
+cover the ball with generated trajectories while the metric curves grow. Curated figures live in
+[`docs/assets/ball_flow/`](docs/assets/ball_flow/).
+
+![Mode presence: tilted acquisition vs raw sampling](docs/assets/ball_flow/mode_timeline.png)
 It is a format reference, not evidence for this new 3D ball task.
+
+The portable canonical pretraining bundle is checked in at
+[`results/global50_reference/pretrain_global10_h48p32_s0`](results/global50_reference/pretrain_global10_h48p32_s0):
+200 successful SafeMPPI demonstrations (50 per gamma), 7,039 training windows, the 4,574-parameter
+`41 -> 48 -> 32 (=phi_s) -> 30` raw-time flow, calibration features, and its manifest. Its fixed
+raw audit is SR `0.4625` with window validity `0.9040`; it is a reproducible starting policy, not a
+flight-readiness claim.
 
 ## Code reading order
 
@@ -394,10 +447,12 @@ python -m pytest -q
 
 - The robot is a point mass; real vehicle radius, tracking error, and hardware latency are absent.
 - Obstacles are static spheres or full-height vertical cylinders.
-- The current SafeMPPI data collector implements online nominal `H_P`, not the separate 3D SOCP
-  verifier shown in GREEN. Expansion is runnable only after a task adapter supplies that verifier.
-- No trained checkpoint for the 3D ball task is claimed yet. The lightweight flow class and
-  expansion engine are infrastructure for the next experiment, not a fabricated result.
+- The SafeMPPI data collector implements online nominal `H_P`. The ball-task expansion adapter
+  separately implements the cloned verifier's trajectory-fitted max-margin face constraints in
+  3-D for spherical obstacles; this GREEN verifier is not part of the expert controller.
+- The checked-in ball checkpoint is an ideal-double-integrator research model. It is not a
+  Crazyflie flight certificate; deployment requires an explicit coordinate/action interface and
+  independent plant evaluation.
 - The 80x9 learned encoder, adaptive gamma, wind robustness, and moving-obstacle prediction are not
   implemented here.
 - The platform authority is recorded for downstream work, while this demonstration controller is
