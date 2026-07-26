@@ -24,10 +24,45 @@ from .config import ExperimentConfig, load_config
 from .environment import TaskEnvironment
 from .expansion import Verification
 from .geometry import build_nominal_polytope, hp_values
+from .verifier_polytope import certify_single_sphere_affine, certify_window
 
 PLAN_H = 10
 CONTEXT_DIM = 10
 ROUTE_MODES = ("below", "above", "left", "right")
+CORRIDOR_X = (0.0, 3.0)
+CORRIDOR_Z = (1.5, 2.5)
+ABOVE_WEDGE_PLANE_Z = 2.0
+
+
+def inside_expansion_corridor(points: np.ndarray, tolerance: float = 1.0e-7) -> np.ndarray:
+    """Whether positions remain in the user-declared task corridor."""
+    points = np.asarray(points, float).reshape(-1, 3)
+    return ((points[:, 0] >= CORRIDOR_X[0] - tolerance)
+            & (points[:, 0] <= CORRIDOR_X[1] + tolerance)
+            & (points[:, 2] >= CORRIDOR_Z[0] - tolerance)
+            & (points[:, 2] <= CORRIDOR_Z[1] + tolerance))
+
+
+def above_wedge_margin(points: np.ndarray) -> np.ndarray:
+    """Signed margin to the temporary upper wedge ``z - 2 >= |y|``."""
+    points = np.asarray(points, float).reshape(-1, 3)
+    return points[:, 2] - ABOVE_WEDGE_PLANE_Z - np.abs(points[:, 1])
+
+
+def inside_above_wedge(points: np.ndarray, tolerance: float = 1.0e-7) -> np.ndarray:
+    """Whether positions lie above both 45-degree planes about the x axis.
+
+    The two planes are ``z - 2 = y`` and ``z - 2 = -y``.  Their upper
+    intersection is the temporary target wedge ``z - 2 >= |y|``.
+    """
+    return above_wedge_margin(points) >= -tolerance
+
+
+def inside_above_halfspace(points: np.ndarray,
+                           tolerance: float = 1.0e-7) -> np.ndarray:
+    """Whether positions lie in the upper halfspace ``z >= 2``."""
+    points = np.asarray(points, float).reshape(-1, 3)
+    return points[:, 2] >= ABOVE_WEDGE_PLANE_Z - tolerance
 
 
 def closest_boundary_point(env: TaskEnvironment, position: np.ndarray) -> np.ndarray:
@@ -62,16 +97,57 @@ def plan_states(env: TaskEnvironment, state6: np.ndarray, plan: np.ndarray) -> n
     return np.asarray(states, np.float32)
 
 
-def verifier_chain_margins(env: TaskEnvironment, positions: np.ndarray, gamma: float,
-                           sensing_range: float) -> np.ndarray:
-    """GREEN full-horizon verifier margins: rebuilt polytope chain along the plan.
+def closest_approach_angular_descriptor(
+        env: TaskEnvironment, state6: np.ndarray, plan: np.ndarray,
+        world_up: np.ndarray | tuple[float, float, float] = (0.0, 0.0, 1.0),
+        ) -> np.ndarray:
+    """Continuous transverse direction of a plan at the ball's axial plane.
 
-    At every plan knot the polytope is rebuilt at ``q_h`` (so ``H_P(q_h)=1``) and the next knot
-    must satisfy ``H_P(q_{h+1}) >= 1-gamma``. This is exactly the certificate every *executed*
-    demonstration step satisfied online (the logged one-step slack), applied along the whole
-    candidate plan. The rotating tangent face certifies skirting motion — only the velocity
-    component toward an obstacle consumes contraction budget — while a single start-anchored
-    face could never certify a plan that passes the ball inside the horizon.
+    The forward axis is the task start-to-goal direction.  At the simulated plan
+    knot closest to the plane through the ball center normal to that axis, the
+    center-to-knot displacement is projected onto the transverse plane.  Its
+    coordinates are returned in the ``(left, up)`` basis as a unit vector.  No
+    discrete route labels or angular bins enter the descriptor.
+
+    An exactly axial plan has no transverse direction and returns ``[0, 0]``.
+    ``world_up`` is explicit so jointly rotating the task and its up direction
+    leaves the descriptor unchanged.
+    """
+    start = np.asarray(env.start[:3], float)
+    goal = np.asarray(env.goal, float)
+    forward = goal - start
+    forward_norm = float(np.linalg.norm(forward))
+    if forward_norm <= 1.0e-12:
+        raise ValueError("task start and goal must define a nonzero forward axis")
+    forward /= forward_norm
+
+    vertical = np.asarray(world_up, float).reshape(3).copy()
+    vertical -= float(vertical @ forward) * forward
+    vertical_norm = float(np.linalg.norm(vertical))
+    if vertical_norm <= 1.0e-12:
+        raise ValueError("world_up must not be parallel to the start-to-goal axis")
+    vertical /= vertical_norm
+    lateral = np.cross(vertical, forward)
+
+    center = np.asarray(env.spheres[0, :3], float)
+    positions = plan_states(env, state6, plan)[:, :3].astype(float)
+    relative = positions - center
+    closest = int(np.argmin(np.abs(relative @ forward)))
+    transverse = relative[closest] - float(relative[closest] @ forward) * forward
+    descriptor = np.array([transverse @ lateral, transverse @ vertical], float)
+    norm = float(np.linalg.norm(descriptor))
+    if norm <= 1.0e-12:
+        return np.zeros(2, np.float32)
+    return (descriptor / norm).astype(np.float32)
+
+
+def nominal_hp_chain_margins(env: TaskEnvironment, positions: np.ndarray, gamma: float,
+                             sensing_range: float) -> np.ndarray:
+    """BLUE nominal one-step ``H_P`` margins, retained for diagnostics only.
+
+    This rebuilt-at-each-knot quantity is not the GREEN fitted full-H verifier and
+    never gates expansion execution.  It is logged only to compare the generated
+    plans against the nominal SafeMPPI geometry.
     """
     margins = np.empty(len(positions) - 1)
     for h in range(len(positions) - 1):
@@ -82,8 +158,81 @@ def verifier_chain_margins(env: TaskEnvironment, positions: np.ndarray, gamma: f
     return margins
 
 
-def native_cost(env: TaskEnvironment, states: np.ndarray, plan: np.ndarray) -> float:
-    """Untilted SafeMPPI ranking cost: running goal + control + within-plan smoothness + terminal."""
+def raw_trajectory_validity(config: ExperimentConfig, states: np.ndarray,
+                            controls: np.ndarray, gamma: float,
+                            stride: int = 2) -> bool:
+    """Post-hoc safety validity of one raw temperature-1 executed trajectory.
+
+    The whole dense path must remain in task space and collision-free.  Every
+    stride-``stride`` executed segment, including the truncated terminal segment, must pass
+    the same rebuilt GREEN verifier.  Success and progress are deliberately absent.
+    """
+    states = np.asarray(states, np.float32)
+    controls = np.asarray(controls, np.float32).reshape(-1, 3)
+    if len(controls) < 1 or len(states) != len(controls) + 1 or stride < 1:
+        return False
+    env = TaskEnvironment(config)
+    dense = env.dense_positions(states, controls)
+    clearance = env.obstacle_clearance(dense)
+    if (not env.inside_taskspace(dense).all()
+            or (np.isfinite(clearance).any() and float(clearance.min()) <= 0.0)):
+        return False
+    for start in range(0, len(controls), stride):
+        stop = min(start + PLAN_H, len(controls))
+        certified, _ = certify_window(
+            states[start:stop + 1, :3], env.spheres, env.cylinders,
+            float(gamma), config.safemppi.sensing_range,
+        )
+        if not certified:
+            return False
+    return True
+
+
+def raw_window_validity_fraction(config: ExperimentConfig, states: np.ndarray,
+                                 controls: np.ndarray, gamma: float) -> float:
+    """Fraction of executed windows that pass the GREEN safety verifier.
+
+    A window starts at every executed control index.  Its horizon is truncated
+    at the end of the trajectory, so the final starts are evaluated with
+    ``H_t < PLAN_H`` rather than discarded.  Each indicator contains only the
+    requested safety predicates: task-space bounds, collision avoidance, and
+    the GREEN verifier.  Success, progress, and the expansion corridor are not
+    part of this metric.
+    """
+    states = np.asarray(states, np.float32)
+    controls = np.asarray(controls, np.float32).reshape(-1, 3)
+    if len(controls) < 1 or len(states) != len(controls) + 1:
+        return 0.0
+
+    env = TaskEnvironment(config)
+    valid = 0
+    for start in range(len(controls)):
+        stop = min(start + PLAN_H, len(controls))
+        window_states = states[start:stop + 1]
+        window_controls = controls[start:stop]
+        dense = env.dense_positions(window_states, window_controls)
+        clearance = env.obstacle_clearance(dense)
+        in_bounds = bool(env.inside_taskspace(dense).all())
+        collision_free = bool(
+            np.isinf(clearance).all()
+            or (np.isfinite(clearance).any() and float(clearance.min()) > 0.0)
+        )
+        certified, _ = certify_window(
+            window_states[:, :3], env.spheres, env.cylinders,
+            float(gamma), config.safemppi.sensing_range,
+        )
+        valid += int(in_bounds and collision_free and certified)
+    return valid / len(controls)
+
+
+def native_cost(env: TaskEnvironment, states: np.ndarray, plan: np.ndarray,
+                execution_z_bias_mode: str = "none") -> float:
+    """Expansion ranking cost: native state/control/smoothness/terminal terms only.
+
+    The demonstration controller's ``z_bias_*`` exponential is intentionally absent.  That
+    term exists only to collect below-equator demonstrations; carrying it into self-expansion
+    would keep steering the learned controller toward the demonstration support.
+    """
     m = env.mppi
     plan = np.asarray(plan, np.float32).reshape(-1, 3)
     goal = env.goal
@@ -94,6 +243,14 @@ def native_cost(env: TaskEnvironment, states: np.ndarray, plan: np.ndarray) -> f
         if h:
             cost += m.smooth_weight * float(((control - plan[h - 1]) ** 2).sum())
     cost += m.terminal_goal_weight * float(((states[-1, :3] - goal) ** 2).sum())
+    if execution_z_bias_mode == "favor_above":
+        exponent = np.minimum(
+            (m.z_bias_plane - np.asarray(states[1:, 2], float)) / m.z_bias_temperature,
+            20.0,
+        )
+        cost += m.z_bias_weight * float(np.exp(exponent).sum())
+    elif execution_z_bias_mode != "none":
+        raise ValueError(f"unknown execution_z_bias_mode: {execution_z_bias_mode}")
     return cost
 
 
@@ -128,11 +285,29 @@ class BallFlowTask:
     """
 
     def __init__(self, config: ExperimentConfig, device: str | torch.device = "cpu",
-                 start_diversity: bool = False):
+                 start_diversity: bool = False,
+                 execution_z_bias_mode: str = "none",
+                 tight_corridor: bool = False,
+                 target_region: str = "above_wedge",
+                 verifier_mode: str = "full_polytope",
+                 verifier_solver: str = "analytic"):
+        if execution_z_bias_mode not in {"none", "favor_above"}:
+            raise ValueError(f"unknown execution_z_bias_mode: {execution_z_bias_mode}")
+        if target_region not in {"above_wedge", "above_halfspace"}:
+            raise ValueError(f"unknown target_region: {target_region}")
+        if verifier_mode not in {"full_polytope", "single_sphere_affine"}:
+            raise ValueError(f"unknown verifier_mode: {verifier_mode}")
+        if verifier_solver not in {"analytic", "cvxpy"}:
+            raise ValueError(f"unknown verifier_solver: {verifier_solver}")
         self.config = config
         self.env = TaskEnvironment(config)
         self.device = torch.device(device)
         self.start_diversity = bool(start_diversity)
+        self.execution_z_bias_mode = execution_z_bias_mode
+        self.tight_corridor = bool(tight_corridor)
+        self.target_region = target_region
+        self.verifier_mode = verifier_mode
+        self.verifier_solver = verifier_solver
 
     def _diverse_start(self, seed: int) -> np.ndarray:
         rng = np.random.default_rng(seed)
@@ -159,25 +334,134 @@ class BallFlowTask:
     def context(self, state, gamma: float) -> torch.Tensor:
         return torch.from_numpy(build_context(self.env, state["x"], gamma)).to(self.device)
 
-    def verify(self, context: torch.Tensor, candidates: torch.Tensor, gamma: float):
+    def angular_descriptors(self, context: torch.Tensor,
+                            candidates: torch.Tensor) -> torch.Tensor:
+        """Batch form of :func:`closest_approach_angular_descriptor`."""
         state6 = context_state(self.env, context.detach().cpu().numpy())
-        results = []
+        values = [
+            closest_approach_angular_descriptor(
+                self.env, state6, candidate.detach().cpu().numpy(),
+            )
+            for candidate in candidates
+        ]
+        return torch.as_tensor(np.asarray(values), device=candidates.device,
+                               dtype=candidates.dtype)
+
+    def above_wedge_eligibility(self, context: torch.Tensor,
+                                candidates: torch.Tensor) -> torch.Tensor:
+        """Return the temporary target-region signal for each next executed state.
+
+        Only ``q_1`` is checked.  The remaining unexecuted horizon is
+        deliberately excluded so the target gate cannot recreate a tail-based
+        NVP near the goal.
+        """
+        state6 = context_state(self.env, context.detach().cpu().numpy())
+        eligible = []
         for candidate in candidates:
             plan = candidate.detach().cpu().numpy().reshape(PLAN_H, 3)
-            states = plan_states(self.env, state6, plan)
-            dense = self.env.dense_positions(states, plan)
-            inside = bool(self.env.inside_taskspace(dense).all())
-            clearance = self.env.obstacle_clearance(dense)
-            no_collision = bool(np.isinf(clearance).all() or clearance.min() > 0.0)
-            margins = verifier_chain_margins(self.env, states[:, :3], gamma,
-                                             self.config.safemppi.sensing_range)
-            results.append(Verification(
-                valid=bool(inside and no_collision and margins.min() > 0.0),
-                hp_eligible=bool(margins[0] > 0.0),
-                margin=float(margins.min()),
-                execution_cost=native_cost(self.env, states, plan),
-            ))
-        return results
+            next_position = plan_states(self.env, state6, plan)[:2, :3][-1:]
+            eligible.append(bool(inside_above_wedge(next_position)[0]))
+        return torch.as_tensor(eligible, dtype=torch.bool, device=candidates.device)
+
+    def target_region_eligibility(self, context: torch.Tensor,
+                                  candidates: torch.Tensor) -> torch.Tensor:
+        """Return the configured q1-only target-region signal."""
+        if self.target_region == "above_wedge":
+            return self.above_wedge_eligibility(context, candidates)
+        state6 = context_state(self.env, context.detach().cpu().numpy())
+        eligible = []
+        for candidate in candidates:
+            plan = candidate.detach().cpu().numpy().reshape(PLAN_H, 3)
+            next_position = plan_states(self.env, state6, plan)[1:2, :3]
+            eligible.append(bool(inside_above_halfspace(next_position)[0]))
+        return torch.as_tensor(eligible, dtype=torch.bool, device=candidates.device)
+
+    def d4_replay_batch(
+        self,
+        contexts: torch.Tensor,
+        candidates: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply the task's four exact quarter-turn symmetries about the x axis.
+
+        The goal, start, spherical obstacle, dynamics, and y-z task-space square
+        are invariant under these rotations. This is an optional replay-only
+        equivariance assumption; it is never used by the default expansion arm.
+        """
+        context_blocks, candidate_blocks = [], []
+        for quarter_turn in range(4):
+            angle = 0.5 * np.pi * quarter_turn
+            cosine, sine = float(np.cos(angle)), float(np.sin(angle))
+            context = contexts.clone()
+            for start in (0, 3, 6):
+                y = contexts[:, start + 1]
+                z = contexts[:, start + 2]
+                context[:, start + 1] = cosine * y - sine * z
+                context[:, start + 2] = sine * y + cosine * z
+            candidate = candidates.clone()
+            y = candidates[..., 1]
+            z = candidates[..., 2]
+            candidate[..., 1] = cosine * y - sine * z
+            candidate[..., 2] = sine * y + cosine * z
+            context_blocks.append(context)
+            candidate_blocks.append(candidate)
+        return torch.cat(context_blocks), torch.cat(candidate_blocks)
+
+    def _verify_plan(
+        self,
+        context: torch.Tensor,
+        candidate: torch.Tensor,
+        gamma: float,
+    ) -> Verification:
+        state6 = context_state(self.env, context.detach().cpu().numpy())
+        plan = candidate.detach().cpu().numpy().reshape(-1, 3)
+        if not 1 <= len(plan) <= PLAN_H:
+            raise ValueError(f"verifier plan horizon must lie in [1,{PLAN_H}]")
+        states = plan_states(self.env, state6, plan)
+        dense = self.env.dense_positions(states, plan)
+        executed_dense = self.env.dense_positions(states[:2], plan[:1])
+        inside = bool(self.env.inside_taskspace(executed_dense).all())
+        if self.tight_corridor:
+            inside = bool(inside and inside_expansion_corridor(executed_dense).all())
+        clearance = self.env.obstacle_clearance(dense)
+        no_collision = bool(np.isinf(clearance).all() or clearance.min() > 0.0)
+        verifier = (
+            certify_window
+            if self.verifier_mode == "full_polytope"
+            else certify_single_sphere_affine
+        )
+        certified, verifier_slack = verifier(
+            states[:, :3], self.env.spheres, self.env.cylinders, gamma,
+            self.config.safemppi.sensing_range,
+            face_solver=self.verifier_solver,
+        )
+        first_step_margin = nominal_hp_chain_margins(
+            self.env, states[:2, :3], gamma,
+            self.config.safemppi.sensing_range,
+        )[0]
+        progress = float(np.min(np.diff(states[:, 0])))
+        if self.target_region == "above_wedge":
+            target_eligible = bool(inside_above_wedge(states[1:2, :3])[0])
+        else:
+            target_eligible = bool(inside_above_halfspace(states[1:2, :3])[0])
+        return Verification(
+            valid=bool(inside and no_collision and certified),
+            hp_eligible=bool(first_step_margin > 0.0),
+            margin=float(verifier_slack),
+            execution_cost=native_cost(
+                self.env, states, plan,
+                execution_z_bias_mode=self.execution_z_bias_mode,
+            ),
+            progress=progress,
+            progress_eligible=bool(progress > 0.0),
+            target_eligible=target_eligible,
+            step_margin=float(first_step_margin),
+        )
+
+    def verify(self, context: torch.Tensor, candidates: torch.Tensor, gamma: float):
+        return [
+            self._verify_plan(context, candidate, gamma)
+            for candidate in candidates
+        ]
 
     def advance(self, state, candidate: torch.Tensor):
         control = candidate.detach().cpu().numpy().reshape(PLAN_H, 3)[0]
@@ -200,6 +484,28 @@ class BallFlowTask:
         if self.env.reached(state["x"][:3]):
             return "SUCCESS"
         return None
+
+    def successful_trajectory_above_fraction(self, executed_states) -> float:
+        """Fraction of post-action executed states in the upper halfspace.
+
+        This score ranks terminal-SUCCESS trajectories only. It never changes
+        verification, execution eligibility, NVP, or the safety label.
+        """
+        if not executed_states:
+            return 0.0
+        z = np.asarray(
+            [np.asarray(state["x"], float)[2] for state in executed_states],
+            dtype=float,
+        )
+        return float(np.mean(z >= ABOVE_WEDGE_PLANE_Z))
+
+    def successful_trajectory_mean_z(self, executed_states) -> float:
+        """Mean post-action height used only to rank terminal successes."""
+        if not executed_states:
+            return -float("inf")
+        return float(np.mean([
+            np.asarray(state["x"], float)[2] for state in executed_states
+        ]))
 
 
 def load_policy(path: str | Path):
@@ -233,7 +539,7 @@ def demo_windows(run_dir: str | Path):
 @torch.no_grad()
 def raw_rollout(policy, config: ExperimentConfig, gamma: float, seed: int,
                 device: str | torch.device = "cpu", max_steps: int | None = None,
-                start: np.ndarray | None = None):
+                start: np.ndarray | None = None, tight_corridor: bool = False):
     """Closed-loop bare-policy rollout: one temperature-1 plan per step, execute first action."""
     env = TaskEnvironment(config)
     generator = torch.Generator(device=torch.device(device))
@@ -241,6 +547,8 @@ def raw_rollout(policy, config: ExperimentConfig, gamma: float, seed: int,
     state = (env.start.copy() if start is None else np.asarray(start, np.float32).copy())
     states, controls = [state.copy()], []
     status = "TIMEOUT"
+    physical_collision = False
+    corridor_violation = False
     for _ in range(max_steps or config.taskspace.max_steps):
         context = torch.from_numpy(build_context(env, state, gamma)).to(device)
         plan = policy.sample(context, 1, generator)[0].detach().cpu().numpy()
@@ -251,8 +559,19 @@ def raw_rollout(policy, config: ExperimentConfig, gamma: float, seed: int,
         dense = env.dense_positions(np.asarray(states[-2:], np.float32),
                                     control[None].astype(np.float32))
         clearance = env.obstacle_clearance(dense)
-        if np.isfinite(clearance).any() and clearance.min() < 0.0:
+        physical_collision = bool(
+            physical_collision
+            or (np.isfinite(clearance).any() and clearance.min() < 0.0)
+        )
+        corridor_violation = bool(
+            corridor_violation
+            or (tight_corridor and not inside_expansion_corridor(dense).all())
+        )
+        if physical_collision:
             status = "COLLISION"
+            break
+        if corridor_violation:
+            status = "CORRIDOR_VIOLATION"
             break
         if not env.inside_taskspace(dense).all():
             status = "OOB"
@@ -267,6 +586,8 @@ def raw_rollout(policy, config: ExperimentConfig, gamma: float, seed: int,
     finite = clearance[np.isfinite(clearance)]
     return {
         "status": status, "states": states, "controls": controls,
+        "physical_collision": physical_collision,
+        "corridor_violation": corridor_violation,
         "mode": route_mode(env, dense),
         "min_clearance_m": (float(finite.min()) if len(finite) else None),
         "time_to_goal_s": (float(len(controls) * config.safemppi.dt)

@@ -13,49 +13,47 @@ c_t = [ g - p_t,  v_t,  b_near - p_t,  gamma ]  in R^10
 ```
 
 `b_near` is the closest point on the ball surface, so one vector carries obstacle distance and
-direction. Plans are `H=10` acceleration rows flattened to R^30, and the CFM velocity field is
-the **shallow two-layer trunk** of the spec:
+direction. Plans are `H=10` acceleration rows flattened to R^30. The portable canonical checkpoint
+uses raw scalar flow time and the shallow two-layer trunk:
 
 ```text
-v_theta(x_s, c_t, s) in R^30,   48 -> 64 -> 64 (= phi_s) -> 30
+v_theta(x_s, c_t, s) in R^30,   41 -> 48 -> 32 (= phi_s) -> 30
 ```
 
-(48 = 30 plan + 10 context + 8 sinusoidal time features; `phi_s` is the second hidden layer —
-the penultimate representation the GP uncertainty operates on; controls clamp to the 1 m/s^2
-demonstration cap; sampling uses 16 Euler steps. A first pilot used an extra 64-unit trunk layer
-and only 10 demonstrations per gamma; it underfit closed loop and was replaced by this shallower
-model on 4x the data.) Implementation: [`flow_model.py`](../safe_mppi/flow_model.py)
-(`trunk_depth=2`), [`ball_flow_task.py`](../safe_mppi/ball_flow_task.py).
+(41 = 30 plan + 10 context + 1 raw-time feature; `phi_s` is the second hidden layer — the
+penultimate representation used by RBF uncertainty; controls clamp to the 1 m/s^2 demonstration
+cap; sampling uses 16 Euler steps.) The implementation also supports the explicitly paired noised
+point `(1-s)x_0+sU`, using the exact base `x_0` that generated each sampled plan. Implementation:
+[`flow_model.py`](../safe_mppi/flow_model.py) (`trunk_depth=2`, `time_features=raw1`) and
+[`ball_flow_task.py`](../safe_mppi/ball_flow_task.py).
 
-## 2. Recipe (as specified)
+## 2. Portable pretraining contract and expansion controls
 
 | variable | value |
 |---|---:|
-| demonstrations | 40 per gamma (`configs/ball_fan_demo.json`: below-plane, angularly fanned) |
+| demonstrations | 50 successful SafeMPPI trajectories per gamma |
 | horizon `H` | 10 |
-| flow trunk | 64 -> 64 exactly (trunk_depth 2), no encoder |
-| `K` generated plans | 16 |
-| `B` verifier queries | 4 |
-| parallel episodes | 2 per gamma |
-| RBF buffer cap | 256 |
-| replay window `W` | 2 rounds |
-| batch size | 32 |
-| gradient steps | one exact pass over eligible positives (`inner_steps=None`) |
-| learning rate | 1e-5 (3e-5 collapsed the rare right-mode; see section 5) |
-| beta | **0.003, deliberately tiny** (near-greedy top-sigma: each round queries the newest feature-space region; the ESS-0.5 calibration ~0.018 is logged for reference) |
-| negative loss | alpha = 0 |
-| execution | verifier-positive plan minimizing the native (untilted) SafeMPPI cost |
+| flow trunk | `48 -> 32`, trunk depth 2, no encoder |
+| pretraining windows / epochs | 7,039 / 500 |
+| calibrated RBF length scale | 0.298804 |
+| calibrated initial beta | 0.102375 |
+| raw pretraining audit | SR 0.4625, window validity 0.9040 |
 
-Pretraining: sliding H-step windows over the 160 demo rollouts, 2 extra geometry-consistent
-context-jitter copies (0.02 m/m s^-1; the 10-D context is rebuilt exactly from the perturbed
-state), 500 epochs Adam 3e-4 cosine. Reproduce with:
+The expansion executable exposes `K`, `B`, parallel episodes, replay window, GP cap, fixed or
+adaptive beta, exact-pass or bounded optimizer updates, signed negative gradients, current/frozen
+representation references, and query-level or successful-trajectory archives. These are
+experimental controls rather than one hidden canonical recipe. Reproduce the checked-in
+pretraining bundle or start a new expansion with:
 
 ```bash
-python scripts/pretrain_ball_flow.py                          # fan demos + CFM + calibration
-python scripts/run_ball_expansion.py --rounds 80 --start-diversity
-python scripts/evaluate_ball_expansion.py --stride 5          # untilted raw eval + figures
+python scripts/pretrain_ball_flow.py
+python scripts/run_ball_expansion.py \
+  --pretrain-dir results/global50_reference/pretrain_global10_h48p32_s0 \
+  --output outputs/ball_flow/expansion
+python scripts/evaluate_ball_expansion.py \
+  --pretrain-dir results/global50_reference/pretrain_global10_h48p32_s0 \
+  --expansion outputs/ball_flow/expansion
 python -m safe_mppi.ball_flow_diagnostics --expansion outputs/ball_flow/expansion
-python scripts/sweep_ball_flow.py                             # automated data x model discovery sweep
 python scripts/render_coverage_video.py --expansion outputs/ball_flow/expansion --stride 5
 ```
 
@@ -63,17 +61,21 @@ python scripts/render_coverage_video.py --expansion outputs/ball_flow/expansion 
 
 `BallFlowTask.verify` labels each candidate plan with the full-horizon GREEN verifier:
 
-1. dense taskspace containment and strictly positive obstacle clearance;
-2. the **rebuilt polytope chain**: at every plan knot the nominal polytope is rebuilt at `q_h`
-   (so `H_P(q_h) = 1`) and the next knot must satisfy `H_P(q_{h+1}) >= 1 - gamma`.
+1. executed-first-segment taskspace/corridor containment and strictly positive
+   full-H obstacle clearance; the unexecuted tail is not taskspace-gated;
+2. the cloned verifier's **trajectory-fitted variable faces**, generalized from 2-D disks to 3-D
+   spheres without changing their constraints. For a window centered at `c`, it fits a unit normal
+   `a` and maximum margin `m=a^T(o-c)-r` such that
+   `a^T(q_h-c) <= [1-(1-gamma)^h] m` for every horizon step. The real-obstacle faces are augmented
+   by 80 fitted artificial-sphere faces in the nominal icosphere directions, bounding GREEN at the
+   effective sensing radius exactly as the cloned package bounds its 2-D verifier.
 
-The chain is exactly the certificate every executed demonstration step satisfied online (the
-logged one-step slack), applied along the whole candidate plan. The rotating tangent face
-certifies skirting motion — only the velocity component *toward* an obstacle consumes contraction
-budget — whereas a single start-anchored face can never certify a plan that passes the ball
-inside the horizon (the wrap blindspot). `hp_eligible` is the separate one-step nominal (BLUE)
-gate, and among plans passing both, the executed plan minimizes the native SafeMPPI cost
-(running/control/smoothness/terminal — **no z bias**: expansion is untilted).
+The BLUE online nominal polytope and GREEN post-hoc verifier are therefore distinct objects.
+The BLUE one-step value is retained only for diagnosis; it is not an execution gate. A candidate
+is execution-eligible only if `q[h+1,x]-q[h,x] > 0` for every plan knot; endpoint distance-to-goal
+is not used. Among GREEN-positive, forward-monotone candidates, the executed plan minimizes the
+native SafeMPPI cost
+(running/control/smoothness/terminal — **no z bias**).
 
 Episode replicas: the even replica of every gamma always starts at the canonical start; with
 start diversity the odd replica starts from a randomized collision-free pre-ball state (half of
@@ -160,8 +162,8 @@ All curated copies live in [`docs/assets/ball_flow/`](assets/ball_flow/):
   softmax, the selected B, and their verifier verdicts.
 - `sigma_mode_decay.png` — per-mode mean sigma of near-ball candidates across rounds (novelty
   decays as modes are queried).
-- `green_verifier_chain.png` — the GREEN rebuilt-polytope chain along one executed plan with its
-  per-knot margins.
+- `legacy_rebuilt_nominal_chain.png` — rebuilt-nominal-chain diagnostic; it must not be interpreted
+  as the current GREEN fitted-face safety label.
 - `mechanism.mp4` — the `render_expansion_mechanism` video (K plans, selected-B uncertainty,
   verifier positives, executed action, accumulated positive/NVP states).
 - `tsne_panels.png`, `tsne_by_flow_time.png`, `representation_probes.png`,

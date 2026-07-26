@@ -4,7 +4,7 @@ Protocol (fixed-bank): one frozen candidate bank (policy samples + handcrafted m
 uniform random plans at fixed approach contexts), identical noise seeds and flow times across
 rounds, several base noises averaged per plan. For each checkpoint the module produces
 
-  - t-SNE panels on one shared embedding: color = validity / route mode / clearance / GP sigma,
+  - t-SNE panels on one shared embedding: color = validity / route mode / gamma / GP sigma,
     marker = gamma, transparency = round;
   - local probes: kNN validity & route-mode accuracy, linear + RBF validity AUROC, route-mode
     probe accuracy, control-magnitude shortcut check;
@@ -144,20 +144,42 @@ def archive_modes(env: TaskEnvironment, archive) -> list[dict]:
         rows.append({"round": record.round, "gamma": record.gamma,
                      "valid": bool(record.verification.valid),
                      "mode": route_mode(env, states[:, :3]), "phase": phase,
+                     "acquisition_sigma": float(record.acquisition_sigma),
                      "context": record.context.numpy(), "candidate": record.candidate.numpy()})
     return rows
 
 
 def gp_for_round(policy, env, archive_rows, round_i: int, lengthscale: float,
                  replay_rounds: int = 2, cap: int = 256, noise: float = 1.0e-2,
-                 seed: int = 0) -> RBFPosterior:
+                 top_fraction: float = 1.0, seed: int = 0) -> RBFPosterior:
+    """Rebuild the acquisition GP with the expansion run's causal W/top-fraction/cap law."""
     gp = RBFPosterior(lengthscale, noise)
     eligible = [row for row in archive_rows
                 if row["valid"] and round_i - replay_rounds < row["round"] <= round_i]
+    if top_fraction < 1.0:
+        by_round: dict[int, list[dict]] = {}
+        for row in eligible:
+            by_round.setdefault(row["round"], []).append(row)
+        eligible = []
+        for source_round in sorted(by_round):
+            rows = sorted(by_round[source_round],
+                          key=lambda row: row["acquisition_sigma"], reverse=True)
+            eligible.extend(rows[:max(1, int(np.ceil(top_fraction * len(rows))))])
     if eligible:
         rng = np.random.default_rng(seed + round_i)
         if len(eligible) > cap:
-            eligible = [eligible[i] for i in rng.choice(len(eligible), cap, replace=False)]
+            cells: dict[tuple[int, float], list[dict]] = {}
+            for row in eligible:
+                cells.setdefault((row["round"], row["gamma"]), []).append(row)
+            chosen = []
+            while len(chosen) < cap and any(cells.values()):
+                for key in sorted(cells):
+                    if len(chosen) == cap:
+                        break
+                    cell = cells[key]
+                    if cell:
+                        chosen.append(cell.pop(int(rng.integers(len(cell)))))
+            eligible = chosen
         contexts = torch.from_numpy(np.stack([row["context"] for row in eligible]))
         plans = torch.from_numpy(np.stack([row["candidate"] for row in eligible]))
         gp.set_buffer(policy.embed(contexts, plans))
@@ -281,26 +303,26 @@ def tsne_panels(embeddings_by_round: dict[int, np.ndarray], meta, sigma_by_round
     per_round = {r: planar[k * len(meta):(k + 1) * len(meta)] for k, r in enumerate(rounds)}
     alphas = {r: a for r, a in zip(rounds, np.linspace(0.35, 0.95, len(rounds)))}
     fig, axes = plt.subplots(2, 2, figsize=(13.6, 11.6))
-    specs = [("verifier validity", None), ("route mode", None),
-             ("min clearance [m]", "clearance"), (r"GP $\sigma(\phi_s)$", "sigma")]
+    specs = [("verifier validity", "validity"), ("route mode", "mode"),
+             (r"$\gamma$", "gamma"),
+             (r"within-round GP $\sigma(\phi_s)$ percentile", "sigma")]
     for ax, (title, kind) in zip(axes.flat, specs):
         for r in rounds:
             xy = per_round[r]
             for g, marker in GAMMA_MARKERS.items():
                 rows = [k for k, row in enumerate(meta) if abs(row["gamma"] - g) < 1e-9]
-                if kind is None and title.startswith("verifier"):
+                if kind == "validity":
                     colors = ["#17964b" if meta[k]["valid"] else "#c8321b" for k in rows]
-                elif kind is None:
+                elif kind == "mode":
                     colors = [MODE_COLORS[meta[k]["mode"]] for k in rows]
-                elif kind == "clearance":
-                    norm = Normalize(0.0, 0.5)
-                    colors = plt.get_cmap("magma")(
-                        norm([min(meta[k]["min_clearance_m"], 0.5) for k in rows]))
+                elif kind == "gamma":
+                    norm = Normalize(min(GAMMA_MARKERS), max(GAMMA_MARKERS))
+                    colors = plt.get_cmap("plasma")(norm([meta[k]["gamma"] for k in rows]))
                 else:
                     sigma = sigma_by_round[r]
-                    norm = Normalize(0.0, max(float(np.max(list(map(np.max,
-                                     sigma_by_round.values())))), 1e-9))
-                    colors = plt.get_cmap("viridis")(norm([sigma[k] for k in rows]))
+                    order = np.argsort(np.argsort(sigma, kind="stable"), kind="stable")
+                    percentile = order / max(len(order) - 1, 1)
+                    colors = plt.get_cmap("viridis")([percentile[k] for k in rows])
                 ax.scatter(xy[rows, 0], xy[rows, 1], c=colors, marker=marker, s=13,
                            alpha=alphas[r], linewidths=0.0)
         ax.set_title(f"color = {title}", fontsize=11)
@@ -311,7 +333,10 @@ def tsne_panels(embeddings_by_round: dict[int, np.ndarray], meta, sigma_by_round
     legend_gamma = [Line2D([], [], marker=m, ls="", color="#555555", label=rf"$\gamma={g:g}$")
                     for g, m in GAMMA_MARKERS.items()]
     axes[0, 1].legend(handles=legend_modes, fontsize=8, loc="upper right")
-    axes[0, 0].legend(handles=legend_gamma, fontsize=8, loc="upper right")
+    axes[1, 0].legend(handles=legend_gamma, fontsize=8, loc="upper right")
+    sigma_scalar = plt.cm.ScalarMappable(norm=Normalize(0.0, 1.0), cmap="viridis")
+    sigma_colorbar = fig.colorbar(sigma_scalar, ax=axes[1, 1], fraction=0.046, pad=0.03)
+    sigma_colorbar.set_label(r"within-round percentile of $\sigma(\phi_s)$")
     fig.suptitle("Fixed audit bank, one shared t-SNE embedding — rounds "
                  f"{rounds} (opacity = round), marker = gamma, s = {DEFAULT_S}",
                  fontsize=13, weight="bold")
@@ -356,6 +381,10 @@ def main():
     total_rounds = manifest["config"]["rounds"]
     beta = float(manifest["config"]["beta"])
     lengthscale = float(manifest["rbf_lengthscale"])
+    replay_rounds = int(manifest["config"]["replay_rounds"])
+    gp_buffer_cap = int(manifest["config"]["gp_buffer_cap"])
+    gp_noise = float(manifest["config"]["gp_noise"])
+    replay_top_fraction = float(manifest["config"].get("replay_top_fraction", 1.0))
     config = load_config(pretrain_dir / "demo_config.json")
     task = BallFlowTask(config)
     env = task.env
@@ -379,7 +408,9 @@ def main():
     per_round, embeddings_by_round, sigma_by_round = {}, {}, {}
     for round_i in eval_rounds:
         policy = policy_at(round_i)
-        gp = gp_for_round(policy, env, arch_rows, round_i, lengthscale)
+        gp = gp_for_round(policy, env, arch_rows, round_i, lengthscale,
+                          replay_rounds, gp_buffer_cap, gp_noise,
+                          replay_top_fraction, args.seed)
         phi = bank_embeddings(policy, contexts, plans, DEFAULT_S)
         gp_sigma = gp.sigma(torch.from_numpy(phi)).numpy()
         embeddings_by_round[round_i] = phi
@@ -389,7 +420,7 @@ def main():
         counts: dict[str, int] = {}
         for r in arch_rows:
             if (r["valid"] and r["mode"] in ROUTE_MODES
-                    and round_i - 2 < r["round"] <= round_i):
+                    and round_i - replay_rounds < r["round"] <= round_i):
                 counts[r["mode"]] = counts.get(r["mode"], 0) + 1
         known = {mode for mode, count in counts.items() if count >= 3}
         row["known_modes"] = sorted(known)
@@ -414,7 +445,9 @@ def main():
         if r not in embeddings_by_round:
             policy = policy_at(r)
             embeddings_by_round[r] = bank_embeddings(policy, contexts, plans, DEFAULT_S)
-            gp = gp_for_round(policy, env, arch_rows, r, lengthscale)
+            gp = gp_for_round(policy, env, arch_rows, r, lengthscale,
+                              replay_rounds, gp_buffer_cap, gp_noise,
+                              replay_top_fraction, args.seed)
             sigma_by_round[r] = gp.sigma(torch.from_numpy(embeddings_by_round[r])).numpy()
     tsne_panels({r: embeddings_by_round[r] for r in tsne_rounds}, meta,
                 sigma_by_round, output / "tsne_panels.png", args.seed)
