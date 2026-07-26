@@ -52,7 +52,84 @@ CUDA_VISIBLE_DEVICES=2 python run.py \
 The run produces one NPZ file per episode, `manifest.json`, `metrics.csv`, `metrics.json`, a 3D
 gamma-colored rollout overlay, and a BLUE nominal-level-set figure.
 
-## Minhyuk-frame native pretraining data
+## Experiment 1 — lab-frame SafeMPPI and trajectory tracking
+
+[`configs/experiment1_lab_ball.json`](configs/experiment1_lab_ball.json) is the
+canonical quick handoff to the deployment team. It gathers one accepted
+SafeMPPI reference for each gamma and carries the external plant-tracking
+settings in the same file.
+
+| major element | Experiment 1 |
+|---|---|
+| start / goal | `(-2.1,1.5,.9)` / `(.7,-1.5,.9)` m |
+| obstacle | sphere at `(-.7,0,.9)` m, radius `.379 m` |
+| gamma | `.1,.3,.5,1`, one accepted reference each |
+| nominal polytope | 80 faces, 2 m sensing, `H=10` |
+| proposal geometry | centroid steering off; anisotropic sampling off |
+| lower-route bias | `.75 exp((z-.9)/.08)` |
+| reference limits | `.3 m/s²`, `.7 m/s`, `.3 m/s` vertical |
+| plant follower | \(p_{\rm cmd}=.85p_{\rm measured}+.15p_{\rm stored}\) |
+| generative policy | `TBD`; governed-reference export contract is ready |
+
+```bash
+# 1. Raw SafeMPPI simulation: one accepted reference and nominal-polytope
+#    visualization per gamma.
+python run.py \
+  --config configs/experiment1_lab_ball.json \
+  --output results/lab_ball_pretrain/experiment1_one_per_gamma_s0 \
+  --device cpu
+
+python scripts/visualize_lab_ball_demos.py \
+  --demo-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0 \
+  --output-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0/qualification
+
+# 2. Freeze those four references, then stream them through the calibrated
+#    plant with no replanning and no second governor.
+python scripts/replay_lab_ball_references.py \
+  --demo-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0 \
+  --output-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0/plant_replay \
+  --experiment-config configs/experiment1_lab_ball.json
+```
+
+The four accepted SafeMPPI references all reach the goal without collision.
+Their minimum clearances are `.182/.088/.047/.005 m` for gamma
+`.1/.3/.5/1`. The state-heavy plant follower is intentionally reported as an
+ablation rather than a hidden fix: it reduces plant-to-command RMSE, but
+increases plant-to-original-reference lag. In the current calibrated plant all
+four leave the taskspace; gamma `.3/.5/1` also intersect the sphere. Thus
+putting more weight on the measured position does not supply a safety margin.
+The matched \(w_{\rm state}=0\) replay is retained under
+`plant_replay_direct/`; it separates the tracking ablation from the four
+selected SafeMPPI references.
+
+![Experiment 1 raw SafeMPPI nominal polytopes](results/lab_ball_pretrain/experiment1_one_per_gamma_s0/nominal_levelsets_by_gamma.png)
+
+![Experiment 1 current-state-heavy plant tracking](results/lab_ball_pretrain/experiment1_one_per_gamma_s0/plant_replay/reference_vs_plant_trajectories.png)
+
+The files the deployment team should inspect are:
+
+| role | authoritative code |
+|---|---|
+| Experiment 1 values | [`configs/experiment1_lab_ball.json`](configs/experiment1_lab_ball.json) |
+| nominal-polytope SafeMPPI | [`safe_mppi/controller.py`](safe_mppi/controller.py) |
+| once-only acceleration/velocity governor | [`safe_mppi/environment.py`](safe_mppi/environment.py) |
+| collection and accepted-reference archive | [`safe_mppi/acquire.py`](safe_mppi/acquire.py) |
+| nominal-polytope visualization | [`safe_mppi/visualize.py`](safe_mppi/visualize.py) |
+| calibrated reference replay seam | [`safe_mppi/lab_plant_replay.py`](safe_mppi/lab_plant_replay.py) |
+| Experiment 1 replay CLI | [`scripts/replay_lab_ball_references.py`](scripts/replay_lab_ball_references.py) |
+| unchanged calibrated plant | [`deploy_sim/plant.py`](deploy_sim/plant.py) |
+| future flow export schema | [`flow_deployment/lab_reference_contract.py`](flow_deployment/lab_reference_contract.py) |
+| future 13-D flow context/archive adapter | [`safe_mppi/lab_flow_task.py`](safe_mppi/lab_flow_task.py) |
+
+The generative-policy placeholder deliberately does not pretend that a lab
+checkpoint exists. A future pretrained or expanded policy implements
+`LabReferenceGenerator`, predicts raw `H=10` accelerations from the 13-D lab
+context, applies `ReferenceGovernor` exactly once, and exports
+`dense_positions`, `executed_controls`, and optional raw `controls` under the
+`governed_reference_v1` schema. The same plant replay then consumes that frozen
+trajectory without changing `deploy_sim`.
+
+### Full 50-per-gamma pretraining archive
 
 [`configs/lab_ball_pretrain.json`](configs/lab_ball_pretrain.json) is the
 lab-frame data contract for the next expansion task. It does not transform the

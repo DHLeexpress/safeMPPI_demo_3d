@@ -21,3 +21,5 @@ results/global50_reference/pretrain_global10_h48p32_s0/*.png
 results/lab_ball_pretrain/*
 !results/lab_ball_pretrain/native_governed_w075_50pg_s0/
 !results/lab_ball_pretrain/native_governed_w075_50pg_s0/**
+!results/lab_ball_pretrain/experiment1_one_per_gamma_s0/
+!results/lab_ball_pretrain/experiment1_one_per_gamma_s0/**

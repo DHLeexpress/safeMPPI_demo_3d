@@ -22,6 +22,9 @@ from safe_mppi.ball_flow_theta import start_goal_frame, world_to_local  # noqa: 
 from safe_mppi.config import load_config  # noqa: E402
 from safe_mppi.environment import TaskEnvironment  # noqa: E402
 from safe_mppi.lab_plant_replay import replay_demo_on_plant  # noqa: E402
+from flow_deployment.lab_reference_contract import (  # noqa: E402
+    load_governed_reference,
+)
 
 
 def _group_summary(rows, gamma):
@@ -29,6 +32,9 @@ def _group_summary(rows, gamma):
     return {
         "gamma": float(gamma),
         "episodes": len(group),
+        "current_state_position_weight": float(
+            group[0]["current_state_position_weight"]
+        ),
         "reference_SR": float(np.mean([row["reference_success"] for row in group])),
         "reference_CR": float(np.mean([row["reference_collision"] for row in group])),
         "plant_SR": float(np.mean([row["plant_success"] for row in group])),
@@ -54,11 +60,14 @@ def _group_summary(rows, gamma):
         "mean_plant_clearance_m": float(np.mean([
             row["plant_min_clearance_m"] for row in group
         ])),
-        "mean_tracking_RMSE_m": float(np.mean([
-            row["tracking_rmse_m"] for row in group
+        "mean_raw_reference_tracking_RMSE_m": float(np.mean([
+            row["raw_reference_tracking_rmse_m"] for row in group
         ])),
-        "p95_tracking_max_error_m": float(np.percentile([
-            row["tracking_max_error_m"] for row in group
+        "mean_command_tracking_RMSE_m": float(np.mean([
+            row["command_tracking_rmse_m"] for row in group
+        ])),
+        "p95_raw_reference_tracking_max_error_m": float(np.percentile([
+            row["raw_reference_tracking_max_error_m"] for row in group
         ], 95)),
         "mean_clearance_erosion_m": float(np.mean([
             row["clearance_erosion_m"] for row in group
@@ -90,24 +99,35 @@ def _group_summary(rows, gamma):
     }
 
 
-def evaluate_archive(demo_dir: Path, clip_commanded_position: bool):
+def evaluate_archive(
+    demo_dir: Path,
+    clip_commanded_position: bool,
+    current_state_position_weight: float,
+):
     manifest = json.loads((demo_dir / "manifest.json").read_text())
     config = load_config(demo_dir / "resolved_config.json")
     env = TaskEnvironment(config)
     records = []
     rows = []
     for row in manifest["runs"]:
-        data = np.load(demo_dir / row["file"])
+        reference = load_governed_reference(
+            demo_dir / row["file"],
+            gamma=float(row["gamma"]),
+            seed=int(row["seed"]),
+            integration_substeps=config.safemppi.integration_substeps,
+            action_limit=config.safemppi.demo_u_max,
+        )
         replay = replay_demo_on_plant(
             config,
-            data["dense_positions"],
-            data["executed_controls"],
+            reference.dense_positions,
+            reference.executed_controls,
             seed=int(row["seed"]),
             clip_commanded_position=clip_commanded_position,
+            current_state_position_weight=current_state_position_weight,
         )
-        expected_reference = np.asarray(data["dense_positions"], np.float32)[1:]
+        expected_reference = reference.dense_positions[1:]
         expected_applied = np.repeat(
-            np.asarray(data["executed_controls"], np.float32),
+            reference.executed_controls,
             config.safemppi.integration_substeps,
             axis=0,
         )
@@ -125,14 +145,16 @@ def evaluate_archive(demo_dir: Path, clip_commanded_position: bool):
             rtol=0.0,
         ):
             raise RuntimeError(f"{row['file']}: applied-action reconstruction mismatch")
-        raw_controls = np.asarray(data["controls"], np.float32)
+        if reference.raw_controls is None:
+            raise RuntimeError(f"{row['file']}: raw controls are required")
+        raw_controls = reference.raw_controls
         reference_speed = np.linalg.norm(
             replay["reference_velocities"], axis=1,
         )
         reference_vertical_speed = np.abs(
             replay["reference_velocities"][:, 2],
         )
-        applied_controls = np.asarray(data["executed_controls"], np.float32)
+        applied_controls = reference.executed_controls
         if bool(row["success"]) != bool(replay["reference_success"]):
             raise RuntimeError(
                 f"{row['file']}: accepted manifest and stored-reference "
@@ -193,10 +215,13 @@ def evaluate_archive(demo_dir: Path, clip_commanded_position: bool):
                     "minimum_measured_soft_geofence_margin_m",
                     "minimum_true_hard_geofence_margin_m",
                     "minimum_measured_hard_geofence_margin_m",
-                    "tracking_rmse_m",
-                    "tracking_max_error_m",
+                    "raw_reference_tracking_rmse_m",
+                    "raw_reference_tracking_max_error_m",
+                    "command_tracking_rmse_m",
+                    "command_tracking_max_error_m",
                     "reference_command_rmse_m",
                     "command_clip_fraction",
+                    "current_state_position_weight",
                     "peak_reference_speed_mps",
                     "peak_plant_speed_mps",
                     "peak_abs_plant_vertical_speed_mps",
@@ -253,12 +278,21 @@ def plot_trajectories(config, env, records, output: Path):
             plant = world_to_local(
                 replay["plant_positions"] - start, frame,
             )
+            commanded = world_to_local(
+                replay["commanded_positions"] - start, frame,
+            )
             label_reference = "governed reference" if index == 0 else None
+            label_commanded = "state-heavy command" if index == 0 else None
             label_plant = "calibrated plant" if index == 0 else None
             top.plot(
                 reference[:, 0], reference[:, 1],
                 color="#30343b", lw=0.8, alpha=0.38,
                 label=label_reference,
+            )
+            top.plot(
+                commanded[:, 0], commanded[:, 1],
+                color="#2f7ed8", lw=0.8, ls="--", alpha=0.45,
+                label=label_commanded,
             )
             top.plot(
                 plant[:, 0], plant[:, 1],
@@ -268,6 +302,10 @@ def plot_trajectories(config, env, records, output: Path):
             side.plot(
                 reference[:, 0], reference[:, 2],
                 color="#30343b", lw=0.8, alpha=0.38,
+            )
+            side.plot(
+                commanded[:, 0], commanded[:, 2],
+                color="#2f7ed8", lw=0.8, ls="--", alpha=0.45,
             )
             side.plot(
                 plant[:, 0], plant[:, 2],
@@ -301,7 +339,11 @@ def plot_trajectories(config, env, records, output: Path):
         side.set_aspect("equal", adjustable="box")
     axes[0, 0].legend(loc="upper left", frameon=False)
     fig.suptitle(
-        "Accepted SafeMPPI reference tracking through the calibrated plant",
+        "Accepted SafeMPPI reference tracking through the calibrated plant"
+        + (
+            f"  ($w_{{state}}={records[0]['current_state_position_weight']:.2f}$)"
+            if records[0]["current_state_position_weight"] > 0.0 else ""
+        ),
         fontsize=18,
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.965))
@@ -353,10 +395,17 @@ def plot_metrics(summaries, output: Path):
     axes[1, 0].legend(frameon=False)
 
     axes[1, 1].bar(
-        x, [row["mean_tracking_RMSE_m"] for row in summaries],
-        color=colors[1],
+        x - width / 2,
+        [row["mean_raw_reference_tracking_RMSE_m"] for row in summaries],
+        width, color=colors[0], label="plant vs stored reference",
+    )
+    axes[1, 1].bar(
+        x + width / 2,
+        [row["mean_command_tracking_RMSE_m"] for row in summaries],
+        width, color=colors[1], label="plant vs state-heavy command",
     )
     axes[1, 1].set(title="Position-tracking RMSE", ylabel="RMSE [m]")
+    axes[1, 1].legend(frameon=False)
 
     axes[0, 2].bar(
         x, [row["plant_goal_reach_rate"] for row in summaries],
@@ -382,7 +431,11 @@ def plot_metrics(summaries, output: Path):
     for axis in axes.flat:
         axis.set_xticks(x, labels)
         axis.grid(alpha=0.20, axis="y")
-    fig.suptitle("Reference-domain safety versus calibrated-plant tracking")
+    weight = summaries[0]["current_state_position_weight"]
+    fig.suptitle(
+        "Reference-domain safety versus calibrated-plant tracking"
+        + (f"  ($w_{{state}}={weight:.2f}$)" if weight > 0.0 else "")
+    )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
     fig.savefig(output, dpi=220, bbox_inches="tight")
     fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
@@ -398,18 +451,43 @@ def main():
         action="store_true",
         help="also apply the harness command-box clamp; off isolates pure tracking",
     )
+    parser.add_argument(
+        "--experiment-config",
+        type=Path,
+        help="optional Experiment 1 config containing its tracking settings",
+    )
+    parser.add_argument(
+        "--current-state-position-weight",
+        type=float,
+        help="override p_cmd=w*p_measured+(1-w)*p_stored",
+    )
     args = parser.parse_args()
+    tracking = {}
+    if args.experiment_config is not None:
+        raw = json.loads(args.experiment_config.read_text())
+        tracking = raw.get("experiment1", {}).get("tracking", {})
+    current_state_position_weight = (
+        float(args.current_state_position_weight)
+        if args.current_state_position_weight is not None
+        else float(tracking.get("current_state_position_weight", 0.0))
+    )
+    clip_commanded_position = bool(
+        args.clip_commanded_position
+        or tracking.get("clip_commanded_position", False)
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     config, env, records, rows, summaries = evaluate_archive(
         args.demo_dir,
-        clip_commanded_position=args.clip_commanded_position,
+        clip_commanded_position=clip_commanded_position,
+        current_state_position_weight=current_state_position_weight,
     )
     contract = {
         "experiment": (
             "accepted once-governed reference streamed to calibrated plant; "
             "no replanning and no second governor"
         ),
-        "clip_commanded_position": bool(args.clip_commanded_position),
+        "clip_commanded_position": clip_commanded_position,
+        "current_state_position_weight": current_state_position_weight,
         "plant": "unchanged deploy_sim.plant",
         "per_gamma": summaries,
     }

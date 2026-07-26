@@ -41,8 +41,9 @@ def replay_demo_on_plant(
     seed: int,
     clip_commanded_position: bool = False,
     command_margin: float = 0.25,
+    current_state_position_weight: float = 0.0,
 ) -> dict[str, np.ndarray | float | bool | None]:
-    """Stream one stored raw-command demo through the deployment plant.
+    """Stream one stored governed reference through the deployment plant.
 
     ``dense_reference_positions`` and ``executed_controls`` are already the
     output of the reference governor.  They are streamed without applying
@@ -55,6 +56,8 @@ def replay_demo_on_plant(
     executed_controls = np.asarray(
         executed_controls, np.float32,
     ).reshape(-1, 3)
+    if not 0.0 <= current_state_position_weight < 1.0:
+        raise ValueError("current_state_position_weight must lie in [0,1)")
     substeps = config.safemppi.integration_substeps
     expected_positions = 1 + len(executed_controls) * substeps
     if len(dense_reference_positions) != expected_positions:
@@ -85,6 +88,8 @@ def replay_demo_on_plant(
     estimated_positions = []
     measured_positions = []
     true_velocities = []
+    command_anchor_positions = []
+    current_measured_position = np.asarray(plant.position(), np.float32)
 
     for reference_position, reference_velocity, applied in zip(
         reference_positions_input,
@@ -92,9 +97,13 @@ def replay_demo_on_plant(
         applied_controls_input,
     ):
         commanded_position = (
-            np.clip(reference_position, box[:, 0], box[:, 1])
-            if clip_commanded_position else reference_position.copy()
+            current_state_position_weight * current_measured_position
+            + (1.0 - current_state_position_weight) * reference_position
         )
+        if clip_commanded_position:
+            commanded_position = np.clip(
+                commanded_position, box[:, 0], box[:, 1],
+            )
         plant.cmdFullState(
             commanded_position.tolist(),
             reference_velocity.tolist(),
@@ -108,9 +117,11 @@ def replay_demo_on_plant(
         commanded_positions.append(commanded_position.copy())
         reference_velocities.append(reference_velocity.copy())
         applied_controls.append(applied.copy())
+        command_anchor_positions.append(current_measured_position.copy())
         true_positions.append(plant.p.copy())
         estimated_positions.append(plant.p_est.copy())
-        measured_positions.append(np.asarray(plant.position(), np.float32))
+        current_measured_position = np.asarray(plant.position(), np.float32)
+        measured_positions.append(current_measured_position.copy())
         true_velocities.append(plant.v.copy())
 
     reference_positions = np.asarray(reference_positions, np.float32)
@@ -121,6 +132,9 @@ def replay_demo_on_plant(
     estimated_positions = np.asarray(estimated_positions, np.float32)
     measured_positions = np.asarray(measured_positions, np.float32)
     true_velocities = np.asarray(true_velocities, np.float32)
+    command_anchor_positions = np.asarray(
+        command_anchor_positions, np.float32,
+    )
     times = np.asarray(times, np.float64)
 
     reference_clearance = env.obstacle_clearance(reference_positions)
@@ -160,7 +174,8 @@ def replay_demo_on_plant(
     clipped = np.linalg.norm(
         commanded_positions - reference_positions, axis=1,
     ) > 1.0e-8
-    tracking_error = true_positions - commanded_positions
+    raw_reference_tracking_error = true_positions - reference_positions
+    command_tracking_error = true_positions - commanded_positions
     reference_command_error = commanded_positions - reference_positions
 
     return {
@@ -173,6 +188,7 @@ def replay_demo_on_plant(
         "estimated_positions": estimated_positions,
         "measured_positions": measured_positions,
         "plant_velocities": true_velocities,
+        "command_anchor_positions": command_anchor_positions,
         "reference_success": reference_success,
         "reference_reached": reference_reached,
         "reference_collision": reference_collision,
@@ -201,16 +217,25 @@ def replay_demo_on_plant(
         "minimum_measured_soft_geofence_margin_m": measured_soft_margin,
         "minimum_true_hard_geofence_margin_m": true_hard_margin,
         "minimum_measured_hard_geofence_margin_m": measured_hard_margin,
-        "tracking_rmse_m": float(np.sqrt(np.mean(np.sum(
-            tracking_error ** 2, axis=1,
+        "raw_reference_tracking_rmse_m": float(np.sqrt(np.mean(np.sum(
+            raw_reference_tracking_error ** 2, axis=1,
         )))),
-        "tracking_max_error_m": float(
-            np.linalg.norm(tracking_error, axis=1).max()
+        "raw_reference_tracking_max_error_m": float(
+            np.linalg.norm(raw_reference_tracking_error, axis=1).max()
+        ),
+        "command_tracking_rmse_m": float(np.sqrt(np.mean(np.sum(
+            command_tracking_error ** 2, axis=1,
+        )))),
+        "command_tracking_max_error_m": float(
+            np.linalg.norm(command_tracking_error, axis=1).max()
         ),
         "reference_command_rmse_m": float(np.sqrt(np.mean(np.sum(
             reference_command_error ** 2, axis=1,
         )))),
         "command_clip_fraction": float(clipped.mean()),
+        "current_state_position_weight": float(
+            current_state_position_weight
+        ),
         "peak_reference_speed_mps": float(
             np.linalg.norm(reference_velocities, axis=1).max()
         ),

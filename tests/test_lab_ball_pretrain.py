@@ -20,6 +20,7 @@ from safe_mppi.lab_flow_task import (
 
 ROOT = Path(__file__).resolve().parents[1]
 LAB_CONFIG = ROOT / "configs/lab_ball_pretrain.json"
+EXPERIMENT1_CONFIG = ROOT / "configs/experiment1_lab_ball.json"
 LAB_ARCHIVE = (
     ROOT
     / "results/lab_ball_pretrain/native_governed_w075_50pg_s0"
@@ -43,6 +44,20 @@ def test_lab_config_fixes_minhyuk_reference_contract():
     assert config.safemppi.integration_substeps == 10
     assert config.data.rollout_dynamics == "minhyuk_reference_governor"
     assert config.data.acceptance == "nominal_safe_success"
+
+
+def test_experiment1_uses_one_reference_per_gamma_and_state_heavy_tracking():
+    raw = json.loads(EXPERIMENT1_CONFIG.read_text())
+    config = load_config(EXPERIMENT1_CONFIG)
+    assert config.data.gammas == (0.1, 0.3, 0.5, 1.0)
+    assert config.data.episodes_per_gamma == 1
+    assert config.safemppi.centroid_gain == 0.0
+    assert config.safemppi.sigma_aniso == 1.0
+    assert config.safemppi.z_bias_weight == 0.75
+    tracking = raw["experiment1"]["tracking"]
+    assert tracking["current_state_position_weight"] == 0.85
+    assert tracking["clip_commanded_position"] is False
+    assert raw["experiment1"]["generative_policy"]["status"] == "TBD"
 
 
 def test_lab_config_missing_governor_constant_fails_closed(tmp_path):
