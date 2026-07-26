@@ -7,6 +7,52 @@ import torch
 from .config import ExperimentConfig
 
 
+class ReferenceGovernor:
+    """Minhyuk deployment reference recurrence, applied after planning."""
+
+    def __init__(self, config):
+        if config.max_speed is None or config.max_vertical_speed is None:
+            raise ValueError("reference governor requires speed and vertical-speed caps")
+        self.config = config
+        self.previous_applied = np.zeros(3, np.float32)
+
+    def reset(self):
+        self.previous_applied.fill(0.0)
+
+    def step(self, state, command):
+        cfg = self.config
+        command = np.clip(
+            np.asarray(command, np.float32),
+            -cfg.demo_u_max,
+            cfg.demo_u_max,
+        )
+        applied = (
+            cfg.deployment_accel_smooth * command
+            + (1.0 - cfg.deployment_accel_smooth) * self.previous_applied
+        ).astype(np.float32)
+        self.previous_applied = applied.copy()
+
+        state = np.asarray(state, np.float32)
+        position = state[:3].copy()
+        velocity = state[3:6].copy()
+        dt_sub = cfg.dt / cfg.integration_substeps
+        dense = []
+        for _ in range(cfg.integration_substeps):
+            velocity = velocity + dt_sub * applied
+            speed = float(np.linalg.norm(velocity))
+            if speed > cfg.max_speed:
+                velocity *= cfg.max_speed / speed
+            velocity[2] = np.clip(
+                velocity[2],
+                -cfg.max_vertical_speed,
+                cfg.max_vertical_speed,
+            )
+            position = position + dt_sub * velocity
+            dense.append(position.copy())
+        next_state = np.concatenate([position, velocity]).astype(np.float32)
+        return next_state, applied, np.asarray(dense, np.float32)
+
+
 class TaskEnvironment:
     def __init__(self, cfg: ExperimentConfig):
         self.task = cfg.taskspace

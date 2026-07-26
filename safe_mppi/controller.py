@@ -22,6 +22,17 @@ def _clearance(points, spheres, cylinders):
     return clearance
 
 
+def _taskspace_exponential_penalty(
+    points, bounds, weight, temperature,
+):
+    violation = (
+        torch.relu(bounds[:, 0] - points)
+        + torch.relu(points - bounds[:, 1])
+    )
+    exponent = (violation / temperature).clamp(max=20.0)
+    return weight * torch.expm1(exponent).sum(dim=1)
+
+
 class Mode1SafeMPPI:
     """Gaussian warm-start plus the current centroid-anisotropic mode-1 mixture, nothing else."""
 
@@ -35,17 +46,41 @@ class Mode1SafeMPPI:
         self.spheres, self.cylinders = environment.torch_obstacles(self.device)
         self._previous_sequence = None
         self._last_action = None
+        self._last_applied_action = None
         self._previous_mix = None
 
     def reset(self):
         self._previous_sequence = None
         self._last_action = None
+        self._last_applied_action = None
         self._previous_mix = None
 
     def _step(self, states, controls):
         dt = self.cfg.dt
         position = states[:, :3] + dt * states[:, 3:6] + 0.5 * dt * dt * controls
         velocity = states[:, 3:6] + dt * controls
+        return torch.cat([position, velocity], dim=1)
+
+    def _reference_step(self, states, controls):
+        """Predict the deployment reference recurrence for lab-native planning."""
+        if self.cfg.max_speed is None:
+            return self._step(states, controls)
+        position = states[:, :3]
+        velocity = states[:, 3:6]
+        dt_sub = self.cfg.dt / self.cfg.integration_substeps
+        for _ in range(self.cfg.integration_substeps):
+            velocity = velocity + dt_sub * controls
+            speed = torch.linalg.norm(velocity, dim=1, keepdim=True)
+            velocity = velocity * torch.clamp(
+                self.cfg.max_speed / speed.clamp_min(1.0e-12),
+                max=1.0,
+            )
+            vertical = velocity[:, 2].clamp(
+                -self.cfg.max_vertical_speed,
+                self.cfg.max_vertical_speed,
+            )
+            velocity = torch.cat([velocity[:, :2], vertical[:, None]], dim=1)
+            position = position + dt_sub * velocity
         return torch.cat([position, velocity], dim=1)
 
     @staticmethod
@@ -103,15 +138,30 @@ class Mode1SafeMPPI:
 
         state0 = torch.tensor(state_np, device=self.device).view(1, 6).expand(N, -1)
         goal_t = torch.tensor(goal_np, device=self.device)
+        bounds = torch.as_tensor(
+            self.env.bounds, device=self.device, dtype=torch.float32,
+        )
         states = state0.clone()
         costs = torch.zeros(N, device=self.device)
         infeasible = torch.zeros(N, dtype=torch.bool, device=self.device)
         minimum_hp = torch.full((N,), float("inf"), device=self.device)
         initial_distance = torch.linalg.norm(states[:, :3] - goal_t, dim=1)
-        previous_action = (torch.zeros(N, 3, device=self.device) if self._last_action is None
-                           else self._last_action[None].expand(N, -1))
+        previous_raw = (
+            torch.zeros(N, 3, device=self.device)
+            if self._last_action is None
+            else self._last_action[None].expand(N, -1)
+        )
+        previous_applied = (
+            torch.zeros(N, 3, device=self.device)
+            if self._last_applied_action is None
+            else self._last_applied_action[None].expand(N, -1)
+        )
         for step in range(H):
-            next_states = self._step(states, controls[:, step])
+            applied_controls = (
+                cfg.deployment_accel_smooth * controls[:, step]
+                + (1.0 - cfg.deployment_accel_smooth) * previous_applied
+            )
+            next_states = self._reference_step(states, applied_controls)
             old_hp = self._hp(states[:, :3], A, b, margins)
             new_hp = self._hp(next_states[:, :3], A, b, margins)
             minimum_hp = torch.minimum(minimum_hp, new_hp)
@@ -119,7 +169,9 @@ class Mode1SafeMPPI:
             distance = torch.linalg.norm(next_states[:, :3] - goal_t, dim=1)
             costs += cfg.running_goal_weight * distance.square()
             costs += cfg.control_weight * controls[:, step].square().sum(dim=1)
-            costs += cfg.smooth_weight * (controls[:, step] - previous_action).square().sum(dim=1)
+            costs += cfg.smooth_weight * (
+                controls[:, step] - previous_raw
+            ).square().sum(dim=1)
             costs -= cfg.progress_weight * (initial_distance - distance)
             clearance = _clearance(next_states[:, :3], self.spheres, self.cylinders)
             costs += cfg.soft_clearance_weight * torch.relu(
@@ -129,8 +181,16 @@ class Mode1SafeMPPI:
                     (next_states[:, 2] - cfg.z_bias_plane) / cfg.z_bias_temperature
                 ).clamp(max=20.0)
                 costs += cfg.z_bias_weight * torch.exp(exponent)
+            if cfg.taskspace_exponential_weight:
+                costs += _taskspace_exponential_penalty(
+                    next_states[:, :3],
+                    bounds,
+                    cfg.taskspace_exponential_weight,
+                    cfg.taskspace_exponential_temperature,
+                )
             states = next_states
-            previous_action = controls[:, step]
+            previous_raw = controls[:, step]
+            previous_applied = applied_controls
         costs += cfg.terminal_goal_weight * torch.linalg.norm(states[:, :3] - goal_t, dim=1).square()
         raw_costs = costs.clone()
         costs = torch.where(infeasible, torch.full_like(costs, float("inf")), costs)
@@ -146,11 +206,24 @@ class Mode1SafeMPPI:
             weights /= weights.sum()
             averaged_sequence = torch.sum(weights[:, None, None] * controls, dim=0)
         action = torch.clamp(averaged_sequence[0], self.u_min, self.u_max)
+        last_applied = (
+            torch.zeros(3, device=self.device)
+            if self._last_applied_action is None
+            else self._last_applied_action
+        )
+        applied_action = (
+            cfg.deployment_accel_smooth * action
+            + (1.0 - cfg.deployment_accel_smooth) * last_applied
+        )
         self._previous_sequence = averaged_sequence.detach()
         self._last_action = action.detach()
+        self._last_applied_action = applied_action.detach()
 
-        next_state = self._step(torch.tensor(state_np, device=self.device).view(1, 6),
-                                action.view(1, 3))[0, :3]
+        predicted_next_state = self._reference_step(
+            torch.tensor(state_np, device=self.device).view(1, 6),
+            applied_action.view(1, 3),
+        )[0]
+        next_state = predicted_next_state[:3]
         center_hp = self._hp(center.view(1, 3), A, b, margins)[0]
         next_hp = self._hp(next_state.view(1, 3), A, b, margins)[0]
         info = {
@@ -159,6 +232,8 @@ class Mode1SafeMPPI:
             "center": poly.center.astype(np.float32),
             "feasible_fraction": float((~infeasible).float().mean().detach().cpu()),
             "all_infeasible": all_infeasible,
+            "applied_action": applied_action.detach().cpu().numpy(),
+            "predicted_next_state": predicted_next_state.detach().cpu().numpy(),
             "mixture_fraction": float(mix),
             "online_one_step_slack": float((next_hp - (1.0 - gamma) * center_hp).detach().cpu()),
             "plan_time_s": time.perf_counter() - started,

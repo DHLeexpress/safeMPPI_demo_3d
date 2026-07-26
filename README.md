@@ -52,6 +52,112 @@ CUDA_VISIBLE_DEVICES=2 python run.py \
 The run produces one NPZ file per episode, `manifest.json`, `metrics.csv`, `metrics.json`, a 3D
 gamma-colored rollout overlay, and a BLUE nominal-level-set figure.
 
+## Minhyuk-frame native pretraining data
+
+[`configs/lab_ball_pretrain.json`](configs/lab_ball_pretrain.json) is the
+lab-frame data contract for the next expansion task. It does not transform the
+old `(0,0,2) -> (3,0,2)` policy. It regenerates SafeMPPI demonstrations directly
+in the deployment coordinates while leaving every file under `deploy_sim/`
+unchanged.
+
+| item | fixed value |
+|---|---:|
+| taskspace / soft geofence | `x=[-2.5,1.3], y=[-1.7,1.8], z=[.4,2.0]` m |
+| start / goal | `(-2.1,1.5,.9)` / `(.7,-1.5,.9)` m |
+| sphere | midpoint `(-.7,0,.9)` m, radius `.379` m |
+| gamma / accepted demos | `.1,.3,.5,1` / `50` per gamma |
+| horizon / `dt` / samples | `10 / .1 s / 512` |
+| MPPI temperature / Gaussian sigma | `.02 / (.5,.5,.5)` |
+| raw command cap | `.3 m/s^2` per axis |
+| centroid / anisotropic proposal | disabled / disabled |
+| initial command | `(0,0,0) m/s^2` |
+| running / terminal / control / smooth cost | `.25 / 80 / .05 / .35` |
+| soft-clearance weight / target | `60 / .3 m` |
+| progress weight | `2` |
+| below-ball bias | `.75 exp((z-.9)/.08)` |
+| outside-taskspace cost | `5 sum_i expm1(d_i/.05)` |
+
+The lab collector applies the Minhyuk reference governor directly; it is not an
+opt-in ablation for this task. The lab config fails closed unless the governor
+constants and success-only acceptance contract match exactly. For raw SafeMPPI
+command \(u_t^{raw}\),
+
+```text
+u_t = .4 u_t^raw + .6 u_{t-1}
+repeat 10 times at dt=.01:
+    v <- v + dt u_t
+    v <- min(1, .7/||v||) v
+    v_z <- clip(v_z, -.3, .3)
+    p <- p + dt v
+```
+
+SafeMPPI predicts this governed reference motion while retaining Minhyuk's cost
+on the raw sampled commands. The archive stores `controls` (raw commands, the
+behavior-cloning target) and `executed_controls` (once-smoothed reference
+accelerations) separately. A deployment harness must therefore smooth the
+learned raw command exactly once.
+
+Collection retries until it has 50 collision-free, in-bounds, goal-reaching
+rollouts with nonnegative executed one-step nominal-polytope slack for every
+gamma. The manifest separately retains every rejected attempt, so accepted
+archive SR=1 is never presented as the planner's pre-retry SR.
+
+```bash
+python run.py \
+  --config configs/lab_ball_pretrain.json \
+  --output results/lab_ball_pretrain/native_governed_w075_50pg_s0 \
+  --device cpu
+
+python scripts/visualize_lab_ball_demos.py \
+  --demo-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0 \
+  --output-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0/qualification
+```
+
+The seed-0 archive required `85/90/120/153` attempts to obtain 50 accepted
+rollouts at \(\gamma=.1/.3/.5/1\). These are the pre-retry diagnostics, not
+metrics computed only on the accepted subset:
+
+| gamma | attempt SR | attempt CR | crossing below \(z=.9\) | accepted clearance [m] | accepted time [s] |
+|---:|---:|---:|---:|---:|---:|
+| .1 | 1.000 | 0.000 | 1.000 | .159 | 8.05 |
+| .3 | .800 | .200 | 1.000 | .061 | 7.68 |
+| .5 | .483 | .517 | 1.000 | .037 | 7.66 |
+| 1 | .327 | .654 | 1.000 | .029 | 7.53 |
+
+The configured command/reference caps were met exactly in the archive:
+maximum raw component acceleration `.30000001`, maximum reference speed
+`.70000008`, and maximum vertical speed `.30000001` in float32 arithmetic.
+Replaying every raw command through the governor reconstructs all 200 stored
+state and dense-position arrays with zero error.
+
+![Lab-frame one-ball pretraining demonstrations](results/lab_ball_pretrain/native_governed_w075_50pg_s0/qualification/lab_ball_demo_overlay.png)
+
+[`safe_mppi/lab_flow_task.py`](safe_mppi/lab_flow_task.py) is the only loader
+for training a future lab-frame raw-command flow policy from this archive. It
+uses a 13-D Markov context
+\[
+  c_t^{lab}=[c_t^{ball}\in\mathbb R^{10},
+             u_{t-1}^{applied}\in\mathbb R^3]
+\]
+and keeps the H-step target as raw commands. The legacy 10-D
+`pretrain_ball_flow.py` path is deliberately not wired to this archive because
+it would silently replay governed states as if raw commands had been applied.
+
+Two limitations are intentionally explicit. First, an all-full-H-infeasible
+sample bank can still yield a one-step-admissible fallback; this is counted in
+the attempt diagnostics and is not a full-H verifier guarantee. Second,
+the lab flow pretraining/evaluation/expansion runner is the next stage; only its
+governor-aware data/context adapter is committed here. Multiple-ball policy
+conditioning is also not implemented yet; the present context represents one
+sphere.
+
+An unchanged `deploy_sim` seed-0 smoke is a stricter, separate check. Gamma
+`.1` reached the goal with `.109 m` plant clearance; gamma `.3/.5/1` entered
+the configured sphere or soft fence and aborted. The measured plant peak speed
+was `.86--.93 m/s` despite the `.7 m/s` reference cap. Thus this archive is
+controller/reference-domain pretraining data, not a flight-safety certificate;
+plant lag and overshoot must be handled before hardware deployment.
+
 ## Ball-below variant
 
 [`ball_below_config.json`](ball_below_config.json) + [`docs/BALL_BELOW.md`](docs/BALL_BELOW.md)

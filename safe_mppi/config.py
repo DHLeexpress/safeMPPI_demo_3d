@@ -64,6 +64,12 @@ class MPPIConfig:
     safety_margin: float
     predict_gain: float
     zoh_guard: float
+    max_speed: float | None = None
+    max_vertical_speed: float | None = None
+    integration_substeps: int = 1
+    deployment_accel_smooth: float = 1.0
+    taskspace_exponential_weight: float = 0.0
+    taskspace_exponential_temperature: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,9 @@ class DataConfig:
     gammas: tuple[float, ...]
     episodes_per_gamma: int
     seed_start: int
+    rollout_dynamics: str = "double_integrator"
+    acceptance: str = "all"
+    max_attempts_per_gamma: int | None = None
 
 
 @dataclass(frozen=True)
@@ -109,9 +118,18 @@ def load_config(path: str | Path) -> ExperimentConfig:
         "z_bias_temperature": float(m.get("z_bias_temperature", 1.0)),
         "z_bias_weight": float(m.get("z_bias_weight", 0.0)),
     })
-    data = DataConfig(gammas=tuple(map(float, d["gammas"])),
-                      episodes_per_gamma=int(d["episodes_per_gamma"]),
-                      seed_start=int(d["seed_start"]))
+    data = DataConfig(
+        gammas=tuple(map(float, d["gammas"])),
+        episodes_per_gamma=int(d["episodes_per_gamma"]),
+        seed_start=int(d["seed_start"]),
+        rollout_dynamics=str(d.get("rollout_dynamics", "double_integrator")),
+        acceptance=str(d.get("acceptance", "all")),
+        max_attempts_per_gamma=(
+            None
+            if d.get("max_attempts_per_gamma") is None
+            else int(d["max_attempts_per_gamma"])
+        ),
+    )
     cfg = ExperimentConfig(task, obstacles, mppi, data, raw)
     validate_config(cfg)
     return cfg
@@ -138,6 +156,20 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("initial_control must contain three values")
     if m.z_bias_temperature <= 0.0 or m.z_bias_weight < 0.0:
         raise ValueError("z_bias_temperature must be positive and z_bias_weight nonnegative")
+    if ((m.max_speed is None) != (m.max_vertical_speed is None)
+            or (m.max_speed is not None and (
+                m.max_speed <= 0.0 or m.max_vertical_speed <= 0.0
+            ))):
+        raise ValueError("speed limits must either both be absent or both be positive")
+    if m.integration_substeps < 1:
+        raise ValueError("integration_substeps must be positive")
+    if not 0.0 < m.deployment_accel_smooth <= 1.0:
+        raise ValueError("deployment_accel_smooth must lie in (0,1]")
+    if (m.taskspace_exponential_weight < 0.0
+            or m.taskspace_exponential_temperature <= 0.0):
+        raise ValueError(
+            "taskspace exponential weight must be nonnegative and temperature positive"
+        )
     if min(m.robot_radius, m.obstacle_margin, m.safety_margin, m.predict_gain, m.zoh_guard) != 0.0 \
             or max(m.robot_radius, m.obstacle_margin, m.safety_margin, m.predict_gain, m.zoh_guard) != 0.0:
         raise ValueError("robot radius and every hard obstacle/gain/guard margin must remain exactly 0")
@@ -147,3 +179,37 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("all gamma values must be in (0,1]")
     if d.episodes_per_gamma < 1:
         raise ValueError("episodes_per_gamma must be positive")
+    if d.acceptance not in {"all", "nominal_safe_success"}:
+        raise ValueError("data acceptance must be all or nominal_safe_success")
+    if d.rollout_dynamics not in {
+        "double_integrator", "minhyuk_reference_governor",
+    }:
+        raise ValueError(
+            "rollout_dynamics must be double_integrator or "
+            "minhyuk_reference_governor"
+        )
+    if d.rollout_dynamics == "minhyuk_reference_governor":
+        expected = {
+            "demo_u_max": 0.3,
+            "max_speed": 0.7,
+            "max_vertical_speed": 0.3,
+            "deployment_accel_smooth": 0.4,
+            "integration_substeps": 10,
+        }
+        actual = {name: getattr(m, name) for name in expected}
+        if any(not np.isclose(actual[name], value)
+               for name, value in expected.items()):
+            raise ValueError(
+                "minhyuk_reference_governor requires the exact deployment "
+                f"constants {expected}; got {actual}"
+            )
+        if d.acceptance != "nominal_safe_success":
+            raise ValueError(
+                "minhyuk_reference_governor data must use "
+                "acceptance=nominal_safe_success"
+            )
+    if (d.max_attempts_per_gamma is not None
+            and d.max_attempts_per_gamma < d.episodes_per_gamma):
+        raise ValueError(
+            "max_attempts_per_gamma must be at least episodes_per_gamma"
+        )
