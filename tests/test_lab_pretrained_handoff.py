@@ -12,10 +12,11 @@ from safe_mppi.environment import TaskEnvironment
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKPOINT = (
-    ROOT
-    / "results/lab_ball_pretrain/pretrain_raw10_h48p32_s0/pretrained.pt"
-)
+# The training-output path is not shipped; the handoff copy is. Both files have
+# the same SHA-256 (DEFAULT_CHECKPOINT_SHA256), so prefer whichever is present.
+_TRAINED = ROOT / "results/lab_ball_pretrain/pretrain_raw10_h48p32_s0/pretrained.pt"
+_HANDOFF = ROOT / "flow_deployment/minhyuk_handoff/pretrained_raw10.pt"
+CHECKPOINT = _TRAINED if _TRAINED.is_file() else _HANDOFF
 CONFIG = ROOT / "configs/lab_ball_pretrain.json"
 
 

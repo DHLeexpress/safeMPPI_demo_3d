@@ -19,7 +19,7 @@ This repository intentionally contains one sampling implementation:
 | Acquire data for every gamma, compute metrics, and render figures | implemented | [`acquire.py`](safe_mppi/acquire.py), [`visualize.py`](safe_mppi/visualize.py) |
 | Task-agnostic B1 Safe Flow Expansion core | implemented | [`expansion.py`](safe_mppi/expansion.py), [`flow_model.py`](safe_mppi/flow_model.py) |
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
-| Frozen flow policy → unchanged offline flight plant | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
+| Frozen flow policy → unchanged offline deployment loop | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
 | Lab-native pretrained flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
@@ -57,7 +57,7 @@ gamma-colored rollout overlay, and a BLUE nominal-level-set figure.
 
 [`configs/experiment1_lab_ball.json`](configs/experiment1_lab_ball.json) is the
 canonical quick handoff to the deployment team. It gathers one accepted
-SafeMPPI reference for each gamma and carries the external plant-tracking
+SafeMPPI reference for each gamma and carries the external setpoint-tracking
 settings in the same file.
 
 | major element | Experiment 1 |
@@ -69,7 +69,7 @@ settings in the same file.
 | proposal geometry | centroid steering off; anisotropic sampling off |
 | lower-route bias | `.75 exp((z-.9)/.08)` |
 | reference limits | `.3 m/s²`, `.7 m/s`, `.3 m/s` vertical |
-| plant follower | \(p_{\rm cmd}=.85p_{\rm measured}+.15p_{\rm stored}\) |
+| setpoint follower | \(p_{\rm cmd}=.85p_{\rm measured}+.15p_{\rm stored}\) |
 | generative policy | completed raw-command `raw10` checkpoint; see `flow_deployment/minhyuk_handoff/` |
 
 ```bash
@@ -84,28 +84,35 @@ python scripts/visualize_lab_ball_demos.py \
   --demo-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0 \
   --output-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0/qualification
 
-# 2. Freeze those four references, then stream them through the calibrated
-#    plant with no replanning and no second governor.
-python scripts/replay_lab_ball_references.py \
-  --demo-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0 \
-  --output-dir results/lab_ball_pretrain/experiment1_one_per_gamma_s0/plant_replay \
-  --experiment-config configs/experiment1_lab_ball.json
+# 2. Fly them, or run the same loop offline first.
+#    See crazyflie_sim/hardware (lab-local) or deploy_sim/run_offline.py.
 ```
 
 The four accepted SafeMPPI references all reach the goal without collision.
-Their minimum clearances are `.182/.088/.047/.005 m` for gamma
-`.1/.3/.5/1`. The state-heavy plant follower is intentionally reported as an
-ablation rather than a hidden fix: it reduces plant-to-command RMSE, but
-increases plant-to-original-reference lag. In the current calibrated plant all
-four leave the taskspace; gamma `.3/.5/1` also intersect the sphere. Thus
-putting more weight on the measured position does not supply a safety margin.
-The matched \(w_{\rm state}=0\) replay is retained under
-`plant_replay_direct/`; it separates the tracking ablation from the four
-selected SafeMPPI references.
+Their minimum clearances are `.182/.088/.047/.005 m` for gamma `.1/.3/.5/1`.
+
+### Hardware result (2026-07-26)
+
+Live SafeMPPI — replanning every 100 ms from the measured Vicon position, not
+replaying a stored reference — was flown at all four gammas on a Crazyflie 2.1.
+**All four reached the goal, none aborted, none touched the obstacle**, with
+`+.215/.094/.162/.066 m` between the drone shell and the ball surface.
+
+The measured position tracked the controller's own predicted reference to
+**27-31 mm RMSE** (52 mm worst case), consistent across every gamma. The control
+loop held its 100 ms period to within `+0.5%` with zero overruns in 343 cycles.
+
+This retired the calibrated deployment plant. That plant had been fitted to a
+flight recorded before a control-loop timing bug was fixed, and afterwards
+predicted 176-242 mm of tracking error where the vehicle showed 27-31 mm --
+5.7-8.2x pessimistic. It wrongly predicted that gamma `.5` and `1` would strike
+the obstacle. `deploy_sim/plant.py` and `safe_mppi/lab_plant_replay.py` were
+removed on 2026-07-26; `deploy_sim/vehicle.py` replaces them and has no fitted
+parameters. See [`deploy_sim/README.md`](deploy_sim/README.md).
+
+![Real-time SafeMPPI: model validation against hardware](docs/assets/realtime_mppi_model_validation.png)
 
 ![Experiment 1 raw SafeMPPI nominal polytopes](results/lab_ball_pretrain/experiment1_one_per_gamma_s0/nominal_levelsets_by_gamma.png)
-
-![Experiment 1 current-state-heavy plant tracking](results/lab_ball_pretrain/experiment1_one_per_gamma_s0/plant_replay/reference_vs_plant_trajectories.png)
 
 The files the deployment team should inspect are:
 
@@ -116,17 +123,15 @@ The files the deployment team should inspect are:
 | once-only acceleration/velocity governor | [`safe_mppi/environment.py`](safe_mppi/environment.py) |
 | collection and accepted-reference archive | [`safe_mppi/acquire.py`](safe_mppi/acquire.py) |
 | nominal-polytope visualization | [`safe_mppi/visualize.py`](safe_mppi/visualize.py) |
-| calibrated reference replay seam | [`safe_mppi/lab_plant_replay.py`](safe_mppi/lab_plant_replay.py) |
-| Experiment 1 replay CLI | [`scripts/replay_lab_ball_references.py`](scripts/replay_lab_ball_references.py) |
-| unchanged calibrated plant | [`deploy_sim/plant.py`](deploy_sim/plant.py) |
+| offline deployment vehicle | [`deploy_sim/vehicle.py`](deploy_sim/vehicle.py) |
 | frozen-reference schema | [`flow_deployment/lab_reference_contract.py`](flow_deployment/lab_reference_contract.py) |
 | pretrained policy handoff | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
-| online plant-state runner | [`scripts/run_lab_flow_deployment.py`](scripts/run_lab_flow_deployment.py) |
+| online deployment runner | [`scripts/run_lab_flow_deployment.py`](scripts/run_lab_flow_deployment.py) |
 | frozen trajectory exporter | [`scripts/export_lab_flow_frozen_references.py`](scripts/export_lab_flow_frozen_references.py) |
 
 The current lab-native checkpoint predicts raw `H=10` accelerations from the
 10-D context \([g-p,v,b_{\rm near}-p,\gamma]\). It applies no internal
-governor. Online deployment rebuilds the context from the current plant
+governor. Online deployment rebuilds the context from the current measured
 position at every replan; frozen export applies `ReferenceGovernor` exactly
 once and writes `dense_positions`, governed `executed_controls`, and raw
 `controls`. The current checkpoint is not a visual-encoder model, and it is not
@@ -212,49 +217,29 @@ state and dense-position arrays with zero error.
 
 ![Lab-frame one-ball pretraining demonstrations](results/lab_ball_pretrain/native_governed_w075_50pg_s0/qualification/lab_ball_demo_overlay.png)
 
-### Accepted reference versus calibrated plant
+### Reference-domain properties of the accepted archive
 
-The accepted archive and the deployment plant answer two different questions.
 Every stored demonstration is a collision-free, in-bounds, goal-reaching
-reference by construction. To isolate the sim-to-plant tracking gap, the
-following replay streams each stored dense reference position, finite-difference
-reference velocity, and stored once-governed acceleration directly to the
-unchanged calibrated plant:
+reference by construction. For all 200 accepted references the reference-domain
+SR/CR is `100%/0%` at every gamma, with minimum clearances `.159/.061/.037/.029 m`
+for gamma `.1/.3/.5/1`.
 
-```bash
-python scripts/replay_lab_ball_references.py \
-  --demo-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0 \
-  --output-dir results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay
-```
+The "already clipped, therefore slow and easy to track" hypothesis does not hold
+for the present cost. The raw `.3 m/s^2` component cap is active on
+`81/65/61/60%` of 10 Hz steps, and the `.7 m/s` reference speed cap is active on
+`17/29/31/33%` of 100 Hz points for gamma `.1/.3/.5/1`.
 
-There is no SafeMPPI replanning and no second reference governor in this
-experiment. Command-position clipping is also off by default; its explicit
-`--clip-commanded-position` flag is an ablation. The plant still applies its
-native Mellinger position loop, estimator lag/noise, thrust limits, and measured
-clock jitter.
-
-For all 200 accepted references, the reference-domain SR/CR is `100%/0%` at
-every gamma. The calibrated plant reaches the goal region in every replay, but
-its geometric path is safe only at gamma `.1`:
-
-| gamma | reference SR / CR | plant goal reach | plant SR / CR | reference clearance [m] | plant clearance [m] | tracking RMSE [m] |
-|---:|---:|---:|---:|---:|---:|---:|
-| .1 | 1.00 / 0.00 | 1.00 | 1.00 / 0.00 | .159 | .083 | .159 |
-| .3 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .061 | -.147 | .244 |
-| .5 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .037 | -.174 | .263 |
-| 1 | 1.00 / 0.00 | 1.00 | 0.00 / 1.00 | .029 | -.177 | .286 |
-
-The user's “already clipped, therefore slow and easy to track” hypothesis does
-not hold for the present cost. The raw `.3 m/s^2` component cap is active on
-`81/65/61/60%` of 10 Hz steps, and the `.7 m/s` reference speed cap is active
-on `17/29/31/33%` of 100 Hz points for gamma `.1/.3/.5/1`. The resulting plant
-peaks at `.86--.92 m/s`. In particular, the high-gamma reference clearances
-(`.029--.061 m`) are much smaller than the observed tracking RMSE
-(`.244--.286 m`).
-
-![Reference and calibrated-plant trajectories](results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay/reference_vs_plant_trajectories.png)
-
-![Reference and calibrated-plant metrics](results/lab_ball_pretrain/native_governed_w075_50pg_s0/plant_replay/reference_vs_plant_metrics.png)
+> **Removed 2026-07-26.** This section previously reported a replay of these
+> references through a calibrated deployment plant, which showed `.244-.286 m`
+> of tracking error and concluded that gamma `.3/.5/1` intersect the sphere.
+> That plant was fitted to a flight recorded before a control-loop timing bug
+> was fixed. On hardware, after the fix, live SafeMPPI tracked its own reference
+> to `.027-.031 m` and **no gamma collided**. The plant was 5.7-8.2x pessimistic
+> and its conclusions did not survive contact with the vehicle. The replay
+> pipeline (`safe_mppi/lab_plant_replay.py`,
+> `scripts/replay_lab_ball_references.py`) and the plant itself were deleted.
+> High-gamma clearance is still the number to watch — but against measured
+> tracking error, not a model's.
 
 The attempt pool must not be confused with this accepted-reference replay.
 Finite MPPI sampling occasionally makes all 512 H-step proposals infeasible;
@@ -283,12 +268,12 @@ governor-aware data/context adapter is committed here. Multiple-ball policy
 conditioning is also not implemented yet; the present context represents one
 sphere.
 
-An unchanged `deploy_sim` seed-0 smoke is a stricter, separate check. Gamma
-`.1` reached the goal with `.109 m` plant clearance; gamma `.3/.5/1` entered
-the configured sphere or soft fence and aborted. The measured plant peak speed
-was `.86--.93 m/s` despite the `.7 m/s` reference cap. Thus this archive is
-controller/reference-domain pretraining data, not a flight-safety certificate;
-plant lag and overshoot must be handled before hardware deployment.
+A `deploy_sim` seed-0 smoke run is a stricter, separate check of the deployment
+layer. Note that the earlier version of this paragraph reported gamma `.3/.5/1`
+aborting into the sphere or fence; those aborts came from the calibrated plant
+deleted on 2026-07-26 and were not reproduced on hardware, where all four gammas
+flew clean. This archive is still controller/reference-domain pretraining data,
+not a flight-safety certificate.
 
 ## Ball-below variant
 
@@ -690,7 +675,7 @@ python -m pytest -q
   3-D for spherical obstacles; this GREEN verifier is not part of the expert controller.
 - The checked-in ball checkpoint is an ideal-double-integrator research model. It is not a
   Crazyflie flight certificate; deployment requires an explicit coordinate/action interface and
-  independent plant evaluation.
+  independent evaluation on the target vehicle.
 - The 80x9 learned encoder, adaptive gamma, wind robustness, and moving-obstacle prediction are not
   implemented here.
 - The platform authority is recorded for downstream work, while this demonstration controller is

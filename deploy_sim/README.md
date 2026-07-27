@@ -1,13 +1,14 @@
 # `deploy_sim` — test a controller the way it is actually flown
 
 Planning in a clean geometric simulator is not what breaks real flights. What
-breaks them is the deployment layer: a finite replan rate, setpoint streaming, a
-vehicle that lags and overshoots its setpoint, noisy state estimates, geofences,
-and occasional dropouts.
+breaks them is the deployment layer: a finite replan rate, setpoint streaming,
+geofences, state-estimate dropouts, and arrival tolerances that are smaller than
+the tracking error.
 
 This package runs a controller through **exactly the loop used on the real
-vehicle**, against a quadrotor model that has those properties. Only the plant
-differs between this and a real flight.
+vehicle**. Only the vehicle differs between this and a real flight -- and here
+the vehicle simply follows the streamed setpoint, which hardware does to within
+~30 mm (see below).
 
 **It needs nothing beyond `requirements.txt`** — no simulator install, no ROS,
 no motion capture, no vehicle.
@@ -66,67 +67,49 @@ goes to motors; it is the acceleration feedforward. A reference governor keeps
 `p_ref` within `--max-lead` of the measured position so the setpoint can never
 run away.
 
-## What the plant looks like
+## The vehicle model: it follows the setpoint
 
-![plant characterisation](../docs/assets/plant_characterisation.png)
+`vehicle.py` has **no fitted parameters**. In simulation the vehicle is exactly
+where the streamed setpoint says it is.
 
-Three equations, applied at 1 kHz:
+That is a measurement, not an assumption. Across four live-SafeMPPI hardware
+flights (Crazyflie 2.1 + Vicon, gamma 0.1/0.3/0.5/1.0, 343 control cycles), the
+measured position tracked the streamed reference to:
 
-```python
-a = KP*(p_ref - p_est) + KD*(v_ref - v_est) + a_ff   # onboard loop, on the ESTIMATE
-a = clip(a, +-5.5 xy, +9/-5 z);  v += a*dt;  p += v*dt   # thrust limit, rigid body
-p_est += (dt/tau)*((p + noise) - p_est);  v_est = d/dt(p_est)   # lagged, noisy state
+```
+27-31 mm RMSE,  52 mm worst case,  +21 mm systematic altitude bias
 ```
 
-The important detail is that both the onboard loop *and* your controller see
-`p_est`, never `p` — that lag is where tracking error comes from.
+An order of magnitude below the tolerances that decide success here (arrival
+radius, obstacle margin, geofence margin). The residual is deliberately **not**
+simulated -- a simulated residual becomes a number you start trusting. Treat
+`RESIDUAL_MAX_M = 0.052` as a margin budget: a trajectory that leaves less room
+than that against the floor, the fence or an obstacle is too tight to call safe
+from simulation alone.
 
-Regenerate the figure after changing any parameter:
+**Validity.** Measured at <=0.91 m/s and <=0.50 m/s^2 commanded -- about 9% of
+the vehicle's lateral acceleration authority. Near the thrust limit, or for
+direction changes faster than the lateral position loop (omega_n ~ 0.63 rad/s),
+the vehicle can no longer match the setpoint and this becomes optimistic.
 
-```bash
-python deploy_sim/characterise_plant.py
-```
+### Why the old "calibrated plant" was deleted (2026-07-26)
 
-Left: both loops overshoot ~65 % and ring for seconds (altitude
-`omega_n = 1.12 rad/s`, `zeta = 0.18`; lateral is slower still at 0.63 rad/s).
-Middle: the estimate trails the truth. Right: overshoot grows with climb rate
-along `v_climb / omega_n`, which is why vertical speed gets its own tighter cap.
+`plant.py` modelled the onboard Mellinger loop, thrust limits, estimator lag and
+mocap noise. Its three fitted parameters (`est_tau=0.08`, `noise=0.0017`,
+`rate_scale=1.111`) came from a single flight recorded **before a control-loop
+timing bug was fixed**. In that loop each substep advanced the reference by a
+nominal `dt_sub` while ~1.25x that elapsed in wall time, so `p_ref` and `v_ref`
+contradicted each other and the onboard controller chased a velocity the
+reference never had. `est_tau` absorbed that as if it were vehicle lag.
 
-**Not modelled:** attitude/inner-loop dynamics (acceleration is assumed
-achieved, subject to limits), motor dynamics, drag, ground effect and downwash,
-battery sag, yaw, and radio packet loss (lumped into the estimator lag). A real
-vehicle must rotate before it can accelerate laterally, which adds lag this
-model skips — one reason it under-predicts peak altitude overshoot.
+After the fix it predicted **176-242 mm** of tracking error where the vehicle
+actually showed **27-31 mm** -- 5.7-8.2x pessimistic -- and it wrongly condemned
+gamma 0.5 and gamma 1.0 as collisions. Both flew with clearance to spare.
 
-## What the model includes
-
-| effect | why it matters |
-|---|---|
-| onboard position loop with real Mellinger gains | `kp_z=1.25, kd_z=0.4` ⇒ damping ratio ≈ 0.18, so altitude **overshoots ~65 %** (56 % is the zero-lag ideal; the estimator lag adds the rest) |
-| finite thrust | bounded acceleration, asymmetric in ±z |
-| state-estimator lag | roughly half of the steady tracking error |
-| measurement noise (1.7 mm rms) | forces you to filter before differentiating |
-| ~90 Hz jittery control clock | not the perfect 100 Hz you asked for |
-| no `velocity()` | the controller must finite-difference position, as in the field |
-
-A useful rule that falls out of the altitude gains:
-
-> altitude overshoot ≈ v_climb / ω_n,  ω_n = √kp_z ≈ 1.12 rad/s
-
-so a 0.5 m/s climb overshoots ~0.45 m. Capping *vertical* speed is far more
-effective than capping total speed, and routing **around** an obstacle rather
-than **over** it avoids the problem entirely.
-
-## Honest limits
-
-* The plant is a **model**, not vehicle firmware. Gains are stock Crazyflie
-  Mellinger values; lag/noise/rate were fitted to a single real flight.
-* Validated on that flight: it reproduced a geofence exit to within **8 mm** and
-  matched the altitude step-response prediction (57 %/2.84 s modelled vs
-  56 %/2.86 s theoretical) — where a kinematic simulator reported success.
-* It still **under-predicts peak altitude overshoot**.
-* Use it to catch deployment problems and to compare controllers. Do not use it
-  to justify shrinking real safety margins.
+A model that wrong is worse than none, because it silently rejects good
+controllers. If a dynamics model is needed again, fit a new one to post-fix data
+and give it a new name. `characterise_plant.py` and its figure were removed with
+it.
 
 ## Safety layers (identical to the flight configuration)
 
@@ -155,7 +138,7 @@ closest_to_goal_m                0.241     # must exceed nothing; but the arriva
                                            # tolerance must exceed tracking error
 clearance_beyond_safety_sphere_m 0.026     # <0 means inside the configured shell
 peak_speed_mps                   1.03      # achieved, vs the commanded cap
-fence_margin_m                   0.154     # <0.10 ⇒ expect an abort on hardware
+fence_margin_m                   0.154     # <0.052 ⇒ inside the measured tracking residual
 peak_z_m                         1.143
 ```
 

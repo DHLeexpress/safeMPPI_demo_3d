@@ -40,7 +40,7 @@ from safe_mppi.config import load_config          # noqa: E402
 from safe_mppi.environment import TaskEnvironment  # noqa: E402
 
 import harness                                     # noqa: E402
-from plant import Swarm                            # noqa: E402
+from vehicle import Swarm                          # noqa: E402
 
 
 def build_controller(spec, cfg, env, device):
