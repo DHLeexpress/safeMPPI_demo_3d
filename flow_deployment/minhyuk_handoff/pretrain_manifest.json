@@ -1,0 +1,80 @@
+{
+  "kind": "lab raw-command reference-flow pretraining",
+  "source_demo_contract": {
+    "task_config": "configs/lab_ball_pretrain.json",
+    "task_config_sha256": "aaa686ff5edadd3a6c29a08ced66625d3e9a1c24afbde548c44a721fe0cb519a",
+    "demo_manifest_sha256": "f61913d94e207226e8c1c0c0a3784230b3328d67ab0233be6eb63a34d0ea5911",
+    "accepted_trajectories": 200,
+    "accepted_trajectories_per_gamma": 50,
+    "gammas": [
+      0.1,
+      0.3,
+      0.5,
+      1.0
+    ]
+  },
+  "training": {
+    "windows": 13662,
+    "training_windows": 12307,
+    "validation_windows": 1355,
+    "epochs": 500,
+    "batch_size": 32,
+    "optimizer": "Adam",
+    "learning_rate": 0.0003,
+    "final_train_loss": 0.3299762330271981,
+    "final_valid_loss": 0.34858930110931396
+  },
+  "model": {
+    "checkpoint": "pretrained_raw10.pt",
+    "checkpoint_sha256": "cdc27062cdf60e3faf54ed5a7e6dd23e0c45e8208343ff00b9455a799034d059",
+    "context_dim": 10,
+    "plan_shape": [
+      10,
+      3
+    ],
+    "hidden": 48,
+    "representation_dim": 32,
+    "nfe": 16,
+    "control_limit": 0.3,
+    "policy_output": "pre_smoothing_raw_acceleration_command"
+  },
+  "raw_temperature_1_m50_per_gamma": [
+    {
+      "gamma": 0.1,
+      "SR": 0.46,
+      "CR": 0.26,
+      "OOB": 0.28,
+      "window_validity": 0.8001345659825876,
+      "successful_min_clearance_m": 0.05941168550697719,
+      "successful_time_to_goal_s": 8.273913043478261
+    },
+    {
+      "gamma": 0.3,
+      "SR": 0.44,
+      "CR": 0.26,
+      "OOB": 0.3,
+      "window_validity": 0.8776317787709654,
+      "successful_min_clearance_m": 0.05120009503174923,
+      "successful_time_to_goal_s": 8.27727272727273
+    },
+    {
+      "gamma": 0.5,
+      "SR": 0.42,
+      "CR": 0.28,
+      "OOB": 0.3,
+      "window_validity": 0.8758237748641896,
+      "successful_min_clearance_m": 0.0514311429553688,
+      "successful_time_to_goal_s": 8.20952380952381
+    },
+    {
+      "gamma": 1.0,
+      "SR": 0.44,
+      "CR": 0.28,
+      "OOB": 0.28,
+      "window_validity": 0.8772298568612646,
+      "successful_min_clearance_m": 0.04853357286341953,
+      "successful_time_to_goal_s": 8.086363636363638
+    }
+  ],
+  "qualification_note": "M=50 per gamma is the unbiased audit. Seed 91000 is only a reproducible all-gamma frozen-reference example."
+}

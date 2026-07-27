@@ -20,6 +20,7 @@ This repository intentionally contains one sampling implementation:
 | Task-agnostic B1 Safe Flow Expansion core | implemented | [`expansion.py`](safe_mppi/expansion.py), [`flow_model.py`](safe_mppi/flow_model.py) |
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
 | Frozen flow policy → unchanged offline flight plant | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
+| Lab-native pretrained flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -69,7 +70,7 @@ settings in the same file.
 | lower-route bias | `.75 exp((z-.9)/.08)` |
 | reference limits | `.3 m/s²`, `.7 m/s`, `.3 m/s` vertical |
 | plant follower | \(p_{\rm cmd}=.85p_{\rm measured}+.15p_{\rm stored}\) |
-| generative policy | `TBD`; governed-reference export contract is ready |
+| generative policy | completed raw-command `raw10` checkpoint; see `flow_deployment/minhyuk_handoff/` |
 
 ```bash
 # 1. Raw SafeMPPI simulation: one accepted reference and nominal-polytope
@@ -118,16 +119,18 @@ The files the deployment team should inspect are:
 | calibrated reference replay seam | [`safe_mppi/lab_plant_replay.py`](safe_mppi/lab_plant_replay.py) |
 | Experiment 1 replay CLI | [`scripts/replay_lab_ball_references.py`](scripts/replay_lab_ball_references.py) |
 | unchanged calibrated plant | [`deploy_sim/plant.py`](deploy_sim/plant.py) |
-| future flow export schema | [`flow_deployment/lab_reference_contract.py`](flow_deployment/lab_reference_contract.py) |
-| future 13-D flow context/archive adapter | [`safe_mppi/lab_flow_task.py`](safe_mppi/lab_flow_task.py) |
+| frozen-reference schema | [`flow_deployment/lab_reference_contract.py`](flow_deployment/lab_reference_contract.py) |
+| pretrained policy handoff | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
+| online plant-state runner | [`scripts/run_lab_flow_deployment.py`](scripts/run_lab_flow_deployment.py) |
+| frozen trajectory exporter | [`scripts/export_lab_flow_frozen_references.py`](scripts/export_lab_flow_frozen_references.py) |
 
-The generative-policy placeholder deliberately does not pretend that a lab
-checkpoint exists. A future pretrained or expanded policy implements
-`LabReferenceGenerator`, predicts raw `H=10` accelerations from the 13-D lab
-context, applies `ReferenceGovernor` exactly once, and exports
-`dense_positions`, `executed_controls`, and optional raw `controls` under the
-`governed_reference_v1` schema. The same plant replay then consumes that frozen
-trajectory without changing `deploy_sim`.
+The current lab-native checkpoint predicts raw `H=10` accelerations from the
+10-D context \([g-p,v,b_{\rm near}-p,\gamma]\). It applies no internal
+governor. Online deployment rebuilds the context from the current plant
+position at every replan; frozen export applies `ReferenceGovernor` exactly
+once and writes `dense_positions`, governed `executed_controls`, and raw
+`controls`. The current checkpoint is not a visual-encoder model, and it is not
+a flight-safety guarantee.
 
 ### Full 50-per-gamma pretraining archive
 

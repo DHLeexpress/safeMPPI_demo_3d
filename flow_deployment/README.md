@@ -1,5 +1,10 @@
 # Frozen Flow Policy → `deploy_sim`
 
+For the current lab-native pretrained checkpoint, runtime sampling temperature,
+online state-feedback runner, and frozen-reference exporter, use
+[`minhyuk_handoff/`](minhyuk_handoff/). That handoff does not use the temporary
+canonical-to-lab frame bridge documented below.
+
 This folder is a deliberately temporary interconnection layer. It loads one
 already-trained B1 ball-flow checkpoint and calls it inside Minhyuk's unchanged
 offline Crazyflie loop. It does **not** collect motion-capture data, expand a
