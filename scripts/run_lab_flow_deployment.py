@@ -97,14 +97,14 @@ def main() -> int:
     contract = {
         "status": "LAB_FLOW_DEPLOYMENT_COMPLETE",
         "scope": (
-            "Online state-feedback inference in the unchanged calibrated "
-            "deploy_sim harness; not a flight safety certificate."
+            "Online state-feedback inference in Minhyuk's unchanged native "
+            "deploy_sim vehicle harness; not a flight safety certificate."
         ),
         "config": str(args.config.resolve()),
         "config_sha256": config_sha256,
         "policy": policy_contract,
         "state_seen_by_policy": (
-            "current measured plant position p_meas concatenated with the "
+            "current vehicle position p_meas concatenated with the "
             "harness reference velocity v_ref"
         ),
         "gamma": float(args.gamma),

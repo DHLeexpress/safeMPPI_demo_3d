@@ -29,9 +29,12 @@ def policy_context(policy, env: TaskEnvironment, state6: np.ndarray,
                    gamma: float) -> np.ndarray:
     """Build the external context declared by a lab policy."""
     schema = getattr(policy, "context_schema", LAB_RAW_CONTEXT_SCHEMA)
-    if schema != LAB_RAW_CONTEXT_SCHEMA:
-        raise ValueError(f"unsupported lab policy context schema {schema!r}")
-    return build_context(env, state6, gamma)
+    if schema == LAB_RAW_CONTEXT_SCHEMA:
+        return build_context(env, state6, gamma)
+    from .lab_visual_flow import LAB_VISUAL_SCHEMA, build_visual_context
+    if schema == LAB_VISUAL_SCHEMA:
+        return build_visual_context(env, state6, gamma)
+    raise ValueError(f"unsupported lab policy context schema {schema!r}")
 
 
 def lab_reference_demo_windows(
@@ -74,9 +77,15 @@ def lab_reference_demo_windows(
             if context_schema == LAB_RAW_CONTEXT_SCHEMA:
                 context = build_context(env, states[start], gamma)
             else:
-                raise ValueError(
-                    f"unsupported lab context schema {context_schema!r}"
+                from .lab_visual_flow import (
+                    LAB_VISUAL_SCHEMA,
+                    build_visual_context,
                 )
+                if context_schema != LAB_VISUAL_SCHEMA:
+                    raise ValueError(
+                        f"unsupported lab context schema {context_schema!r}"
+                    )
+                context = build_visual_context(env, states[start], gamma)
             contexts.append(context)
             plans.append(controls[start:start + PLAN_H])
             metadata.append({
@@ -241,11 +250,19 @@ class LabReferenceFlowController:
         device: str | torch.device = "cpu",
     ):
         schema = getattr(policy, "context_schema", LAB_RAW_CONTEXT_SCHEMA)
-        if (
-            schema != LAB_RAW_CONTEXT_SCHEMA
-            or int(policy.context_dim) != LAB_REFERENCE_CONTEXT_DIM
-        ):
-            raise ValueError("raw lab deployment requires the 10-D context")
+        if schema == LAB_RAW_CONTEXT_SCHEMA:
+            if int(policy.context_dim) != LAB_REFERENCE_CONTEXT_DIM:
+                raise ValueError("raw lab deployment requires the 10-D context")
+        else:
+            from .lab_visual_flow import (
+                LAB_VISUAL_PACKED_DIM,
+                LAB_VISUAL_SCHEMA,
+            )
+            if (
+                schema != LAB_VISUAL_SCHEMA
+                or int(policy.context_dim) != LAB_VISUAL_PACKED_DIM
+            ):
+                raise ValueError("unknown lab visual context contract")
         if tuple(policy.plan_shape) != (PLAN_H, 3):
             raise ValueError("lab deployment requires H=10, 3-D plans")
         if not np.isfinite(sampling_temperature) or sampling_temperature < 0.0:

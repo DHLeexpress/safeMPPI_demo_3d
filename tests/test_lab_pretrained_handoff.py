@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 from flow_deployment.lab_pretrained import (
     DEFAULT_CHECKPOINT_SHA256,
@@ -9,6 +10,13 @@ from flow_deployment.lab_pretrained import (
 )
 from safe_mppi.config import load_config
 from safe_mppi.environment import TaskEnvironment
+from safe_mppi.lab_visual_flow import (
+    LAB_VISUAL_CHANNELS,
+    LAB_VISUAL_FRAME,
+    LAB_VISUAL_GRID_SHAPE,
+    LAB_VISUAL_SCHEMA,
+    LabVisualFlowPolicy,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,3 +76,41 @@ def test_online_controller_rebuilds_context_from_current_state():
         controller.trace[0]["action"],
         controller.trace[1]["action"],
     )
+
+
+def test_same_deployment_loader_accepts_a_qualified_visual_checkpoint(tmp_path):
+    env = TaskEnvironment(load_config(CONFIG))
+    policy = LabVisualFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=4,
+        control_limit=env.mppi.demo_u_max,
+        nfe=2,
+    )
+    checkpoint = tmp_path / "visual.pt"
+    torch.save({
+        "model": policy.state_dict(),
+        "arch": {
+            "kind": LAB_VISUAL_SCHEMA,
+            "plan_shape": [10, 3],
+            "hidden": 8,
+            "representation_dim": 4,
+            "grid_token_dim": 4,
+            "grid_shape": list(LAB_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_VISUAL_CHANNELS),
+            "grid_frame": LAB_VISUAL_FRAME,
+            "control_limit": env.mppi.demo_u_max,
+            "nfe": 2,
+            "trunk_depth": 2,
+            "time_features": "raw1",
+        },
+    }, checkpoint)
+    controller, contract = load_lab_deployment_controller(
+        checkpoint,
+        env,
+        sampling_temperature=0.8,
+    )
+    action, info = controller.plan(env.start, env.goal, 0.3, seed=5)
+    assert contract["context_schema"] == LAB_VISUAL_SCHEMA
+    assert action.shape == (3,)
+    assert info["sampling_temperature"] == 0.8

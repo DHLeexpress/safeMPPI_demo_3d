@@ -28,17 +28,21 @@ def sha256_file(path: str | Path) -> str:
 
 
 def load_lab_reference_policy(path: str | Path):
-    """Load the completed raw10 checkpoint used by this handoff."""
+    """Load a completed raw10 or qualified visual lab checkpoint."""
     payload = torch.load(path, map_location="cpu", weights_only=False)
     arch = dict(payload["arch"])
     kind = arch.pop("kind", "conditional_flow_mlp")
-    if kind != "conditional_flow_mlp":
-        raise ValueError(
-            "this raw10 handoff does not accept a visual checkpoint; "
-            "use the visual loader after that model is qualified"
-        )
     arch["plan_shape"] = tuple(arch["plan_shape"])
-    policy = ConditionalFlowMLP(**arch)
+    if kind == "conditional_flow_mlp":
+        policy = ConditionalFlowMLP(**arch)
+    else:
+        from safe_mppi.lab_visual_flow import (
+            LAB_VISUAL_SCHEMA,
+            LabVisualFlowPolicy,
+        )
+        if kind != LAB_VISUAL_SCHEMA:
+            raise ValueError(f"unknown lab policy architecture {kind!r}")
+        policy = LabVisualFlowPolicy(**arch)
     policy.load_state_dict(payload["model"], strict=True)
     return policy
 

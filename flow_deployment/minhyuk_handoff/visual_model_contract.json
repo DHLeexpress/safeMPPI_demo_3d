@@ -1,0 +1,43 @@
+{
+  "status": "MINHYUK_LAB_VISUAL_PRETRAINED_HANDOFF",
+  "checkpoint": "pretrained_visual_hp3d.pt",
+  "checkpoint_sha256": "fc4d215817b56d74730a0a90f6abc57d17dbeb7626302add535760399cdeeeb4",
+  "calibration_features": "calibration_visual_hp3d.pt",
+  "calibration_features_sha256": "906901de015457dd32d3cd723edb4bf7ab3ded51a58f5e6c57dcf248e5132537",
+  "pretrain_manifest": "pretrain_visual_manifest.json",
+  "context_schema": "lab_spherical_hp3d_v1",
+  "raw_context": [
+    "goal_minus_position_xyz",
+    "velocity_xyz",
+    "gamma"
+  ],
+  "grid": {
+    "shape": [3, 16, 12, 12],
+    "channels": [
+      "occupancy",
+      "nominal_polytope_mask",
+      "clipped_hp"
+    ],
+    "frame": "robot_centered_world_spherical_equal_area",
+    "source": "known configured obstacle map at current position",
+    "encoded_dim": 32
+  },
+  "plan_shape": [10, 3],
+  "architecture": {
+    "encoded_context_dim": 39,
+    "flow_input_dim": 70,
+    "hidden_dim": 48,
+    "representation_dim": 32,
+    "output_dim": 30,
+    "activation": "SiLU",
+    "nfe": 16,
+    "parameters": 28558
+  },
+  "control_limit_mps2": 0.3,
+  "policy_output": "pre_smoothing_raw_acceleration_command",
+  "tracking_and_governor": "external",
+  "sampling_temperature_default": 1.0,
+  "sampling_temperature_definition": "x0 ~ N(0, tau^2 I)",
+  "online_state_source": "current vehicle position p_meas and harness v_ref",
+  "scope": "pretrained frozen policy; no expansion, perception, or flight safety guarantee"
+}
