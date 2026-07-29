@@ -209,12 +209,15 @@ python scripts/run_ball_expansion.py \
   --execution-rule min_cost \
   --acquisition-feature learned_phi \
   --tight-corridor --verifier-mode full_polytope \
-  --event-log full --seed 1
+  --event-log committed_success --seed 1
 
 python scripts/evaluate_ball_expansion.py \
   --pretrain-dir results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
   --expansion results/lab_clutter_spheres/expansion_s0 \
-  --episodes 20 --stride 1
+  --episodes 20 --stride 10 \
+  --fixed-scene-rollouts 10 \
+  --video-gamma 0.5 \
+  --video-rounds 0 1 10 20 30 40 50
 ```
 
 Every cylinder demo NPZ carries its exact obstacle arrays and scene SHA-256.
@@ -231,6 +234,25 @@ temperature-one and disjoint from expansion scene hashes. The
 selected at several replanning contexts and therefore has no single
 authoritative flow-base noise. Its GP feature is the current-model
 \(\phi_s(U,c)\), rebuilt each round.
+
+The evaluator keeps two questions separate. `raw_eval.json` measures
+temperature-one SR/CR/OOB/window validity on a disjoint randomized-sphere
+scene bank. `fixed_scene_raw_eval.json` repeats independent temperature-one
+rollouts in one preregistered three-sphere scene shared by all checkpoints.
+Only the latter reports successful-path spread (mean pairwise RMS distance
+after arc-length resampling); path distance across different randomized
+scenes or different gamma conditions is deliberately undefined. The fixed
+scene gallery is therefore a qualitative multimodality view, not a substitute
+for randomized-domain metrics. `mechanism.mp4` and
+`mechanism_multiview.{png,pdf}` use the actual event log: each committed
+success is shown in its own randomized scene, together with \(K\) candidates,
+the selected \(B\), verifier positives, the executed first step, and the exact
+window starts admitted to Adam. Trajectories from different gathering scenes
+are never overlaid as if they were modes of one conditional distribution.
+`--event-log committed_success` changes only retained visualization evidence:
+it keeps every terminal-success trace (including the authoritative committed
+subset) and prunes failed/NVP traces after each round. Checkpoints, query/GP
+archives, replay, and optimization are unchanged.
 
 ### Full 50-per-gamma pretraining archive
 

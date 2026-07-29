@@ -1183,10 +1183,30 @@ def main():
     parser.add_argument("--probe-samples", type=int, default=16)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--seed", type=int, default=91000)
+    parser.add_argument(
+        "--fixed-scene-rollouts",
+        type=int,
+        default=10,
+        help=(
+            "independent raw temperature-1 rollouts per gamma/checkpoint in "
+            "one preregistered clutter scene (separate from randomized metrics)"
+        ),
+    )
+    parser.add_argument(
+        "--fixed-scene-seed",
+        type=int,
+        help=(
+            "optional preregistered clutter-scene seed; default is a fixed "
+            "offset from --seed"
+        ),
+    )
     parser.add_argument("--video-gamma", type=float, default=0.3)
     parser.add_argument(
         "--video-rounds", type=int, nargs="+",
-        help="mechanism-video rounds (default: every expansion round)",
+        help=(
+            "displayed evaluation checkpoints; clutter evaluation permits r0 "
+            "for raw galleries and uses positive rounds for mechanism video"
+        ),
     )
     parser.add_argument("--screening-only", action="store_true",
                         help="write raw metrics/curves/gallery but skip event-heavy diagnostics")

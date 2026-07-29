@@ -36,6 +36,100 @@ from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _resolved_success_episode_keys(
+    round_row: dict,
+) -> tuple[set[tuple[int, float, int]], set[tuple[int, float, int]]]:
+    """Return all resolved SUCCESS keys and their authoritative committed subset."""
+    round_i = int(round_row["round"])
+    details = round_row["successful_executed_commit_by_gamma"]
+    success_keys = {
+        (round_i, float(gamma_key), int(episode_id))
+        for gamma_key, detail in details.items()
+        for episode_id in detail["success_episode_above_fractions"]
+    }
+    declared_successes = sum(
+        int(detail["success_episode_count"])
+        for detail in details.values()
+    )
+    if len(success_keys) != declared_successes:
+        raise RuntimeError(
+            "resolved SUCCESS event keys do not match the declared successful "
+            "episode count"
+        )
+    committed_keys = {
+        (round_i, float(gamma_key), int(episode_id))
+        for gamma_key, detail in details.items()
+        for episode_id in detail["committed_episode_ids"]
+    }
+    declared = sum(
+        int(detail["committed_trajectory_count"])
+        for detail in details.values()
+    )
+    if len(committed_keys) != declared:
+        raise RuntimeError(
+            "committed-success event keys do not match the declared plural "
+            "trajectory count"
+        )
+    if not committed_keys.issubset(success_keys):
+        raise RuntimeError(
+            "authoritative committed episodes are absent from the resolved "
+            "terminal-SUCCESS set"
+        )
+    return success_keys, committed_keys
+
+
+def _retain_committed_round_events(
+    pending_events: list[dict],
+    round_row: dict,
+) -> list[dict]:
+    """Keep all resolved SUCCESS traces needed to audit the committed subset."""
+    round_i = int(round_row["round"])
+    if any(int(event["round"]) != round_i for event in pending_events):
+        raise RuntimeError(
+            "committed-success event buffer crossed a round boundary before "
+            "authoritative resolution"
+        )
+    success_keys, _ = _resolved_success_episode_keys(round_row)
+    grouped: dict[tuple[int, float, int], list[dict]] = {}
+    for event in pending_events:
+        key = (
+            int(event["round"]),
+            float(event["gamma"]),
+            int(event["episode"]),
+        )
+        if key in success_keys:
+            grouped.setdefault(key, []).append(event)
+    missing = success_keys.difference(grouped)
+    if missing:
+        raise RuntimeError(
+            "resolved terminal-SUCCESS episodes have no event trace: "
+            f"{sorted(missing)}"
+        )
+    for key, rows in grouped.items():
+        rows.sort(key=lambda event: int(event["step"]))
+        steps = [int(event["step"]) for event in rows]
+        if steps != list(range(len(rows))):
+            raise RuntimeError(
+                f"committed SUCCESS episode {key} has a non-contiguous event trace"
+            )
+        if any(event.get("status") is not None for event in rows[:-1]):
+            raise RuntimeError(
+                f"committed SUCCESS episode {key} continues after a terminal event"
+            )
+        if rows[-1].get("status") != "SUCCESS":
+            raise RuntimeError(
+                f"resolved successful episode {key} does not terminate SUCCESS"
+            )
+    return [
+        event for event in pending_events
+        if (
+            int(event["round"]),
+            float(event["gamma"]),
+            int(event["episode"]),
+        ) in success_keys
+    ]
+
+
 def _is_lab_pretrain(manifest: dict) -> bool:
     return (
         manifest.get("kind") == "lab raw-command reference-flow pretraining"
@@ -572,8 +666,17 @@ def main():
             "uses the equivalent explicit SOCP with CLARABEL"
         ),
     )
-    parser.add_argument("--event-log", choices=("none", "full"), default="full",
-                        help="omit all-K visualization events during metric-only sweeps")
+    parser.add_argument(
+        "--event-log",
+        choices=("none", "full", "committed_success"),
+        default="full",
+        help=(
+            "full stores every all-K gathering event; committed_success keeps the "
+            "same complete event records for all terminal-SUCCESS episodes needed "
+            "to audit the authoritative plural committed subset; none is for "
+            "metric-only sweeps"
+        ),
+    )
     parser.add_argument(
         "--paired-noised-representation", action="store_true",
         help=("use phi_s((1-s)x_0+sU,c) with each sampled plan's paired Gaussian "
@@ -581,6 +684,14 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    if (
+        args.event_log == "committed_success"
+        and args.archive_rule != "successful_executed_windows"
+    ):
+        parser.error(
+            "--event-log committed_success requires "
+            "--archive-rule successful_executed_windows"
+        )
     output_was_unsafe = (
         args.output.exists()
         and (
@@ -739,7 +850,12 @@ def main():
     )
 
     events = []
+    pending_events = []
+    source_event_count = 0
+    pruned_event_count = 0
+
     def callback(event):
+        nonlocal source_event_count
         event_context = event["context"].numpy()
         if lab_profile:
             # The 6,919-D visual volume is reproducible from robot state and
@@ -753,7 +869,7 @@ def main():
                     ):
                 ],
             ]).astype(np.float32)
-        events.append({
+        compact_event = {
             "round": event["round"], "step": event["step"], "gamma": event["gamma"],
             "episode": event["episode"], "context_id": event["context_id"],
             "retry_batch": event["retry_batch"], "replica": event["replica"],
@@ -776,27 +892,66 @@ def main():
             "status": event["status"],
             "nvp_reason": event.get("nvp_reason"),
             "target_gate_active": bool(event.get("target_gate_active", False)),
-        })
+        }
+        source_event_count += 1
+        if args.event_log == "full":
+            events.append(compact_event)
+        else:
+            pending_events.append(compact_event)
+
+    def committed_round_callback(round_row):
+        nonlocal pruned_event_count
+        retained = _retain_committed_round_events(
+            pending_events, round_row,
+        )
+        events.extend(retained)
+        pruned_event_count += len(pending_events) - len(retained)
+        pending_events.clear()
 
     started = time.perf_counter()
     try:
         manifest = run_safe_expansion(
             policy, task, args.output, config=config,
             calibration_features=calibration,
-            event_callback=(callback if args.event_log == "full" else None),
+            event_callback=(
+                callback if args.event_log in {"full", "committed_success"}
+                else None
+            ),
+            round_callback=(
+                committed_round_callback
+                if args.event_log == "committed_success" else None
+            ),
         )
     except Exception as error:
         if not output_was_unsafe:
             args.output.mkdir(parents=True, exist_ok=True)
-            if args.event_log == "full":
-                torch.save(events, args.output / "FAILED_events.pt")
-            (args.output / "FAILED.json").write_text(json.dumps({
+            if args.event_log in {"full", "committed_success"}:
+                failure_events = (
+                    events + pending_events
+                    if args.event_log == "committed_success" else events
+                )
+                torch.save(failure_events, args.output / "FAILED_events.pt")
+            failure = {
                 "status": "EXPANSION_FAILED_CLOSED",
                 "error_type": type(error).__name__,
                 "error": str(error),
-                "event_count": len(events),
+                "event_count": (
+                    len(events) + len(pending_events)
+                    if args.event_log == "committed_success" else len(events)
+                ),
                 "elapsed_s": time.perf_counter() - started,
-            }, indent=2) + "\n")
+            }
+            if args.event_log == "committed_success":
+                failure["event_log_contract"] = {
+                    "mode": "committed_success",
+                    "source_event_count": source_event_count,
+                    "retained_resolved_event_count": len(events),
+                    "pending_unresolved_event_count": len(pending_events),
+                    "pruned_resolved_event_count": pruned_event_count,
+                }
+            (args.output / "FAILED.json").write_text(
+                json.dumps(failure, indent=2) + "\n"
+            )
         raise
     # Make the task-specific cost contract machine-checkable.  The demo configuration retains
     # a nonzero below-equator z bias, but BallFlowTask.native_cost intentionally never applies it
@@ -1008,9 +1163,53 @@ def main():
                 json.dumps(task_config.raw, indent=2) + "\n"
             )
     manifest["event_log"] = args.event_log
+    if args.event_log == "committed_success":
+        if pending_events:
+            raise RuntimeError(
+                "successful expansion returned with unresolved pending event traces"
+            )
+        if source_event_count != len(events) + pruned_event_count:
+            raise RuntimeError(
+                "committed-success event accounting does not conserve source events"
+            )
+        retained_success_episode_count = len({
+            (
+                int(event["round"]),
+                float(event["gamma"]),
+                int(event["episode"]),
+            )
+            for event in events
+        })
+        committed_episode_count = sum(
+            int(detail["committed_trajectory_count"])
+            for row in manifest["rounds"]
+            for detail in row[
+                "successful_executed_commit_by_gamma"
+            ].values()
+        )
+        manifest["event_log_contract"] = {
+            "mode": "committed_success",
+            "source_event_count": source_event_count,
+            "retained_event_count": len(events),
+            "pruned_event_count": pruned_event_count,
+            "retained_success_episode_count": (
+                retained_success_episode_count
+            ),
+            "committed_episode_count": committed_episode_count,
+            "pending_event_count": 0,
+            "event_record": (
+                "the unchanged complete compact event dict for every K/B/sigma/"
+                "verifier/execution step of every resolved terminal-SUCCESS "
+                "episode; manifest IDs identify the authoritative plural "
+                "committed subset"
+            ),
+            "sigma_color_normalization": (
+                "within-round successful-trace-only"
+            ),
+        }
     (args.output / "manifest.json").write_text(
         json.dumps(manifest, indent=2, allow_nan=False) + "\n")
-    if args.event_log == "full":
+    if args.event_log in {"full", "committed_success"}:
         torch.save(events, args.output / "events.pt")
     print(f"[expansion] rounds={args.rounds} events={len(events)} "
           f"D={manifest['D']} D+={manifest['D_plus']} "

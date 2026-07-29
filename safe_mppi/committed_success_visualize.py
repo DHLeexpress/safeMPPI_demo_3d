@@ -154,6 +154,8 @@ def resolve_committed_success(
         raise ValueError("manifest has no committed-success schema")
     gammas = tuple(float(gamma) for gamma in manifest["config"]["gammas"])
     traces = group_episode_traces(events)
+    committed_only = manifest.get("event_log") == "committed_success"
+    expected_success_trace_keys: set[tuple[int, float, int]] = set()
     output: dict[tuple[int, float], GatheringCell] = {}
 
     for row in manifest["rounds"]:
@@ -186,6 +188,30 @@ def resolve_committed_success(
                     f"round {round_i}, gamma {gamma:g} success count mismatch: "
                     f"manifest={detail['success_episode_count']}, "
                     f"events={len(actual_successes)}"
+                )
+            if committed_only:
+                declared_success_ids = {
+                    int(value)
+                    for value in detail["success_episode_above_fractions"]
+                }
+                actual_episode_ids = {
+                    trace.episode for trace in cell_episodes
+                }
+                if any(trace.status != "SUCCESS" for trace in cell_episodes):
+                    raise ValueError(
+                        f"round {round_i}, gamma {gamma:g} committed-success "
+                        "event log contains a non-SUCCESS trace"
+                    )
+                if actual_episode_ids != declared_success_ids:
+                    raise ValueError(
+                        f"round {round_i}, gamma {gamma:g} successful event "
+                        "trace IDs do not exactly match the resolved SUCCESS "
+                        f"IDs: events={sorted(actual_episode_ids)}, "
+                        f"manifest={sorted(declared_success_ids)}"
+                    )
+                expected_success_trace_keys.update(
+                    (round_i, gamma, episode_id)
+                    for episode_id in declared_success_ids
                 )
 
             trajectory_id = detail["committed_trajectory_id"]
@@ -372,6 +398,13 @@ def resolve_committed_success(
                 f"round {round_i} top-level committed window IDs disagree "
                 "with per-gamma details"
             )
+    if committed_only and set(traces) != expected_success_trace_keys:
+        extras = set(traces).difference(expected_success_trace_keys)
+        missing = expected_success_trace_keys.difference(traces)
+        raise ValueError(
+            "committed-success event log must contain exactly the resolved "
+            f"SUCCESS traces; extras={sorted(extras)}, missing={sorted(missing)}"
+        )
     return output
 
 

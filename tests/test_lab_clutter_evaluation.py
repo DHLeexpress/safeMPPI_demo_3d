@@ -1,21 +1,33 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
+import torch
 
 from safe_mppi.config import load_config
 from safe_mppi.lab_clutter_evaluation import (
     EVALUATION_SCENE_SEED_STRIDE,
+    FIXED_SCENE_ROLLOUT_SEED_OFFSET,
     LAB_CLUTTER_TASK_PROFILE,
     START_PROBE_SCENE_SEED_OFFSET,
+    _event_scene_index,
     _evaluation_scene_provenance,
     _fixed_evaluation_scene_bank,
+    _fixed_scene_provenance,
+    _fixed_scene_rows,
     evaluate_lab_clutter_expansion,
     is_lab_clutter_evaluation_manifest,
+    successful_path_spread,
+    _validate_round_zero_equivalence,
 )
-from safe_mppi.lab_clutter_expansion import LAB_CLUTTER_SCENE_SCHEMA
+from safe_mppi.lab_clutter_expansion import (
+    LAB_CLUTTER_SCENE_SCHEMA,
+    LabClutterSphereExpansionTask,
+)
 from safe_mppi.lab_visual_flow import LAB_VISUAL_SCHEMA
 
 
@@ -52,6 +64,35 @@ def test_clutter_dispatch_requires_task_profile_and_schemas():
     wrong_scene["lab_scene_ledger"][0]["schema"] = "other_scene_v1"
     with pytest.raises(ValueError, match="scene ledger schema mismatch"):
         is_lab_clutter_evaluation_manifest(wrong_scene)
+
+
+def test_round_zero_must_equal_pretrained_model_bitwise(tmp_path):
+    pretrained = tmp_path / "pretrained.pt"
+    checkpoint_zero = tmp_path / "checkpoint_000.pt"
+    torch.save(
+        {"model": {"weight": torch.tensor([1.0], dtype=torch.float32)}},
+        pretrained,
+    )
+    torch.save(
+        {
+            "round": 0,
+            "pretrained": True,
+            "model": {"weight": torch.tensor([1.0], dtype=torch.float32)},
+        },
+        checkpoint_zero,
+    )
+    _validate_round_zero_equivalence(pretrained, checkpoint_zero)
+
+    torch.save(
+        {
+            "round": 0,
+            "pretrained": True,
+            "model": {"weight": torch.tensor([2.0], dtype=torch.float32)},
+        },
+        checkpoint_zero,
+    )
+    with pytest.raises(ValueError, match="tensor differs"):
+        _validate_round_zero_equivalence(pretrained, checkpoint_zero)
 
 
 def test_fixed_evaluation_scene_provenance_is_serializable_and_disjoint():
@@ -113,6 +154,114 @@ def test_evaluation_scene_provenance_rejects_expansion_overlap(hash_key):
         )
 
 
+def test_fixed_scene_provenance_rejects_randomized_bank_overlap():
+    config = load_config(CONFIG)
+    bank = _fixed_evaluation_scene_bank(config, episodes=2, domain_seed=41)
+    with pytest.raises(ValueError, match="randomized evaluation bank"):
+        _fixed_scene_provenance(
+            config,
+            scene_seed=bank["scenes"][0]["scene_seed"],
+            manifest=_manifest(),
+            randomized_scene_bank=bank,
+        )
+
+
+def test_fixed_scene_rows_reuse_exact_independent_seeds(monkeypatch):
+    import safe_mppi.lab_clutter_evaluation as evaluation
+
+    config = load_config(CONFIG)
+    bank = _fixed_evaluation_scene_bank(config, episodes=1, domain_seed=91_000)
+    calls = []
+
+    def fake_rollout(policy, task_config, gamma, seed, sampling_temperature):
+        del policy, task_config
+        calls.append((float(gamma), int(seed), float(sampling_temperature)))
+        return {
+            "status": "TIMEOUT",
+            "states": np.zeros((2, 6), np.float32),
+            "window_validity": 0.0,
+            "min_clearance_m": None,
+            "time_to_goal_s": None,
+        }
+
+    monkeypatch.setattr(evaluation, "raw_reference_rollout", fake_rollout)
+    first = _fixed_scene_rows(
+        object(), config, [0.1, 0.3], bank["scenes"][0], 3, 17,
+    )
+    second = _fixed_scene_rows(
+        object(), config, [0.1, 0.3], bank["scenes"][0], 3, 17,
+    )
+
+    first_seeds = [row["rollout_seed"] for row in first]
+    assert first_seeds == [row["rollout_seed"] for row in second]
+    assert len(first_seeds) == len(set(first_seeds))
+    assert first_seeds[0] == 17 + FIXED_SCENE_ROLLOUT_SEED_OFFSET
+    assert all(row["scene_hash"] == first[0]["scene_hash"] for row in first)
+    assert all(temperature == 1.0 for _, _, temperature in calls)
+
+
+def test_successful_path_spread_uses_arc_length_not_time_index():
+    coarse = np.column_stack([
+        [0.0, 0.5, 1.0],
+        np.zeros(3),
+        np.zeros(3),
+    ])
+    dense = np.column_stack([
+        np.linspace(0.0, 1.0, 9),
+        np.zeros(9),
+        np.zeros(9),
+    ])
+    identical = successful_path_spread([
+        {"status": "SUCCESS", "states": coarse},
+        {"status": "SUCCESS", "states": dense},
+    ])
+    assert identical == pytest.approx(0.0, abs=1.0e-12)
+
+    bowed = dense.copy()
+    bowed[:, 1] = 0.3 * np.sin(np.pi * bowed[:, 0])
+    spread = successful_path_spread([
+        {"status": "SUCCESS", "states": dense},
+        {"status": "SUCCESS", "states": bowed},
+    ])
+    assert spread is not None and spread > 0.1
+
+
+def _compact_event(task, state, gamma, *, step=0):
+    context = task.context(state, gamma).detach().cpu().numpy()
+    return {
+        "round": 1,
+        "gamma": float(gamma),
+        "episode": 0,
+        "step": int(step),
+        "robot": np.asarray(state["x"], np.float32),
+        "context": np.concatenate([context[:7], context[-18:]]),
+    }
+
+
+def test_event_scene_index_decodes_compact_context_and_rejects_mixing():
+    config = load_config(CONFIG)
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_VISUAL_SCHEMA,
+        tight_corridor=True,
+    )
+    first = task.reset(0.3, 0, 123)
+    first["previous_applied"][:] = [0.1, -0.2, 0.3]
+    second = task.reset(0.3, 0, 124)
+    event = _compact_event(task, first, 0.3)
+    manifest = _manifest()
+    manifest["lab_scene_ledger"] = copy.deepcopy(task.scene_ledger)
+
+    index = _event_scene_index([event], task, manifest)
+    decoded = index[(1, 0.3, 0)]
+    assert decoded["scene_hash"] == first["scene_hash"]
+    assert np.allclose(decoded["previous_applied"], [0.1, -0.2, 0.3])
+
+    mixed = _compact_event(task, second, 0.3, step=1)
+    with pytest.raises(ValueError, match="changed within one expansion episode"):
+        _event_scene_index([event, mixed], task, manifest)
+
+
 def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
     import safe_mppi.lab_clutter_evaluation as evaluation
 
@@ -126,6 +275,27 @@ def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
         stride=1,
         seed=91_000,
         metrics_only=True,
+    )
+    exact_model = {
+        "weight": torch.tensor([[1.0, 2.0]], dtype=torch.float32),
+    }
+    torch.save(
+        {"model": exact_model},
+        tmp_path / "pretrained.pt",
+    )
+    (tmp_path / "pretrain_manifest.json").write_bytes(
+        b'{"kind":"exact pretrain manifest"}\n'
+    )
+    torch.save(
+        {
+            "round": 0,
+            "pretrained": True,
+            "model": exact_model,
+        },
+        tmp_path / "checkpoint_000.pt",
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(manifest, sort_keys=True) + "\n"
     )
 
     monkeypatch.setattr(
@@ -151,6 +321,17 @@ def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluation, "_raw_rows", fake_raw_rows)
     monkeypatch.setattr(
         evaluation,
+        "raw_reference_rollout",
+        lambda *args, **kwargs: {
+            "status": "TIMEOUT",
+            "states": np.zeros((2, 6), np.float32),
+            "window_validity": 0.0,
+            "min_clearance_m": None,
+            "time_to_goal_s": None,
+        },
+    )
+    monkeypatch.setattr(
+        evaluation,
         "_start_probe",
         lambda *args: [{
             "gamma": 0.1,
@@ -168,3 +349,50 @@ def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
     assert payload["scene_bank"]["overlap_count"] == 0
     assert len(payload["scene_bank"]["scenes"]) == 2
     assert payload["scene_bank"]["start_probe_scene"]["scene_hash"]
+    binding = payload["artifact_binding"]
+    assert binding["pretrained_checkpoint_sha256"] == hashlib.sha256(
+        (tmp_path / "pretrained.pt").read_bytes()
+    ).hexdigest()
+    assert binding["pretrain_manifest_sha256"] == hashlib.sha256(
+        b'{"kind":"exact pretrain manifest"}\n'
+    ).hexdigest()
+    assert binding["checkpoint_sha256_by_round"]["0"] == hashlib.sha256(
+        (tmp_path / "checkpoint_000.pt").read_bytes()
+    ).hexdigest()
+    assert binding["round_zero_model_bitwise_equal_to_pretrained"] is True
+    assert (
+        payload["summary"]["0"]["pooled"]["successful_path_spread_m"]
+        is None
+    )
+    assert payload["summary"]["0"]["pooled"][
+        "successful_path_spread_domain"
+    ] == "not_applicable_cross_scene_or_gamma"
+
+    fixed = json.loads(
+        (tmp_path / "eval/fixed_scene_raw_eval.json").read_text()
+    )
+    assert fixed["rollouts_per_gamma"] == 10
+    assert fixed["path_spread_resample_points"] == 64
+    assert fixed["common_random_numbers_across_checkpoints"] is True
+    assert fixed["artifact_binding"] == binding
+    concrete_path = tmp_path / "eval/fixed_scene_config.json"
+    concrete = load_config(concrete_path)
+    assert len(concrete.obstacles.spheres) == 3
+    assert concrete.raw["scene_randomization"]["enabled"] is False
+    assert fixed["concrete_config"]["sha256"] == hashlib.sha256(
+        concrete_path.read_bytes()
+    ).hexdigest()
+    assert (
+        fixed["concrete_config"]["scene_hash"]
+        == fixed["scene_provenance"]["scene"]["scene_hash"]
+    )
+    assert set(fixed["rollout_seeds_by_gamma"]) == {
+        "0.1", "0.3", "0.5", "1"
+    }
+    assert fixed["summary"]["0"]["per_gamma"]["0.1"][
+        "successful_path_spread_domain"
+    ] == "fixed_scene_single_gamma"
+    assert all(
+        row["arc_length_resampled_path_xyz"] is None
+        for row in fixed["rows"]["0"]
+    )
