@@ -21,6 +21,7 @@ This repository intentionally contains one sampling implementation:
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
 | Frozen flow policy → unchanged offline deployment loop | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
 | Lab-native pretrained flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
+| Random-cylinder pretraining → random-sphere expansion handoff | experimental | [`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -253,6 +254,40 @@ are never overlaid as if they were modes of one conditional distribution.
 it keeps every terminal-success trace (including the authoritative committed
 subset) and prunes failed/NVP traces after each round. Checkpoints, query/GP
 archives, replay, and optimization are unchanged.
+
+#### Canonical 50-round clutter result
+
+The authenticated run used 50 accepted randomized cylinder scenes per gamma
+for pretraining, then 50 expansion rounds in randomized three-sphere scenes.
+Every round committed exactly three successful trajectories per gamma (600
+total). Among the preregistered positive checkpoints
+`{1,10,20,30,40,50}`, round 10 maximized pooled SR on the disjoint randomized
+temperature-one evaluation; window validity and earliest round were the fixed
+tie-breakers. The fixed-scene result was not used to choose the checkpoint.
+
+| checkpoint | pooled SR | CR | OOB | window validity | successful clearance |
+|---|---:|---:|---:|---:|---:|
+| pretrained r0 | .5875 | .1750 | .2375 | .9213 | .2267 m |
+| selected r10 | **.6250** | .3125 | **.0625** | .9131 | .2772 m |
+| final r50 | .5375 | .3500 | .1125 | .9130 | **.3520 m** |
+
+This is a non-monotone experimental result, not a solved safety claim: r10
+improves SR and OOB over r0 but raises collision rate, and r20 temporarily
+collapses. On the preregistered fixed three-sphere scene, r10 reaches
+`.60/1.00/.60/.70` SR for gamma `.1/.3/.5/1`; successful path spread is
+`.212/.189/.167/.149 m`. The repeated raw rollouts visibly differ, but they
+remain variations within a limited route family rather than evidence of four
+categorical homotopies.
+
+The portable pretrained and selected expanded checkpoints, exact known-map
+configuration, hashes, deterministic successful seeds, deployment commands,
+and evidence are in
+[`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/).
+See the
+[`fixed-scene raw gallery`](flow_deployment/minhyuk_clutter_handoff/evidence/fixed_scene_raw_gallery.png),
+[`mechanism video`](flow_deployment/minhyuk_clutter_handoff/evidence/mechanism.mp4),
+and
+[`randomized-domain curves`](flow_deployment/minhyuk_clutter_handoff/evidence/randomized_raw_curves.pdf).
 
 ### Full 50-per-gamma pretraining archive
 
