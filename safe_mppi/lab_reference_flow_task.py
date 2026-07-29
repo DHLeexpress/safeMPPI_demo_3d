@@ -7,6 +7,7 @@ exactly once.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -15,7 +16,7 @@ import torch
 
 from .ball_flow_task import PLAN_H, build_context
 from .ball_flow_theta import theta_name, trajectory_crossing_theta
-from .config import ExperimentConfig, load_config
+from .config import ExperimentConfig, ObstacleConfig, load_config
 from .environment import ReferenceGovernor, TaskEnvironment
 from .verifier_polytope import certify_window
 
@@ -23,6 +24,75 @@ from .verifier_polytope import certify_window
 LAB_REFERENCE_CONTEXT_DIM = 10
 LAB_ROUTE_MODES = ("below", "above", "left", "right")
 LAB_RAW_CONTEXT_SCHEMA = "lab_raw10_v1"
+
+
+def _run_environment(
+    config: ExperimentConfig,
+    data,
+    row: dict,
+) -> TaskEnvironment:
+    """Reconstruct the exact per-run scene when an archive randomizes it."""
+    if "spheres" not in data.files and "cylinders" not in data.files:
+        if row.get("scene_hash") is not None or row.get("scene_id") is not None:
+            raise ValueError(
+                f"randomized run {row['file']} is missing obstacle arrays"
+            )
+        return TaskEnvironment(config)
+    spheres = np.asarray(
+        data["spheres"] if "spheres" in data.files else (),
+        np.float32,
+    ).reshape(-1, 4)
+    cylinders = np.asarray(
+        data["cylinders"] if "cylinders" in data.files else (),
+        np.float32,
+    ).reshape(-1, 3)
+    from .lab_clutter import obstacle_scene_hash
+
+    observed_hash = obstacle_scene_hash(spheres, cylinders)
+    expected_hash = str(row.get("scene_hash", observed_hash))
+    if observed_hash != expected_hash:
+        raise ValueError(
+            f"per-run obstacle hash mismatch for {row['file']}"
+        )
+    if "scene_hash" in data.files and str(data["scene_hash"].item()) != expected_hash:
+        raise ValueError(
+            f"NPZ scene hash mismatch for {row['file']}"
+        )
+    scalar_fields = (
+        ("scene_id", str),
+        ("scene_index", int),
+        ("scene_seed", int),
+        ("seed", int),
+    )
+    for key, cast in scalar_fields:
+        if key in data.files and row.get(key) is not None:
+            observed = cast(data[key].item())
+            expected = cast(row[key])
+            if observed != expected:
+                raise ValueError(
+                    f"NPZ {key} mismatch for {row['file']}: "
+                    f"{observed!r} != {expected!r}"
+                )
+    if "gamma" in data.files and not np.isclose(
+        float(data["gamma"].item()),
+        float(row["gamma"]),
+        rtol=0.0,
+        atol=1.0e-7,
+    ):
+        raise ValueError(f"NPZ gamma mismatch for {row['file']}")
+    for key, width in (("spheres", 4), ("cylinders", 3)):
+        if row.get(key) is not None:
+            expected = np.asarray(row[key], np.float32).reshape(-1, width)
+            observed = spheres if key == "spheres" else cylinders
+            if not np.array_equal(observed, expected):
+                raise ValueError(
+                    f"manifest {key} mismatch for {row['file']}"
+                )
+    obstacles = ObstacleConfig(
+        spheres=tuple(tuple(map(float, values)) for values in spheres),
+        cylinders=tuple(tuple(map(float, values)) for values in cylinders),
+    )
+    return TaskEnvironment(replace(config, obstacles=obstacles))
 
 
 def policy_context(policy, env: TaskEnvironment, state6: np.ndarray,
@@ -47,17 +117,53 @@ def lab_reference_demo_windows(
     run_dir = Path(run_dir)
     manifest = json.loads((run_dir / "manifest.json").read_text())
     config = load_config(run_dir / "resolved_config.json")
-    env = TaskEnvironment(config)
     contexts, plans, metadata = [], [], []
+    scene_bank = manifest.get("scene_bank")
+    scene_rows = {}
+    if scene_bank is not None:
+        scene_rows = {
+            str(row["scene_id"]): row
+            for row in scene_bank["scenes"]
+        }
+        if len(scene_rows) != len(scene_bank["scenes"]):
+            raise ValueError("scene bank contains duplicate scene_id values")
+        expected_gammas = set(map(float, config.data.gammas))
+        for scene_id in scene_rows:
+            observed = {
+                float(row["gamma"]) for row in manifest["runs"]
+                if str(row.get("scene_id")) == scene_id
+            }
+            if observed != expected_gammas:
+                raise ValueError(
+                    f"scene {scene_id} does not contain every configured gamma"
+                )
 
     for row in manifest["runs"]:
         if not row.get("accepted", False):
             raise ValueError("lab archive manifest contains an unaccepted run")
         data = np.load(run_dir / row["file"])
+        if scene_rows:
+            scene_id = str(row.get("scene_id"))
+            if scene_id not in scene_rows:
+                raise ValueError(
+                    f"run references undeclared scene {scene_id!r}"
+                )
+            declared = scene_rows[scene_id]
+            if str(row.get("scene_hash")) != str(declared["scene_hash"]):
+                raise ValueError(
+                    f"run scene hash disagrees with scene bank for {scene_id}"
+                )
+        env = _run_environment(config, data, row)
         states = np.asarray(data["states"], np.float32)
         controls = np.asarray(data["controls"], np.float32).reshape(-1, 3)
         if len(states) != len(controls) + 1:
             raise ValueError("lab reference states and controls are misaligned")
+        if not np.allclose(
+            states[0], env.start, atol=1.0e-6, rtol=0.0,
+        ):
+            raise ValueError(
+                f"stored start state does not match config for {row['file']}"
+            )
         if validate_archive:
             governor = ReferenceGovernor(config.safemppi)
             state = states[0].copy()
@@ -92,6 +198,8 @@ def lab_reference_demo_windows(
                 "gamma": gamma,
                 "seed": int(row["seed"]),
                 "t": int(start),
+                "scene_id": row.get("scene_id"),
+                "scene_hash": row.get("scene_hash"),
             })
 
     return (
@@ -215,7 +323,10 @@ def raw_reference_rollout(
     )
     clearance = env.obstacle_clearance(dense_path)
     finite = clearance[np.isfinite(clearance)]
-    crossing = trajectory_crossing_theta(env, dense_path)
+    crossing = (
+        trajectory_crossing_theta(env, dense_path)
+        if len(env.spheres) == 1 else None
+    )
     return {
         "status": status,
         "states": states_array,

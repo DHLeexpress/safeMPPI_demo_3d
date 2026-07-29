@@ -23,8 +23,76 @@ from safe_mppi.ball_flow_task import BallFlowTask, demo_windows, load_policy
 from safe_mppi.ball_flow_theta import ThetaBallFlowTask, demo_windows_theta
 from safe_mppi.config import load_config
 from safe_mppi.expansion import ExpansionConfig, run_safe_expansion
+from safe_mppi.lab_flow_expansion import (
+    LabFlowExpansionTask,
+    load_lab_expansion_policy,
+)
+from safe_mppi.lab_clutter_expansion import (
+    LabClutterSphereExpansionTask,
+    load_lab_clutter_expansion_policy,
+)
+from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _is_lab_pretrain(manifest: dict) -> bool:
+    return (
+        manifest.get("kind") == "lab raw-command reference-flow pretraining"
+        or str(manifest.get("context_schema", "")).startswith("lab_")
+    )
+
+
+def _lab_source_demo_dir(pretrain_dir: Path, manifest: dict) -> Path:
+    source = Path(manifest["source_demo_dir"])
+    if not source.is_absolute():
+        source = pretrain_dir / source
+    if not (source / "manifest.json").is_file():
+        raise FileNotFoundError(
+            "lab pretraining manifest source_demo_dir is unavailable: "
+            f"{source}"
+        )
+    return source
+
+
+def _lab_task_config(pretrain_dir: Path, manifest: dict):
+    source = _lab_source_demo_dir(pretrain_dir, manifest)
+    return load_config(source / "resolved_config.json")
+
+
+def _lab_clutter_profile(task_config) -> bool:
+    """Classify an optional lab randomization without unsafe fall-through."""
+    randomization = task_config.raw.get("scene_randomization", {})
+    if not randomization.get("enabled", False):
+        return False
+    if (
+        randomization.get("obstacle_family") != "spheres"
+        or int(randomization.get("count", -1)) != 3
+    ):
+        raise ValueError(
+            "--lab-task-config with enabled scene_randomization requires "
+            "exactly three spheres"
+        )
+    return True
+
+
+def _record_lab_setup_failure(
+    output: Path,
+    *,
+    output_was_unsafe: bool,
+    stage: str,
+    error: Exception,
+) -> None:
+    """Persist lab setup failures without overwriting an existing run."""
+    if output_was_unsafe:
+        return
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "FAILED.json").write_text(json.dumps({
+        "status": "EXPANSION_FAILED_CLOSED",
+        "stage": str(stage),
+        "error_type": type(error).__name__,
+        "error": str(error),
+    }, indent=2) + "\n")
 
 
 @torch.no_grad()
@@ -124,6 +192,119 @@ def _pretrained_phi_calibration(
 
 
 @torch.no_grad()
+def _lab_pretrained_phi_calibration(
+    policy,
+    pretrain_dir: Path,
+    pretrain_manifest: dict,
+    task_config,
+    seed: int,
+    *,
+    flow_base_std: float,
+    paired_noised_representation: bool,
+    count: int = 50,
+) -> torch.Tensor:
+    """Scale-matched calibration for raw10 or visual lab contexts."""
+    source = _lab_source_demo_dir(pretrain_dir, pretrain_manifest)
+    contexts_np, _, metadata, demo_config = lab_reference_demo_windows(
+        source,
+        context_schema=policy.context_schema,
+    )
+    if len(contexts_np) < count:
+        raise ValueError("lab calibration requires at least 50 demo contexts")
+    task_gammas = np.asarray(task_config.data.gammas, dtype=np.float64)
+    demo_gammas = np.asarray(demo_config.data.gammas, dtype=np.float64)
+    if (
+        task_gammas.shape != demo_gammas.shape
+        or not np.allclose(
+            task_gammas, demo_gammas, rtol=0.0, atol=1.0e-7,
+        )
+    ):
+        raise ValueError("lab calibration demo gammas do not match task config")
+    metadata_gammas = np.asarray(
+        [row["gamma"] for row in metadata], dtype=np.float64,
+    )
+    rng = np.random.default_rng(int(seed) + 17001)
+    selected: list[int] = []
+    base_count, remainder = divmod(count, len(task_gammas))
+    for gamma_index, gamma in enumerate(task_gammas):
+        target = base_count + int(gamma_index < remainder)
+        available = np.flatnonzero(
+            np.isclose(metadata_gammas, gamma, rtol=0.0, atol=1.0e-7)
+        )
+        if len(available) < target:
+            raise ValueError(
+                f"lab calibration needs {target} contexts for gamma={gamma:g}"
+            )
+        selected.extend(
+            rng.choice(available, size=target, replace=False).tolist()
+        )
+    device = next(policy.parameters()).device
+    contexts = torch.from_numpy(
+        contexts_np[np.asarray(selected)]
+    ).to(device)
+    generator = torch.Generator(device=device).manual_seed(int(seed) + 17002)
+    plans, bases = [], []
+    for context in contexts:
+        plan, base = policy.sample_with_base(
+            context, 1, generator, base_std=flow_base_std,
+        )
+        plans.append(plan[0])
+        bases.append(base[0])
+    plans_tensor = torch.stack(plans)
+    bases_tensor = torch.stack(bases)
+    features = policy.embed(
+        contexts,
+        plans_tensor,
+        base=(bases_tensor if paired_noised_representation else None),
+    )
+    if (
+        features.ndim != 2
+        or len(features) != count
+        or not bool(torch.isfinite(features).all())
+    ):
+        raise ValueError(
+            "lab scale-matched calibration did not produce finite features"
+        )
+    return features
+
+
+def _learned_phi_calibration(
+    policy,
+    pretrain_dir: Path,
+    pretrain_manifest: dict,
+    task_config,
+    seed: int,
+    *,
+    lab_profile: bool,
+    flow_base_std: float,
+    paired_noised_representation: bool,
+) -> torch.Tensor:
+    """Use generator samples for every lab RBF calibration."""
+    if lab_profile:
+        return _lab_pretrained_phi_calibration(
+            policy,
+            pretrain_dir,
+            pretrain_manifest,
+            task_config,
+            seed,
+            flow_base_std=flow_base_std,
+            paired_noised_representation=paired_noised_representation,
+        )
+    if paired_noised_representation or flow_base_std != 1.0:
+        return _pretrained_phi_calibration(
+            policy,
+            pretrain_dir,
+            task_config,
+            seed,
+            flow_base_std=flow_base_std,
+            paired_noised_representation=paired_noised_representation,
+        )
+    return torch.load(
+        pretrain_dir / "calibration_features.pt", weights_only=False,
+    )
+
+
+@torch.no_grad()
 def _angular_pretrained_calibration(
     policy,
     task: BallFlowTask,
@@ -177,13 +358,22 @@ def main():
     parser.add_argument("--pretrain-dir", type=Path, default=ROOT / "outputs" / "ball_flow")
     parser.add_argument("--output", type=Path,
                         default=ROOT / "outputs" / "ball_flow" / "expansion")
+    parser.add_argument(
+        "--lab-task-config",
+        type=Path,
+        help=(
+            "optional lab expansion task override; use the randomized-sphere "
+            "config to transfer a cylinder-pretrained visual policy OOD"
+        ),
+    )
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument(
         "--first-layer-lr-scale", type=float, default=1.0,
         help=(
-            "expansion-only multiplier for the first flow Linear layer; "
-            "the representation layer and head retain --learning-rate"
+            "expansion-only multiplier for the first flow Linear layer and, "
+            "for lab visual policies, the visual encoder; the representation "
+            "layer and head retain --learning-rate"
         ),
     )
     parser.add_argument("--beta", type=float, default=None,
@@ -391,43 +581,119 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    output_was_unsafe = (
+        args.output.exists()
+        and (
+            not args.output.is_dir()
+            or any(args.output.iterdir())
+        )
+    )
 
-    policy = load_policy(args.pretrain_dir / "pretrained.pt")
     pretrain = json.loads((args.pretrain_dir / "pretrain_manifest.json").read_text())
-    task_config = load_config(args.pretrain_dir / "demo_config.json")
-    context_contract = pretrain.get("context_contract", "legacy10")
-    task_type = (
-        ThetaBallFlowTask
-        if context_contract == "local_theta12" else BallFlowTask
-    )
-    task = task_type(
-        task_config,
-        execution_z_bias_mode=args.execution_z_bias_mode,
-        tight_corridor=args.tight_corridor,
-        target_region=args.target_region,
-        verifier_mode=args.verifier_mode,
-        verifier_solver=args.verifier_solver,
-    )
+    lab_profile = _is_lab_pretrain(pretrain)
+    if lab_profile:
+        try:
+            task_config = (
+                load_config(args.lab_task_config)
+                if args.lab_task_config is not None
+                else _lab_task_config(args.pretrain_dir, pretrain)
+            )
+            randomization = task_config.raw.get("scene_randomization", {})
+            clutter_profile = _lab_clutter_profile(task_config)
+            if clutter_profile:
+                policy = load_lab_clutter_expansion_policy(
+                    args.pretrain_dir / "pretrained.pt"
+                )
+                task = LabClutterSphereExpansionTask(
+                    task_config,
+                    context_schema=policy.context_schema,
+                    execution_z_bias_mode=args.execution_z_bias_mode,
+                    tight_corridor=args.tight_corridor,
+                    verifier_mode=args.verifier_mode,
+                    verifier_solver=args.verifier_solver,
+                )
+            else:
+                policy = load_lab_expansion_policy(
+                    args.pretrain_dir / "pretrained.pt"
+                )
+                task = LabFlowExpansionTask(
+                    task_config,
+                    context_schema=policy.context_schema,
+                    execution_z_bias_mode=args.execution_z_bias_mode,
+                    tight_corridor=args.tight_corridor,
+                    verifier_mode=args.verifier_mode,
+                    verifier_solver=args.verifier_solver,
+                )
+        except Exception as error:
+            _record_lab_setup_failure(
+                args.output,
+                output_was_unsafe=output_was_unsafe,
+                stage="lab_task_setup",
+                error=error,
+            )
+            raise
+        context_contract = policy.context_schema
+    else:
+        clutter_profile = False
+        policy = load_policy(args.pretrain_dir / "pretrained.pt")
+        task_config = load_config(args.pretrain_dir / "demo_config.json")
+        context_contract = pretrain.get("context_contract", "legacy10")
+        task_type = (
+            ThetaBallFlowTask
+            if context_contract == "local_theta12" else BallFlowTask
+        )
+        task = task_type(
+            task_config,
+            execution_z_bias_mode=args.execution_z_bias_mode,
+            tight_corridor=args.tight_corridor,
+            target_region=args.target_region,
+            verifier_mode=args.verifier_mode,
+            verifier_solver=args.verifier_solver,
+        )
     if args.acquisition_feature == "task_angular":
+        if lab_profile:
+            error = ValueError(
+                "lab profile currently supports learned_phi acquisition only"
+            )
+            _record_lab_setup_failure(
+                args.output,
+                output_was_unsafe=output_was_unsafe,
+                stage="lab_rbf_calibration",
+                error=error,
+            )
+            raise error
         calibration = _angular_pretrained_calibration(
             policy, task, args.pretrain_dir, args.seed, args.flow_base_std,
         )
         if args.beta is None:
             raise ValueError("task_angular acquisition requires an explicit --beta")
-    elif args.paired_noised_representation or args.flow_base_std != 1.0:
-        calibration = _pretrained_phi_calibration(
-            policy,
-            args.pretrain_dir,
-            task_config,
-            args.seed,
-            flow_base_std=args.flow_base_std,
-            paired_noised_representation=args.paired_noised_representation,
-        )
     else:
-        calibration = torch.load(
-            args.pretrain_dir / "calibration_features.pt", weights_only=False,
-        )
-    beta = float(pretrain["beta"] if args.beta is None else args.beta)
+        try:
+            calibration = _learned_phi_calibration(
+                policy,
+                args.pretrain_dir,
+                pretrain,
+                task_config,
+                args.seed,
+                lab_profile=lab_profile,
+                flow_base_std=args.flow_base_std,
+                paired_noised_representation=(
+                    args.paired_noised_representation
+                ),
+            )
+        except Exception as error:
+            if lab_profile:
+                _record_lab_setup_failure(
+                    args.output,
+                    output_was_unsafe=output_was_unsafe,
+                    stage="lab_rbf_calibration",
+                    error=error,
+                )
+            raise
+    beta = float(
+        pretrain.get("beta", 5.0e-4)
+        if args.beta is None else args.beta
+    )
 
     config = ExpansionConfig(
         rounds=args.rounds, gammas=tuple(task_config.data.gammas),
@@ -473,22 +739,28 @@ def main():
     )
 
     events = []
-    output_was_unsafe = (
-        args.output.exists()
-        and (
-            not args.output.is_dir()
-            or any(args.output.iterdir())
-        )
-    )
-
     def callback(event):
+        event_context = event["context"].numpy()
+        if lab_profile:
+            # The 6,919-D visual volume is reproducible from robot state and
+            # scene geometry; storing it at every event would add many GB to a
+            # 50-round log without helping the mechanism visualization.
+            event_context = np.concatenate([
+                event_context[:7],
+                event_context[
+                    -(
+                        18 if clutter_profile else 6
+                    ):
+                ],
+            ]).astype(np.float32)
         events.append({
             "round": event["round"], "step": event["step"], "gamma": event["gamma"],
             "episode": event["episode"], "context_id": event["context_id"],
             "retry_batch": event["retry_batch"], "replica": event["replica"],
             "robot": np.asarray(event["state_before"]["x"], np.float32),
             "robot_after": np.asarray(event["state_after"]["x"], np.float32),
-            "context": event["context"].numpy(),
+            "context": event_context,
+            "context_compacted": bool(lab_profile),
             "base_candidates": event["base_candidates"].numpy().astype(np.float32),
             "flow_bases": (
                 event["flow_bases"].numpy().astype(np.float32)
@@ -650,6 +922,91 @@ def main():
             )
         ),
     }
+    if lab_profile:
+        for key in tuple(manifest):
+            if key.startswith("ball_"):
+                del manifest[key]
+        manifest["task_profile"] = (
+            "minhyuk_lab_random_three_sphere_visual_expansion"
+            if clutter_profile else "minhyuk_lab_ball_visual_expansion"
+        )
+        manifest["lab_conditioning"] = {
+            "context_schema": context_contract,
+            "policy_context_dim": int(policy.policy_context_dim),
+            "verifier_only_context_suffix": (
+                [
+                    "previous_applied_acceleration_3d",
+                    "previous_raw_acceleration_3d",
+                    "three_spheres_flattened_12d",
+                ]
+                if clutter_profile else [
+                    "previous_applied_acceleration_3d",
+                    "previous_raw_acceleration_3d",
+                ]
+            ),
+            "visual_encoder_and_first_flow_layer_lr_scale": float(
+                args.first_layer_lr_scale
+            ),
+            "event_context": (
+                "7-D low state plus verifier-only dynamics/scene suffix; "
+                "visual grid omitted because it is reproducible from robot "
+                "state and scene"
+            ),
+        }
+        manifest["lab_reference_dynamics"] = {
+            "policy_output": "pre_smoothing_raw_acceleration_command",
+            "governor": "ReferenceGovernor applied exactly once",
+            "deployment_accel_smooth": float(
+                task_config.safemppi.deployment_accel_smooth
+            ),
+            "max_speed": float(task_config.safemppi.max_speed),
+            "max_vertical_speed": float(
+                task_config.safemppi.max_vertical_speed
+            ),
+        }
+        manifest["lab_execution_cost"] = {
+            "variant": (
+                "configured running/terminal/control/smoothness/soft-clearance/"
+                "progress/taskspace cost on governed states"
+            ),
+            "excluded_term": "demonstration-only below-plane z bias",
+            "execution_rule": args.execution_rule,
+        }
+        manifest["lab_verifier"] = {
+            "variant": args.verifier_mode,
+            "face_solver": args.verifier_solver,
+            "artificial_face_count": (
+                80 if args.verifier_mode == "full_polytope" else 0
+            ),
+            "taskspace_bounds": task.env.bounds.tolist(),
+            "tight_corridor_flag": bool(args.tight_corridor),
+            "tight_corridor_contract": (
+                "lab configured taskspace/geofence only; canonical ball "
+                "[0,3] x [1.5,2.5] bounds are not used"
+            ),
+            "progress": (
+                "strictly positive at every plan knot along the fixed "
+                "start-goal unit axis"
+            ),
+            "unexecuted_tail_taskspace_gate": False,
+            "full_h_collision_and_green": True,
+        }
+        manifest["lab_coverage_objective"] = {
+            "successful_trajectory_selector": (
+                args.successful_trajectory_selector
+            ),
+            "above_plane_z": (
+                float(task.env.spheres[0, 2])
+                if len(task.env.spheres) == 1 else None
+            ),
+            "selector_changes_safety_label": False,
+        }
+        if clutter_profile:
+            manifest["lab_scene_randomization"] = dict(randomization)
+            manifest["lab_scene_ledger"] = list(task.scene_ledger)
+            (args.output / "task_config_resolved.json").write_text(
+                json.dumps(task_config.raw, indent=2) + "\n"
+            )
     manifest["event_log"] = args.event_log
     (args.output / "manifest.json").write_text(
         json.dumps(manifest, indent=2, allow_nan=False) + "\n")

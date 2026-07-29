@@ -137,6 +137,97 @@ once and writes `dense_positions`, governed `executed_controls`, and raw
 `controls`. The current checkpoint is not a visual-encoder model, and it is not
 a flight-safety guarantee.
 
+### Randomized clutter transfer
+
+The clutter pipeline keeps the same lab geofence and fixed start/goal, but
+removes the single-ball lower-route bias:
+
+| stage | obstacle distribution | learned input |
+|---|---|---|
+| SafeMPPI demonstrations | three randomized vertical cylinders, physical diameter `.20 m` | 3-D visual safety volume |
+| OOD expansion/evaluation | three randomized spheres, effective radius `.379 m` | the same visual safety volume |
+
+The point-mass hard radii consistently include the `.125 m` vehicle shell:
+`.225 m` for each cylinder and `.379 m` for each sphere. Both distributions
+require `.20 m` between inflated surfaces, `.10 m` from
+the taskspace wall, and `.50 m` from the fixed start and goal. Cylinder
+geometry is `[x,y,r]`, hence full-height and vertical; finite or tilted
+cylinders are not represented by this package. The same deterministic
+cylinder scene bank is used for every gamma, and train/validation splits are
+disjoint by scene hash rather than by individual trajectory. Obstacle centers
+are otherwise uniform over the admissible taskspace: centerline proximity is
+logged as a diagnostic and is never used to retain or reject a scene. Because
+a demonstration archive cannot contain an unsolved expert rollout, uniform
+layout proposals are admitted only when SafeMPPI finds one accepted trajectory
+for every configured gamma within the finite retry budget. Rejected candidates,
+attempts, and the resulting conditional-distribution contract are retained in
+the manifest.
+
+```bash
+# 50 randomized scenes x 4 gammas, accepted SafeMPPI trajectories only.
+python scripts/collect_lab_clutter_demos.py \
+  --config configs/lab_clutter_cylinders_pretrain.json \
+  --output results/lab_clutter_cylinders/demos_50pg_effective_s0
+
+python scripts/visualize_lab_clutter_demos.py \
+  --demo-dir results/lab_clutter_cylinders/demos_50pg_effective_s0 \
+  --output results/lab_clutter_cylinders/demos_50pg_effective_s0/paired_gamma_scene_overlay.png
+
+# Visual policy: [goal-position, velocity, gamma] plus the robot-centered
+# 3 x 16 x 12 x 12 occupancy/polytope/H_P volume.
+python scripts/pretrain_lab_reference_flow.py \
+  --demo-dir results/lab_clutter_cylinders/demos_50pg_effective_s0 \
+  --output results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --context-model visual_hp3d --device mps
+
+# OOD sphere expansion. Exact sphere coordinates are verifier-only metadata;
+# the policy still receives only its visual context.
+python scripts/run_ball_expansion.py \
+  --pretrain-dir results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --lab-task-config configs/lab_clutter_spheres_ood.json \
+  --output results/lab_clutter_spheres/expansion_s0 \
+  --rounds 50 \
+  --flow-base-std 1.5 \
+  --learning-rate 3e-5 \
+  --first-layer-lr-scale 0.1 \
+  --beta 5e-4 --adaptive-beta --ess-target 0.2 \
+  --parallel-episodes 12 --verifier-workers 8 \
+  --max-retry-batches 16 --successful-trajectories-per-gamma 3 \
+  --K 16 --B 4 --inner-steps 10 --batch-size 64 \
+  --replay-selector uniform --replay-rounds 3 \
+  --gp-buffer-cap 768 \
+  --gp-reference-mode sliding_success_per_gamma_current_phi \
+  --gp-sliding-row-selector trajectory_uniform \
+  --candidate-perturb-std 0 --negative-alpha 0 \
+  --archive-rule successful_executed_windows \
+  --successful-trajectory-selector lowest_episode_id \
+  --replay-acceptance execution_eligible \
+  --execution-rule min_cost \
+  --acquisition-feature learned_phi \
+  --tight-corridor --verifier-mode full_polytope \
+  --event-log full --seed 1
+
+python scripts/evaluate_ball_expansion.py \
+  --pretrain-dir results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --expansion results/lab_clutter_spheres/expansion_s0 \
+  --episodes 20 --stride 1
+```
+
+Every cylinder demo NPZ carries its exact obstacle arrays and scene SHA-256.
+Every sphere expansion context carries the three spheres only in a
+verifier-only suffix, so CPU verifier workers never depend on mutable
+task-global scene state. `deploy_sim/` is not used or modified by this
+training/expansion pipeline. The expansion command is the first explicit
+clutter-transfer recipe, not a tuned claim: no height selector, z-bias,
+fallback, or expert replay is used. RBF lengthscale calibration uses 50 plans
+sampled from the pretrained policy, and raw evaluation is always
+temperature-one and disjoint from expansion scene hashes. The
+`successful_executed_windows` archive intentionally does not enable
+`--paired-noised-representation`: one committed window joins first actions
+selected at several replanning contexts and therefore has no single
+authoritative flow-base noise. Its GP feature is the current-model
+\(\phi_s(U,c)\), rebuilt each round.
+
 ### Full 50-per-gamma pretraining archive
 
 [`configs/lab_ball_pretrain.json`](configs/lab_ball_pretrain.json) is the

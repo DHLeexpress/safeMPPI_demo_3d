@@ -1201,14 +1201,53 @@ def main():
     )
     args = parser.parse_args()
 
+    pretrain_manifest = json.loads(
+        (args.pretrain_dir / "pretrain_manifest.json").read_text()
+    )
+    if (
+        pretrain_manifest.get("kind")
+        == "lab raw-command reference-flow pretraining"
+        or str(pretrain_manifest.get("context_schema", "")).startswith("lab_")
+    ):
+        manifest = json.loads(
+            (args.expansion / "manifest.json").read_text()
+        )
+        task_config_path = args.expansion / "task_config_resolved.json"
+        from safe_mppi.lab_clutter_evaluation import (
+            evaluate_lab_clutter_expansion,
+            is_lab_clutter_evaluation_manifest,
+        )
+
+        if is_lab_clutter_evaluation_manifest(manifest):
+            if not task_config_path.is_file():
+                raise FileNotFoundError(
+                    "random-three-sphere expansion requires "
+                    "task_config_resolved.json"
+                )
+
+            evaluate_lab_clutter_expansion(
+                args,
+                load_config(task_config_path),
+                pretrain_manifest,
+                manifest,
+            )
+        else:
+            from safe_mppi.lab_flow_evaluation import evaluate_lab_expansion
+
+            source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
+            if not source_demo_dir.is_absolute():
+                source_demo_dir = args.pretrain_dir / source_demo_dir
+            config = load_config(source_demo_dir / "resolved_config.json")
+            evaluate_lab_expansion(
+                args, config, pretrain_manifest, manifest,
+            )
+        return
+
     config = load_config(args.pretrain_dir / "demo_config.json")
     env = TaskEnvironment(config)
     gammas = list(config.data.gammas)
     manifest = json.loads((args.expansion / "manifest.json").read_text())
     tight_corridor = bool(args.raw_tight_corridor)
-    pretrain_manifest = json.loads(
-        (args.pretrain_dir / "pretrain_manifest.json").read_text()
-    )
     context_contract = pretrain_manifest.get("context_contract", "legacy10")
     target_gate = manifest.get("ball_target_region_gate")
     if target_gate is None:
