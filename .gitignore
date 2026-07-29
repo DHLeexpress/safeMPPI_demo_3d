@@ -23,3 +23,22 @@ results/lab_ball_pretrain/*
 !results/lab_ball_pretrain/native_governed_w075_50pg_s0/**
 !results/lab_ball_pretrain/experiment1_one_per_gamma_s0/
 !results/lab_ball_pretrain/experiment1_one_per_gamma_s0/**
+!results/lab_ball_expansion/
+results/lab_ball_expansion/*
+!results/lab_ball_expansion/minhyuk_nozB5_r20/
+!results/lab_ball_expansion/minhyuk_nozB5_r20/**
+results/lab_ball_expansion/minhyuk_nozB5_r20/eval/
+results/lab_ball_expansion/minhyuk_nozB5_r20/checkpoint_*.pt
+!results/lab_ball_expansion/minhyuk_nozB5_r20/checkpoint_000.pt
+!results/lab_ball_expansion/minhyuk_nozB5_r20/checkpoint_020.pt
+
+# Local native-harness working directories; stable handoff GIFs/contracts are
+# copied one level above and remain trackable.
+flow_deployment/minhyuk_handoff/*_deploy_sim_*/
+flow_deployment/minhyuk_handoff/pretrained_vs_expanded_selected_successes.gif
+flow_deployment/minhyuk_handoff/pretrained_vs_expanded_selected_successes.gif.short
+flow_deployment/minhyuk_handoff/pretrained_vs_expanded_selected_successes.json
+flow_deployment/minhyuk_handoff/pretrained_vs_expanded_selected_successes_above.*
+flow_deployment/minhyuk_handoff/expanded_r20_deploy_sim_g0p3_s191481.*
+flow_deployment/minhyuk_handoff/pretrained_deploy_sim_g0p3_s95440.json
+flow_deployment/minhyuk_handoff/expanded_deploy_sim_g0p3_s192739.json
