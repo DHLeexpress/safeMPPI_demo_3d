@@ -1,9 +1,11 @@
 # Frozen Flow Policy → `deploy_sim`
 
-For the current lab-native pretrained checkpoint, runtime sampling temperature,
-online state-feedback runner, and frozen-reference exporter, use
+For the current lab-native pretrained and experimental expanded checkpoints,
+runtime sampling temperature, online state-feedback runner, frozen-reference
+exporter, and the reproducible expansion/evaluation CLI, use
 [`minhyuk_handoff/`](minhyuk_handoff/). That handoff does not use the temporary
-canonical-to-lab frame bridge documented below.
+canonical-to-lab frame bridge documented below, and it leaves `deploy_sim/`
+byte-identical.
 
 This folder is a deliberately temporary interconnection layer. It loads one
 already-trained B1 ball-flow checkpoint and calls it inside Minhyuk's unchanged

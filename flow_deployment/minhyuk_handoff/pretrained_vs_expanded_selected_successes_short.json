@@ -1,0 +1,56 @@
+{
+  "status": "LAB_FLOW_SELECTED_SUCCESS_COMPARISON_COMPLETE",
+  "scope": "Curated successful raw temperature-1 references for qualitative deployment comparison; not an unbiased evaluation.",
+  "pretrained": {
+    "checkpoint": "flow_deployment/minhyuk_handoff/pretrained_visual_hp3d.pt",
+    "sha256": "fc4d215817b56d74730a0a90f6abc57d17dbeb7626302add535760399cdeeeb4",
+    "runs": [
+      {
+        "gamma": 0.1,
+        "seed": 191111,
+        "mode": "below"
+      },
+      {
+        "gamma": 0.3,
+        "seed": 191111,
+        "mode": "below"
+      },
+      {
+        "gamma": 0.5,
+        "seed": 191111,
+        "mode": "below"
+      },
+      {
+        "gamma": 1.0,
+        "seed": 191111,
+        "mode": "below"
+      }
+    ]
+  },
+  "expanded": {
+    "checkpoint": "flow_deployment/minhyuk_handoff/expanded_visual_nozB5_r20.pt",
+    "sha256": "f7ce5e52f4705deec924545b4cba16609e3e53ce045e9d628e34ee39b6e06b00",
+    "runs": [
+      {
+        "gamma": 0.1,
+        "seed": 192739,
+        "mode": "above"
+      },
+      {
+        "gamma": 0.3,
+        "seed": 192739,
+        "mode": "above"
+      },
+      {
+        "gamma": 0.5,
+        "seed": 192739,
+        "mode": "above"
+      },
+      {
+        "gamma": 1.0,
+        "seed": 192739,
+        "mode": "above"
+      }
+    ]
+  }
+}
