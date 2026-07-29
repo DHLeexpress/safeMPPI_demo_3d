@@ -1413,6 +1413,7 @@ def _run_safe_expansion_impl(
     config: ExpansionConfig = ExpansionConfig(),
     calibration_features: torch.Tensor | None = None,
     event_callback: Callable[[dict[str, Any]], None] | None = None,
+    round_callback: Callable[[dict[str, Any]], None] | None = None,
     verifier: _OrderedVerifier,
 ) -> dict[str, Any]:
     """Run expert-free B1 expansion; task callbacks supply every task-specific fact."""
@@ -2697,6 +2698,8 @@ def _run_safe_expansion_impl(
             **update,
         }
         round_rows.append(row)
+        if round_callback is not None:
+            round_callback(row)
         torch.save({"round": round_i, "model": policy.state_dict(),
                     "config": asdict(config), "pretrained": False},
                    output_dir / f"checkpoint_{round_i:03d}.pt")
@@ -3129,6 +3132,7 @@ def run_safe_expansion(
     config: ExpansionConfig = ExpansionConfig(),
     calibration_features: torch.Tensor | None = None,
     event_callback: Callable[[dict[str, Any]], None] | None = None,
+    round_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run expansion with ordered CPU-parallel verification when requested."""
     config.validate()
@@ -3140,5 +3144,6 @@ def run_safe_expansion(
             config=config,
             calibration_features=calibration_features,
             event_callback=event_callback,
+            round_callback=round_callback,
             verifier=verifier,
         )

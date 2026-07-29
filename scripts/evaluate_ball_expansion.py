@@ -1183,10 +1183,30 @@ def main():
     parser.add_argument("--probe-samples", type=int, default=16)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--seed", type=int, default=91000)
+    parser.add_argument(
+        "--fixed-scene-rollouts",
+        type=int,
+        default=10,
+        help=(
+            "independent raw temperature-1 rollouts per gamma/checkpoint in "
+            "one preregistered clutter scene (separate from randomized metrics)"
+        ),
+    )
+    parser.add_argument(
+        "--fixed-scene-seed",
+        type=int,
+        help=(
+            "optional preregistered clutter-scene seed; default is a fixed "
+            "offset from --seed"
+        ),
+    )
     parser.add_argument("--video-gamma", type=float, default=0.3)
     parser.add_argument(
         "--video-rounds", type=int, nargs="+",
-        help="mechanism-video rounds (default: every expansion round)",
+        help=(
+            "displayed evaluation checkpoints; clutter evaluation permits r0 "
+            "for raw galleries and uses positive rounds for mechanism video"
+        ),
     )
     parser.add_argument("--screening-only", action="store_true",
                         help="write raw metrics/curves/gallery but skip event-heavy diagnostics")
@@ -1212,15 +1232,35 @@ def main():
         manifest = json.loads(
             (args.expansion / "manifest.json").read_text()
         )
-        from safe_mppi.lab_flow_evaluation import evaluate_lab_expansion
-
-        source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
-        if not source_demo_dir.is_absolute():
-            source_demo_dir = args.pretrain_dir / source_demo_dir
-        config = load_config(source_demo_dir / "resolved_config.json")
-        evaluate_lab_expansion(
-            args, config, pretrain_manifest, manifest,
+        task_config_path = args.expansion / "task_config_resolved.json"
+        from safe_mppi.lab_clutter_evaluation import (
+            evaluate_lab_clutter_expansion,
+            is_lab_clutter_evaluation_manifest,
         )
+
+        if is_lab_clutter_evaluation_manifest(manifest):
+            if not task_config_path.is_file():
+                raise FileNotFoundError(
+                    "random-three-sphere expansion requires "
+                    "task_config_resolved.json"
+                )
+
+            evaluate_lab_clutter_expansion(
+                args,
+                load_config(task_config_path),
+                pretrain_manifest,
+                manifest,
+            )
+        else:
+            from safe_mppi.lab_flow_evaluation import evaluate_lab_expansion
+
+            source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
+            if not source_demo_dir.is_absolute():
+                source_demo_dir = args.pretrain_dir / source_demo_dir
+            config = load_config(source_demo_dir / "resolved_config.json")
+            evaluate_lab_expansion(
+                args, config, pretrain_manifest, manifest,
+            )
         return
 
     config = load_config(args.pretrain_dir / "demo_config.json")

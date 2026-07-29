@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -37,10 +38,189 @@ from safe_mppi.lab_visual_flow import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def source_archive_digest(run_dir: str | Path) -> dict:
+    """Hash the manifest, resolved config, and every manifest-declared run."""
+    run_dir = Path(run_dir).resolve()
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    relative_names = {"manifest.json", "resolved_config.json"}
+    relative_names.update(
+        str(row["file"])
+        for row in manifest.get("runs", ())
+        if row.get("file") is not None
+    )
+
+    digest = hashlib.sha256()
+    digest.update(b"safe_mppi_declared_demo_archive_v1\0")
+    for name in sorted(relative_names):
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"archive file must remain under demo dir: {name}")
+        path = (run_dir / relative).resolve()
+        try:
+            path.relative_to(run_dir)
+        except ValueError as error:
+            raise ValueError(
+                f"archive file must remain under demo dir: {name}"
+            ) from error
+        if not path.is_file():
+            raise FileNotFoundError(f"archive provenance file missing: {path}")
+        encoded_name = relative.as_posix().encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(path.stat().st_size.to_bytes(8, "big"))
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return {
+        "algorithm": "sha256",
+        "schema": "safe_mppi_declared_demo_archive_v1",
+        "sha256": digest.hexdigest(),
+        "file_count": len(relative_names),
+    }
+
+
+def split_provenance(
+    metadata: list[dict],
+    training_ids: torch.Tensor,
+    validation_ids: torch.Tensor,
+    seed: int,
+) -> dict:
+    """Return reproducible split metadata for randomized and legacy archives."""
+    all_scene_hashes = sorted({
+        str(row["scene_hash"])
+        for row in metadata
+        if row.get("scene_hash") is not None
+    })
+
+    def selected_scene_hashes(indices: torch.Tensor) -> list[str]:
+        return sorted({
+            str(metadata[int(index)]["scene_hash"])
+            for index in indices.tolist()
+            if metadata[int(index)].get("scene_hash") is not None
+        })
+
+    return {
+        "split_seed": int(seed),
+        "split_unit": (
+            "scene_sha256_across_all_gamma"
+            if all_scene_hashes else "gamma_and_trajectory_seed"
+        ),
+        "randomized_scene_count": len(all_scene_hashes),
+        "training_scene_hashes": selected_scene_hashes(training_ids),
+        "validation_scene_hashes": selected_scene_hashes(validation_ids),
+    }
+
+
+@torch.no_grad()
+def pretrained_sample_calibration(
+    policy,
+    contexts: torch.Tensor,
+    metadata: list[dict],
+    training_ids: torch.Tensor,
+    *,
+    seed: int,
+    count: int = 50,
+) -> tuple[torch.Tensor, list[int]]:
+    """Embed 50 pretrained-policy samples on gamma-balanced train contexts."""
+    if count < 2:
+        raise ValueError("RBF calibration requires at least two samples")
+    training = np.asarray(training_ids.tolist(), dtype=np.int64)
+    rng = np.random.default_rng(int(seed) + 1)
+    gammas = sorted({
+        float(metadata[int(index)]["gamma"]) for index in training
+    })
+    selected: list[int] = []
+    base_count, remainder = divmod(int(count), len(gammas))
+    for gamma_index, gamma in enumerate(gammas):
+        target = base_count + int(gamma_index < remainder)
+        available = training[[
+            np.isclose(
+                float(metadata[int(index)]["gamma"]),
+                gamma,
+                rtol=0.0,
+                atol=1.0e-7,
+            )
+            for index in training
+        ]]
+        if len(available) < target:
+            raise ValueError(
+                f"RBF calibration needs {target} training contexts "
+                f"for gamma={gamma:g}, found {len(available)}"
+            )
+        selected.extend(
+            rng.choice(available, size=target, replace=False).tolist()
+        )
+    selected_contexts = contexts[torch.tensor(selected, dtype=torch.long)]
+    generator = torch.Generator().manual_seed(int(seed) + 2)
+    plans, bases = [], []
+    for context in selected_contexts:
+        plan, base = policy.sample_with_base(
+            context, 1, generator, base_std=1.0,
+        )
+        plans.append(plan[0])
+        bases.append(base[0])
+    features = policy.embed(
+        selected_contexts,
+        torch.stack(plans),
+        base=torch.stack(bases),
+    )
+    if (
+        features.shape[0] != count
+        or not bool(torch.isfinite(features).all())
+    ):
+        raise RuntimeError(
+            "pretrained-policy RBF calibration produced invalid features"
+        )
+    return features.cpu(), selected
+
+
 def trajectory_split(metadata: list[dict], seed: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Disjoint train/validation split over whole demonstration trajectories."""
-    groups = sorted({(float(row["gamma"]), int(row["seed"])) for row in metadata})
+    randomized_scenes = {
+        str(row["scene_hash"])
+        for row in metadata
+        if row.get("scene_hash") is not None
+    }
     generator = np.random.default_rng(seed)
+    if randomized_scenes:
+        if any(row.get("scene_hash") is None for row in metadata):
+            raise ValueError(
+                "randomized archive mixes rows with and without scene hashes"
+            )
+        scenes = sorted(randomized_scenes)
+        if len(scenes) < 2:
+            raise ValueError(
+                "randomized pretraining requires at least two distinct scenes"
+            )
+        count = max(1, int(round(0.1 * len(scenes))))
+        chosen = generator.choice(len(scenes), size=count, replace=False)
+        validation_scenes = {scenes[int(index)] for index in chosen}
+        validation = [
+            index for index, row in enumerate(metadata)
+            if str(row.get("scene_hash")) in validation_scenes
+        ]
+        training = [
+            index for index, row in enumerate(metadata)
+            if str(row.get("scene_hash")) not in validation_scenes
+        ]
+        if not training or not validation:
+            raise ValueError(
+                "scene-disjoint split produced an empty train or validation set"
+            )
+        return torch.tensor(training), torch.tensor(validation)
+
+    groups = sorted({
+        (
+            float(row["gamma"]),
+            str(
+                row.get("scene_id")
+                if row.get("scene_id") is not None
+                else row["seed"]
+            ),
+        )
+        for row in metadata
+    })
     validation_groups = set()
     for gamma in sorted({group[0] for group in groups}):
         candidates = [group for group in groups if group[0] == gamma]
@@ -49,11 +229,25 @@ def trajectory_split(metadata: list[dict], seed: int) -> tuple[torch.Tensor, tor
         validation_groups.update(candidates[int(index)] for index in chosen)
     validation = [
         index for index, row in enumerate(metadata)
-        if (float(row["gamma"]), int(row["seed"])) in validation_groups
+        if (
+            float(row["gamma"]),
+            str(
+                row.get("scene_id")
+                if row.get("scene_id") is not None
+                else row["seed"]
+            ),
+        ) in validation_groups
     ]
     training = [
         index for index, row in enumerate(metadata)
-        if (float(row["gamma"]), int(row["seed"])) not in validation_groups
+        if (
+            float(row["gamma"]),
+            str(
+                row.get("scene_id")
+                if row.get("scene_id") is not None
+                else row["seed"]
+            ),
+        ) not in validation_groups
     ]
     return torch.tensor(training), torch.tensor(validation)
 
@@ -151,12 +345,52 @@ def train(
 
 
 def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[dict]]:
+    scene_randomization = config.raw.get("scene_randomization", {})
+    clutter_scenes = None
+    if scene_randomization.get("enabled"):
+        if scene_randomization.get("obstacle_family") != "vertical_cylinders":
+            raise ValueError(
+                "pretraining qualification supports randomized cylinders only"
+            )
+        from safe_mppi.lab_clutter import (
+            config_for_scene,
+            cylinder_scene_bank,
+        )
+
+        clutter_scenes = cylinder_scene_bank(
+            episodes,
+            seed=seed0,
+            bounds=config.taskspace.bounds,
+            start=np.asarray(config.taskspace.start),
+            goal=np.asarray(config.taskspace.goal),
+            cylinder_count=int(scene_randomization["count"]),
+            cylinder_radius_m=float(scene_randomization["radius_m"]),
+            min_surface_gap_m=float(
+                scene_randomization["minimum_obstacle_surface_gap_m"]
+            ),
+            start_surface_gap_m=float(
+                scene_randomization["minimum_start_surface_clearance_m"]
+            ),
+            goal_surface_gap_m=float(
+                scene_randomization["minimum_goal_surface_clearance_m"]
+            ),
+            boundary_surface_gap_m=float(
+                scene_randomization[
+                    "minimum_taskspace_wall_surface_clearance_m"
+                ]
+            ),
+        )
+    randomized_clutter = clutter_scenes is not None
     rows = []
     for gamma in config.data.gammas:
         for episode in range(episodes):
+            rollout_config = (
+                config_for_scene(config, clutter_scenes[episode])
+                if clutter_scenes is not None else config
+            )
             result = raw_reference_rollout(
                 policy,
-                config,
+                rollout_config,
                 float(gamma),
                 seed0 + 37 * episode,
             )
@@ -164,6 +398,14 @@ def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[d
                 "gamma": float(gamma),
                 "episode": int(episode),
                 "seed": int(seed0 + 37 * episode),
+                "scene_id": (
+                    clutter_scenes[episode].scene_id
+                    if clutter_scenes is not None else None
+                ),
+                "scene_hash": (
+                    clutter_scenes[episode].scene_hash
+                    if clutter_scenes is not None else None
+                ),
                 "status": result["status"],
                 "mode": result["mode"],
                 "window_validity": float(result["window_validity"]),
@@ -178,10 +420,13 @@ def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[d
         modes = {
             row["mode"] for row in successes if row["mode"] in LAB_ROUTE_MODES
         }
-        counts = {
-            mode: sum(row["mode"] == mode for row in successes)
-            for mode in LAB_ROUTE_MODES
-        }
+        counts = (
+            None
+            if randomized_clutter else {
+                mode: sum(row["mode"] == mode for row in successes)
+                for mode in LAB_ROUTE_MODES
+            }
+        )
         summaries.append({
             "gamma": float(gamma),
             "episodes": len(group),
@@ -192,7 +437,11 @@ def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[d
             "window_validity": float(np.mean([
                 row["window_validity"] for row in group
             ])),
-            "route_coverage": len(modes) / len(LAB_ROUTE_MODES),
+            "route_coverage": (
+                None
+                if randomized_clutter
+                else len(modes) / len(LAB_ROUTE_MODES)
+            ),
             "route_counts": counts,
             "successful_min_clearance_m": (
                 float(np.mean([
@@ -230,11 +479,15 @@ def plot_results(history, summaries, output: Path) -> None:
 
     x = np.arange(len(summaries))
     width = 0.2
-    metrics = (
+    metrics = [
         ("SR", "SR"),
         ("CR", "CR"),
         ("window_validity", "Window validity"),
-        ("route_coverage", "Route coverage"),
+    ]
+    metrics.append(
+        ("OOB", "OOB")
+        if all(row["route_coverage"] is None for row in summaries)
+        else ("route_coverage", "Route coverage")
     )
     for offset, (key, label) in enumerate(metrics):
         axes[1].bar(
@@ -304,6 +557,7 @@ def main():
         args.demo_dir,
         context_schema=context_schema,
     )
+    archive_digest = source_archive_digest(args.demo_dir)
     expected_context_dim = (
         LAB_VISUAL_PACKED_DIM
         if args.context_model == "visual_hp3d"
@@ -362,16 +616,15 @@ def main():
         recovery_path=args.output / ".best_training_state.pt",
     )
 
-    generator = torch.Generator().manual_seed(args.seed + 1)
-    calibration_ids = torch.randperm(
-        len(contexts), generator=generator,
-    )[:50]
-    calibration = policy.embed(
-        contexts[calibration_ids].to(device),
-        plans[calibration_ids].to(device),
-    ).cpu()
-    lengthscale = mean_pairwise_lengthscale(calibration)
     policy.cpu()
+    calibration, calibration_ids = pretrained_sample_calibration(
+        policy,
+        contexts,
+        metadata,
+        training_ids,
+        seed=args.seed,
+    )
+    lengthscale = mean_pairwise_lengthscale(calibration)
     rows, summaries = audit(
         policy,
         config,
@@ -417,9 +670,16 @@ def main():
     }
     torch.save(checkpoint, args.output / "pretrained.pt")
     torch.save(calibration, args.output / "calibration_features.pt")
+    split_details = split_provenance(
+        metadata,
+        training_ids,
+        validation_ids,
+        args.seed,
+    )
     manifest = {
         "kind": "lab raw-command reference-flow pretraining",
         "source_demo_dir": str(args.demo_dir.resolve()),
+        "source_archive_digest": archive_digest,
         "context_model": args.context_model,
         "context_schema": context_schema,
         "external_context_dim": expected_context_dim,
@@ -442,7 +702,21 @@ def main():
         "selected_epoch": best_epoch,
         "selected_valid_loss": best_validation,
         "checkpoint_selection": "minimum_trajectory_disjoint_validation_loss",
+        **split_details,
         "rbf_lengthscale": lengthscale,
+        "rbf_calibration": {
+            "source": "pretrained_policy_samples_on_training_contexts",
+            "count": len(calibration_ids),
+            "gamma_balanced": True,
+            "flow_time": 0.9,
+            "paired_base_noise": True,
+            "context_indices": calibration_ids,
+            "scene_hashes": sorted({
+                str(metadata[index]["scene_hash"])
+                for index in calibration_ids
+                if metadata[index].get("scene_hash") is not None
+            }),
+        },
         "raw_temperature": 1.0,
         "raw_audit_episodes_per_gamma": args.audit_episodes,
         "raw_audit_seed": args.audit_seed,

@@ -128,6 +128,39 @@ def test_resolve_committed_success_maps_authoritative_window_starts():
     assert empty.committed_window_context_ids == ()
 
 
+def test_resolve_committed_success_accepts_exact_success_only_event_log():
+    manifest, events = _fixture()
+    manifest["event_log"] = "committed_success"
+    success_events = [
+        event for event in events if int(event["episode"]) in {0, 1}
+    ]
+
+    cells = resolve_committed_success(manifest, success_events)
+
+    assert cells[(1, 0.1)].committed_episode_id == 0
+    assert {episode.episode for episode in cells[(1, 0.1)].episodes} == {0, 1}
+    assert cells[(1, 0.3)].episodes == ()
+
+
+def test_resolve_committed_success_rejects_missing_or_failed_trace():
+    manifest, events = _fixture()
+    manifest["event_log"] = "committed_success"
+    success_events = [
+        event for event in events if int(event["episode"]) in {0, 1}
+    ]
+    missing = [
+        event for event in success_events if int(event["episode"]) != 1
+    ]
+    with pytest.raises(ValueError, match="success count mismatch"):
+        resolve_committed_success(manifest, missing)
+
+    with_failure = success_events + [
+        event for event in events if int(event["episode"]) == 2
+    ]
+    with pytest.raises(ValueError, match="non-SUCCESS trace"):
+        resolve_committed_success(manifest, with_failure)
+
+
 def test_resolve_committed_success_maps_multiple_committed_trajectories():
     manifest, events = _fixture()
     detail = manifest["rounds"][0]["successful_executed_commit_by_gamma"]["0.1"]

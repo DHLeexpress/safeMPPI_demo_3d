@@ -1,0 +1,42 @@
+{
+  "schema": "lab_spherical_hp3d_v1",
+  "external_context_dim": 6919,
+  "architecture": {
+    "kind": "lab_spherical_hp3d_v1",
+    "plan_shape": [
+      10,
+      3
+    ],
+    "hidden": 48,
+    "representation_dim": 32,
+    "grid_token_dim": 32,
+    "grid_shape": [
+      3,
+      16,
+      12,
+      12
+    ],
+    "grid_channels": [
+      "occupancy",
+      "nominal_polytope_mask",
+      "clipped_hp"
+    ],
+    "grid_frame": "robot_centered_world_spherical_equal_area",
+    "control_limit": 0.3,
+    "nfe": 16,
+    "trunk_depth": 2,
+    "time_features": "raw1"
+  },
+  "pretrained": {
+    "policy_output": "pre_smoothing_raw_acceleration_command",
+    "stateful_governor_in_policy": false,
+    "deployment_smoothing_and_tracking": "external"
+  },
+  "expanded": {
+    "policy_output": "pre_smoothing_raw_acceleration_command",
+    "stateful_governor_in_policy": false,
+    "deployment_smoothing_and_tracking": "external",
+    "scope": "experimental_safe_flow_expansion_checkpoint",
+    "deployment_safety_qualified": false
+  }
+}

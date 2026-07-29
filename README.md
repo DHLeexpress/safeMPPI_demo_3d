@@ -21,6 +21,7 @@ This repository intentionally contains one sampling implementation:
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
 | Frozen flow policy → unchanged offline deployment loop | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
 | Lab-native pretrained flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
+| Random-cylinder pretraining → random-sphere expansion handoff | experimental | [`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -140,6 +141,153 @@ frozen export applies `ReferenceGovernor` exactly once and writes
 `dense_positions`, governed `executed_controls`, and raw `controls`. The
 visual map input is not an onboard-perception claim, and neither checkpoint is
 a flight-safety guarantee.
+
+### Randomized clutter transfer
+
+The clutter pipeline keeps the same lab geofence and fixed start/goal, but
+removes the single-ball lower-route bias:
+
+| stage | obstacle distribution | learned input |
+|---|---|---|
+| SafeMPPI demonstrations | three randomized vertical cylinders, physical diameter `.20 m` | 3-D visual safety volume |
+| OOD expansion/evaluation | three randomized spheres, effective radius `.379 m` | the same visual safety volume |
+
+The point-mass hard radii consistently include the `.125 m` vehicle shell:
+`.225 m` for each cylinder and `.379 m` for each sphere. Both distributions
+require `.20 m` between inflated surfaces, `.10 m` from
+the taskspace wall, and `.50 m` from the fixed start and goal. Cylinder
+geometry is `[x,y,r]`, hence full-height and vertical; finite or tilted
+cylinders are not represented by this package. The same deterministic
+cylinder scene bank is used for every gamma, and train/validation splits are
+disjoint by scene hash rather than by individual trajectory. Obstacle centers
+are otherwise uniform over the admissible taskspace: centerline proximity is
+logged as a diagnostic and is never used to retain or reject a scene. Because
+a demonstration archive cannot contain an unsolved expert rollout, uniform
+layout proposals are admitted only when SafeMPPI finds one accepted trajectory
+for every configured gamma within the finite retry budget. Rejected candidates,
+attempts, and the resulting conditional-distribution contract are retained in
+the manifest.
+
+```bash
+# 50 randomized scenes x 4 gammas, accepted SafeMPPI trajectories only.
+python scripts/collect_lab_clutter_demos.py \
+  --config configs/lab_clutter_cylinders_pretrain.json \
+  --output results/lab_clutter_cylinders/demos_50pg_effective_s0
+
+python scripts/visualize_lab_clutter_demos.py \
+  --demo-dir results/lab_clutter_cylinders/demos_50pg_effective_s0 \
+  --output results/lab_clutter_cylinders/demos_50pg_effective_s0/paired_gamma_scene_overlay.png
+
+# Visual policy: [goal-position, velocity, gamma] plus the robot-centered
+# 3 x 16 x 12 x 12 occupancy/polytope/H_P volume.
+python scripts/pretrain_lab_reference_flow.py \
+  --demo-dir results/lab_clutter_cylinders/demos_50pg_effective_s0 \
+  --output results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --context-model visual_hp3d --device mps
+
+# OOD sphere expansion. Exact sphere coordinates are verifier-only metadata;
+# the policy still receives only its visual context.
+python scripts/run_ball_expansion.py \
+  --pretrain-dir results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --lab-task-config configs/lab_clutter_spheres_ood.json \
+  --output results/lab_clutter_spheres/expansion_s0 \
+  --rounds 50 \
+  --flow-base-std 1.5 \
+  --learning-rate 3e-5 \
+  --first-layer-lr-scale 0.1 \
+  --beta 5e-4 --adaptive-beta --ess-target 0.2 \
+  --parallel-episodes 12 --verifier-workers 8 \
+  --max-retry-batches 16 --successful-trajectories-per-gamma 3 \
+  --K 16 --B 4 --inner-steps 10 --batch-size 64 \
+  --replay-selector uniform --replay-rounds 3 \
+  --gp-buffer-cap 768 \
+  --gp-reference-mode sliding_success_per_gamma_current_phi \
+  --gp-sliding-row-selector trajectory_uniform \
+  --candidate-perturb-std 0 --negative-alpha 0 \
+  --archive-rule successful_executed_windows \
+  --successful-trajectory-selector lowest_episode_id \
+  --replay-acceptance execution_eligible \
+  --execution-rule min_cost \
+  --acquisition-feature learned_phi \
+  --tight-corridor --verifier-mode full_polytope \
+  --event-log committed_success --seed 1
+
+python scripts/evaluate_ball_expansion.py \
+  --pretrain-dir results/lab_clutter_cylinders/pretrain_visual_hp3d_effective_h48p32_s0 \
+  --expansion results/lab_clutter_spheres/expansion_s0 \
+  --episodes 20 --stride 10 \
+  --fixed-scene-rollouts 10 \
+  --video-gamma 0.5 \
+  --video-rounds 0 1 10 20 30 40 50
+```
+
+Every cylinder demo NPZ carries its exact obstacle arrays and scene SHA-256.
+Every sphere expansion context carries the three spheres only in a
+verifier-only suffix, so CPU verifier workers never depend on mutable
+task-global scene state. `deploy_sim/` is not used or modified by this
+training/expansion pipeline. The expansion command is the first explicit
+clutter-transfer recipe, not a tuned claim: no height selector, z-bias,
+fallback, or expert replay is used. RBF lengthscale calibration uses 50 plans
+sampled from the pretrained policy, and raw evaluation is always
+temperature-one and disjoint from expansion scene hashes. The
+`successful_executed_windows` archive intentionally does not enable
+`--paired-noised-representation`: one committed window joins first actions
+selected at several replanning contexts and therefore has no single
+authoritative flow-base noise. Its GP feature is the current-model
+\(\phi_s(U,c)\), rebuilt each round.
+
+The evaluator keeps two questions separate. `raw_eval.json` measures
+temperature-one SR/CR/OOB/window validity on a disjoint randomized-sphere
+scene bank. `fixed_scene_raw_eval.json` repeats independent temperature-one
+rollouts in one preregistered three-sphere scene shared by all checkpoints.
+Only the latter reports successful-path spread (mean pairwise RMS distance
+after arc-length resampling); path distance across different randomized
+scenes or different gamma conditions is deliberately undefined. The fixed
+scene gallery is therefore a qualitative multimodality view, not a substitute
+for randomized-domain metrics. `mechanism.mp4` and
+`mechanism_multiview.{png,pdf}` use the actual event log: each committed
+success is shown in its own randomized scene, together with \(K\) candidates,
+the selected \(B\), verifier positives, the executed first step, and the exact
+window starts admitted to Adam. Trajectories from different gathering scenes
+are never overlaid as if they were modes of one conditional distribution.
+`--event-log committed_success` changes only retained visualization evidence:
+it keeps every terminal-success trace (including the authoritative committed
+subset) and prunes failed/NVP traces after each round. Checkpoints, query/GP
+archives, replay, and optimization are unchanged.
+
+#### Canonical 50-round clutter result
+
+The authenticated run used 50 accepted randomized cylinder scenes per gamma
+for pretraining, then 50 expansion rounds in randomized three-sphere scenes.
+Every round committed exactly three successful trajectories per gamma (600
+total). Among the preregistered positive checkpoints
+`{1,10,20,30,40,50}`, round 10 maximized pooled SR on the disjoint randomized
+temperature-one evaluation; window validity and earliest round were the fixed
+tie-breakers. The fixed-scene result was not used to choose the checkpoint.
+
+| checkpoint | pooled SR | CR | OOB | window validity | successful clearance |
+|---|---:|---:|---:|---:|---:|
+| pretrained r0 | .5875 | .1750 | .2375 | .9213 | .2267 m |
+| selected r10 | **.6250** | .3125 | **.0625** | .9131 | .2772 m |
+| final r50 | .5375 | .3500 | .1125 | .9130 | **.3520 m** |
+
+This is a non-monotone experimental result, not a solved safety claim: r10
+improves SR and OOB over r0 but raises collision rate, and r20 temporarily
+collapses. On the preregistered fixed three-sphere scene, r10 reaches
+`.60/1.00/.60/.70` SR for gamma `.1/.3/.5/1`; successful path spread is
+`.212/.189/.167/.149 m`. The repeated raw rollouts visibly differ, but they
+remain variations within a limited route family rather than evidence of four
+categorical homotopies.
+
+The portable pretrained and selected expanded checkpoints, exact known-map
+configuration, hashes, deterministic successful seeds, deployment commands,
+and evidence are in
+[`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/).
+See the
+[`fixed-scene raw gallery`](flow_deployment/minhyuk_clutter_handoff/evidence/fixed_scene_raw_gallery.png),
+[`mechanism video`](flow_deployment/minhyuk_clutter_handoff/evidence/mechanism.mp4),
+and
+[`randomized-domain curves`](flow_deployment/minhyuk_clutter_handoff/evidence/randomized_raw_curves.pdf).
 
 ### Full 50-per-gamma pretraining archive
 

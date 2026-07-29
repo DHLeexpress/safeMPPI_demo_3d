@@ -794,6 +794,35 @@ def test_standalone_expansion_smoke(tmp_path):
     assert (tmp_path / "checkpoint_001.pt").is_file()
 
 
+def test_round_callback_observes_resolved_row_after_step_events(tmp_path):
+    torch.manual_seed(0)
+    policy = ConditionalFlowMLP(1, (2,), hidden=16, representation_dim=8)
+    events = []
+    rows = []
+
+    def resolved(row):
+        assert events
+        assert row["round"] == 1
+        assert row["success"] == 1
+        rows.append(row)
+
+    run_safe_expansion(
+        policy,
+        _OneStepTask(),
+        tmp_path,
+        config=ExpansionConfig(
+            rounds=1, gammas=(0.1,), parallel_episodes=1, max_steps=1,
+            K=4, B=2, batch_size=2, gp_buffer_cap=8,
+        ),
+        calibration_features=torch.randn(12, 8),
+        event_callback=events.append,
+        round_callback=resolved,
+    )
+
+    assert len(rows) == 1
+    assert events[-1]["status"] == "SUCCESS"
+
+
 def test_executed_only_archive_keeps_one_of_b_queries(tmp_path):
     torch.manual_seed(0)
     policy = ConditionalFlowMLP(1, (2,), hidden=16, representation_dim=8)
