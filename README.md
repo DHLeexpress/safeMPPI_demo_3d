@@ -126,15 +126,19 @@ The files the deployment team should inspect are:
 | offline deployment vehicle | [`deploy_sim/vehicle.py`](deploy_sim/vehicle.py) |
 | frozen-reference schema | [`flow_deployment/lab_reference_contract.py`](flow_deployment/lab_reference_contract.py) |
 | pretrained policy handoff | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
+| lab Safe Flow Expansion adapter | [`safe_mppi/lab_flow_expansion.py`](safe_mppi/lab_flow_expansion.py) |
+| lab raw temperature-1 evaluator | [`safe_mppi/lab_flow_evaluation.py`](safe_mppi/lab_flow_evaluation.py) |
 | online deployment runner | [`scripts/run_lab_flow_deployment.py`](scripts/run_lab_flow_deployment.py) |
 | frozen trajectory exporter | [`scripts/export_lab_flow_frozen_references.py`](scripts/export_lab_flow_frozen_references.py) |
 
-The current lab-native checkpoint predicts raw `H=10` accelerations from the
-10-D context \([g-p,v,b_{\rm near}-p,\gamma]\). It applies no internal
-governor. Online deployment rebuilds the context from the current measured
-position at every replan; frozen export applies `ReferenceGovernor` exactly
-once and writes `dense_positions`, governed `executed_controls`, and raw
-`controls`. The current checkpoint is not a visual-encoder model, and it is not
+The current lab-native visual checkpoint predicts raw `H=10` accelerations
+from \([g-p,v,\gamma]\) plus a robot-centered
+\(3\times16\times12\times12\) occupancy/nominal-polytope/\(H_P\) grid. It
+applies no internal governor. Online deployment rebuilds the visual context
+from the current measured position and known configured map at every replan;
+frozen export applies `ReferenceGovernor` exactly once and writes
+`dense_positions`, governed `executed_controls`, and raw `controls`. The
+visual map input is not an onboard-perception claim, and neither checkpoint is
 a flight-safety guarantee.
 
 ### Full 50-per-gamma pretraining archive
@@ -263,10 +267,12 @@ it would silently replay governed states as if raw commands had been applied.
 Two limitations are intentionally explicit. First, an all-full-H-infeasible
 sample bank can still yield a one-step-admissible fallback; this is counted in
 the attempt diagnostics and is not a full-H verifier guarantee. Second,
-the lab flow pretraining/evaluation/expansion runner is the next stage; only its
-governor-aware data/context adapter is committed here. Multiple-ball policy
-conditioning is also not implemented yet; the present context represents one
-sphere.
+the committed lab expansion is a single-sphere experimental pipeline, not an
+online flight-safety layer. The current expanded r20 checkpoint discovers an
+above route but loses the pretrained below mode and reduces raw task success;
+the exact audit and reproduction CLI are in
+[`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/).
+Multiple-ball policy conditioning is not implemented in this handoff.
 
 A `deploy_sim` seed-0 smoke run is a stricter, separate check of the deployment
 layer. Note that the earlier version of this paragraph reported gamma `.3/.5/1`

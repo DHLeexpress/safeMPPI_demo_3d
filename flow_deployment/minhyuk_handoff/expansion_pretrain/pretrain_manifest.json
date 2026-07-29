@@ -1,0 +1,2102 @@
+{
+  "kind": "lab raw-command reference-flow pretraining",
+  "source_demo_dir": "../../../results/lab_ball_pretrain/native_governed_w075_50pg_s0",
+  "context_model": "visual_hp3d",
+  "context_schema": "lab_spherical_hp3d_v1",
+  "external_context_dim": 6919,
+  "encoded_context_dim": 39,
+  "policy_output": "pre_smoothing_raw_acceleration_command",
+  "stateful_governor_in_policy": false,
+  "deployment_smoothing_and_tracking": "external",
+  "windows": 13662,
+  "training_windows": 12307,
+  "validation_windows": 1355,
+  "epochs": 500,
+  "batch_size": 32,
+  "learning_rate": 0.0003,
+  "final_train_loss": 0.3096086952206376,
+  "final_valid_loss": 0.33270812034606934,
+  "selected_epoch": 466,
+  "selected_valid_loss": 0.29075050354003906,
+  "checkpoint_selection": "minimum_trajectory_disjoint_validation_loss",
+  "rbf_lengthscale": 0.13246619879643795,
+  "raw_temperature": 1.0,
+  "raw_audit_episodes_per_gamma": 50,
+  "raw_audit_seed": 91000,
+  "raw_audit_summary": [
+    {
+      "gamma": 0.1,
+      "episodes": 50,
+      "SR": 0.54,
+      "CR": 0.24,
+      "OOB": 0.22,
+      "timeout": 0.0,
+      "window_validity": 0.7495181621376866,
+      "route_coverage": 0.75,
+      "route_counts": {
+        "below": 21,
+        "above": 0,
+        "left": 5,
+        "right": 1
+      },
+      "successful_min_clearance_m": 0.050687679725063904,
+      "successful_time_to_goal_s": 7.844444444444444
+    },
+    {
+      "gamma": 0.3,
+      "episodes": 50,
+      "SR": 0.56,
+      "CR": 0.26,
+      "OOB": 0.18,
+      "timeout": 0.0,
+      "window_validity": 0.8942463103884897,
+      "route_coverage": 0.75,
+      "route_counts": {
+        "below": 23,
+        "above": 0,
+        "left": 3,
+        "right": 2
+      },
+      "successful_min_clearance_m": 0.044936496464018004,
+      "successful_time_to_goal_s": 7.721428571428572
+    },
+    {
+      "gamma": 0.5,
+      "episodes": 50,
+      "SR": 0.56,
+      "CR": 0.3,
+      "OOB": 0.14,
+      "timeout": 0.0,
+      "window_validity": 0.8978229554944294,
+      "route_coverage": 0.75,
+      "route_counts": {
+        "below": 24,
+        "above": 0,
+        "left": 2,
+        "right": 2
+      },
+      "successful_min_clearance_m": 0.03959879751461295,
+      "successful_time_to_goal_s": 7.65
+    },
+    {
+      "gamma": 1.0,
+      "episodes": 50,
+      "SR": 0.38,
+      "CR": 0.48,
+      "OOB": 0.14,
+      "timeout": 0.0,
+      "window_validity": 0.8533547314802035,
+      "route_coverage": 0.5,
+      "route_counts": {
+        "below": 18,
+        "above": 0,
+        "left": 0,
+        "right": 1
+      },
+      "successful_min_clearance_m": 0.03588265010761624,
+      "successful_time_to_goal_s": 7.347368421052633
+    }
+  ],
+  "raw_audit": [
+    {
+      "gamma": 0.1,
+      "episode": 0,
+      "seed": 91000,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8481012658227848,
+      "min_clearance_m": 0.03523157631644014,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.1,
+      "episode": 1,
+      "seed": 91037,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8311688311688312,
+      "min_clearance_m": 0.042131418640747154,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.1,
+      "episode": 2,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5238095238095238,
+      "min_clearance_m": -0.0030848425498073984,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 3,
+      "seed": 91111,
+      "status": "OOB",
+      "mode": "none",
+      "window_validity": 0.54,
+      "min_clearance_m": 0.058422235667107636,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 4,
+      "seed": 91148,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.559322033898305,
+      "min_clearance_m": 0.027924466897211675,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 5,
+      "seed": 91185,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.7926829268292683,
+      "min_clearance_m": 0.018572871899346977,
+      "time_to_goal_s": 8.200000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 6,
+      "seed": 91222,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.10510698766646998,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.1,
+      "episode": 7,
+      "seed": 91259,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 0.8133333333333334,
+      "min_clearance_m": 0.016213333949574416,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 8,
+      "seed": 91296,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.7471264367816092,
+      "min_clearance_m": 0.0005133529393712144,
+      "time_to_goal_s": 8.700000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 9,
+      "seed": 91333,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8333333333333334,
+      "min_clearance_m": 0.026148907718653802,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 10,
+      "seed": 91370,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.1131658569150421,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 0.1,
+      "episode": 11,
+      "seed": 91407,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.76,
+      "min_clearance_m": 0.013503898162655237,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 12,
+      "seed": 91444,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8850574712643678,
+      "min_clearance_m": 0.24412402681518675,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 13,
+      "seed": 91481,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.6415094339622641,
+      "min_clearance_m": 0.0745591762248764,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 14,
+      "seed": 91518,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5714285714285714,
+      "min_clearance_m": -0.005804329346908055,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 15,
+      "seed": 91555,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8266666666666667,
+      "min_clearance_m": 0.022211892445520187,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 16,
+      "seed": 91592,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5641025641025641,
+      "min_clearance_m": -0.019971264417010415,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 17,
+      "seed": 91629,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5853658536585366,
+      "min_clearance_m": -0.003506983424891308,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 18,
+      "seed": 91666,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8148148148148148,
+      "min_clearance_m": 0.040035582845611706,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.1,
+      "episode": 19,
+      "seed": 91703,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.1420756178924194,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 20,
+      "seed": 91740,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.1301539945709963,
+      "time_to_goal_s": 8.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 21,
+      "seed": 91777,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.5263157894736842,
+      "min_clearance_m": 0.02275650414763769,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 22,
+      "seed": 91814,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.9444444444444444,
+      "min_clearance_m": 0.02755590817138165,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 0.1,
+      "episode": 23,
+      "seed": 91851,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5853658536585366,
+      "min_clearance_m": -0.008522789247762952,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 24,
+      "seed": 91888,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8969072164948454,
+      "min_clearance_m": 0.20930281684938368,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 25,
+      "seed": 91925,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.509090909090909,
+      "min_clearance_m": 0.01015110266510355,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 26,
+      "seed": 91962,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5454545454545454,
+      "min_clearance_m": -0.0014948408826219173,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 27,
+      "seed": 91999,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8076923076923077,
+      "min_clearance_m": 0.026018471665447296,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 28,
+      "seed": 92036,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.825,
+      "min_clearance_m": 0.04266714781739345,
+      "time_to_goal_s": 8.0
+    },
+    {
+      "gamma": 0.1,
+      "episode": 29,
+      "seed": 92073,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.5178571428571429,
+      "min_clearance_m": 0.02976165374987977,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 30,
+      "seed": 92110,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8518518518518519,
+      "min_clearance_m": 0.06168475966381032,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.1,
+      "episode": 31,
+      "seed": 92147,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8160919540229885,
+      "min_clearance_m": 0.03597261171634453,
+      "time_to_goal_s": 8.700000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 32,
+      "seed": 92184,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5581395348837209,
+      "min_clearance_m": -0.011030607350179578,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 33,
+      "seed": 92221,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8518518518518519,
+      "min_clearance_m": 0.018320993435603616,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.1,
+      "episode": 34,
+      "seed": 92258,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.810126582278481,
+      "min_clearance_m": 0.020276536437319692,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.1,
+      "episode": 35,
+      "seed": 92295,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.1416392991401617,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.1,
+      "episode": 36,
+      "seed": 92332,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8589743589743589,
+      "min_clearance_m": 0.03344550447789951,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 37,
+      "seed": 92369,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.6909090909090909,
+      "min_clearance_m": 0.03077944709513919,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 38,
+      "seed": 92406,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5897435897435898,
+      "min_clearance_m": -0.014183730257290472,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 39,
+      "seed": 92443,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.6046511627906976,
+      "min_clearance_m": -0.016293249384125075,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 40,
+      "seed": 92480,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8717948717948718,
+      "min_clearance_m": 0.04150771210820431,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.1,
+      "episode": 41,
+      "seed": 92517,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5476190476190477,
+      "min_clearance_m": -0.001254557149791946,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 42,
+      "seed": 92554,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5581395348837209,
+      "min_clearance_m": -0.013950496849317817,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 43,
+      "seed": 92591,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 0.8641975308641975,
+      "min_clearance_m": 0.04401672013978952,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.1,
+      "episode": 44,
+      "seed": 92628,
+      "status": "OOB",
+      "mode": "right",
+      "window_validity": 0.6666666666666666,
+      "min_clearance_m": 0.031019112545099314,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 45,
+      "seed": 92665,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8701298701298701,
+      "min_clearance_m": 0.03595737924478448,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.1,
+      "episode": 46,
+      "seed": 92702,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 0.9493670886075949,
+      "min_clearance_m": 0.09996671633665971,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.1,
+      "episode": 47,
+      "seed": 92739,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.8831168831168831,
+      "min_clearance_m": 0.03447230025907694,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.1,
+      "episode": 48,
+      "seed": 92776,
+      "status": "OOB",
+      "mode": "none",
+      "window_validity": 0.8,
+      "min_clearance_m": 0.1012889800147756,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.1,
+      "episode": 49,
+      "seed": 92813,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5365853658536586,
+      "min_clearance_m": -0.0032693456850451663,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 0,
+      "seed": 91000,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.027579264688954108,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.3,
+      "episode": 1,
+      "seed": 91037,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.0414399958073875,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.3,
+      "episode": 2,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7317073170731707,
+      "min_clearance_m": -0.007105011298840225,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 3,
+      "seed": 91111,
+      "status": "OOB",
+      "mode": "none",
+      "window_validity": 0.8,
+      "min_clearance_m": 0.045112800436063305,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 4,
+      "seed": 91148,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.7678571428571429,
+      "min_clearance_m": 0.010770393965412517,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 5,
+      "seed": 91185,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.975609756097561,
+      "min_clearance_m": 0.011605008303450848,
+      "time_to_goal_s": 8.200000000000001
+    },
+    {
+      "gamma": 0.3,
+      "episode": 6,
+      "seed": 91222,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.10594864924468167,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.3,
+      "episode": 7,
+      "seed": 91259,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.01355454213856605,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.3,
+      "episode": 8,
+      "seed": 91296,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7441860465116279,
+      "min_clearance_m": -0.0049506983740386645,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 9,
+      "seed": 91333,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.010211973444724687,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.3,
+      "episode": 10,
+      "seed": 91370,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.10504396245519054,
+      "time_to_goal_s": 7.1000000000000005
+    },
+    {
+      "gamma": 0.3,
+      "episode": 11,
+      "seed": 91407,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.9054054054054054,
+      "min_clearance_m": 0.009075270977808914,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.3,
+      "episode": 12,
+      "seed": 91444,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8850574712643678,
+      "min_clearance_m": 0.22757881262100643,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 13,
+      "seed": 91481,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8076923076923077,
+      "min_clearance_m": 0.06218980406419877,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 14,
+      "seed": 91518,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7380952380952381,
+      "min_clearance_m": -0.009361920290193948,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 15,
+      "seed": 91555,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.01809378610183232,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.3,
+      "episode": 16,
+      "seed": 91592,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.717948717948718,
+      "min_clearance_m": -0.03970047480151884,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 17,
+      "seed": 91629,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.016488041891261074,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 18,
+      "seed": 91666,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03145750364419342,
+      "time_to_goal_s": 8.0
+    },
+    {
+      "gamma": 0.3,
+      "episode": 19,
+      "seed": 91703,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.13369302104742753,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.3,
+      "episode": 20,
+      "seed": 91740,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.11899950115033286,
+      "time_to_goal_s": 8.200000000000001
+    },
+    {
+      "gamma": 0.3,
+      "episode": 21,
+      "seed": 91777,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.014411200735262863,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.3,
+      "episode": 22,
+      "seed": 91814,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.029873915714834665,
+      "time_to_goal_s": 7.1000000000000005
+    },
+    {
+      "gamma": 0.3,
+      "episode": 23,
+      "seed": 91851,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7317073170731707,
+      "min_clearance_m": -0.01846893102490249,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 24,
+      "seed": 91888,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8924731182795699,
+      "min_clearance_m": 0.18441926609819237,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 25,
+      "seed": 91925,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.6,
+      "min_clearance_m": 0.002108192260899422,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 26,
+      "seed": 91962,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.002789703601412341,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 27,
+      "seed": 91999,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.023370311388430487,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.3,
+      "episode": 28,
+      "seed": 92036,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.041396802291776835,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.3,
+      "episode": 29,
+      "seed": 92073,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8181818181818182,
+      "min_clearance_m": 0.01678080941420762,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 30,
+      "seed": 92110,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.05883424348657784,
+      "time_to_goal_s": 8.0
+    },
+    {
+      "gamma": 0.3,
+      "episode": 31,
+      "seed": 92147,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.028411659375382037,
+      "time_to_goal_s": 8.5
+    },
+    {
+      "gamma": 0.3,
+      "episode": 32,
+      "seed": 92184,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.0029267049844728943,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 33,
+      "seed": 92221,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.018117818656652296,
+      "time_to_goal_s": 8.0
+    },
+    {
+      "gamma": 0.3,
+      "episode": 34,
+      "seed": 92258,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.009942314201614788,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.3,
+      "episode": 35,
+      "seed": 92295,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.12541747988297136,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.3,
+      "episode": 36,
+      "seed": 92332,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03226852592021806,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.3,
+      "episode": 37,
+      "seed": 92369,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8148148148148148,
+      "min_clearance_m": 0.0206706339449394,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 38,
+      "seed": 92406,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.717948717948718,
+      "min_clearance_m": -0.030660254283732036,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 39,
+      "seed": 92443,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.010723185563114246,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 40,
+      "seed": 92480,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.033167948497015654,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.3,
+      "episode": 41,
+      "seed": 92517,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.002605179531187496,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 42,
+      "seed": 92554,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7380952380952381,
+      "min_clearance_m": -0.022168255123864944,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 43,
+      "seed": 92591,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03490718027054279,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.3,
+      "episode": 44,
+      "seed": 92628,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.028278832201402038,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.3,
+      "episode": 45,
+      "seed": 92665,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.028123837715478495,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 0.3,
+      "episode": 46,
+      "seed": 92702,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.08863735479389412,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.3,
+      "episode": 47,
+      "seed": 92739,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03635999685589941,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.3,
+      "episode": 48,
+      "seed": 92776,
+      "status": "OOB",
+      "mode": "none",
+      "window_validity": 0.7959183673469388,
+      "min_clearance_m": 0.09366758449842322,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.3,
+      "episode": 49,
+      "seed": 92813,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7317073170731707,
+      "min_clearance_m": -0.01024072192780312,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 0,
+      "seed": 91000,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.02378324290831585,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.5,
+      "episode": 1,
+      "seed": 91037,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03428531752342151,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 0.5,
+      "episode": 2,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.006795302484313592,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 3,
+      "seed": 91111,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8,
+      "min_clearance_m": 0.026873526731923558,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 4,
+      "seed": 91148,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.0031198241849038633,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 5,
+      "seed": 91185,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.0048271886074448545,
+      "time_to_goal_s": 8.1
+    },
+    {
+      "gamma": 0.5,
+      "episode": 6,
+      "seed": 91222,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.09996066772918377,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 7,
+      "seed": 91259,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.007016756642287569,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 8,
+      "seed": 91296,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.011937567636687851,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 9,
+      "seed": 91333,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.961038961038961,
+      "min_clearance_m": 0.0028731705636627636,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.5,
+      "episode": 10,
+      "seed": 91370,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.09503886791100141,
+      "time_to_goal_s": 7.1000000000000005
+    },
+    {
+      "gamma": 0.5,
+      "episode": 11,
+      "seed": 91407,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.918918918918919,
+      "min_clearance_m": 0.007160822421255264,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 12,
+      "seed": 91444,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8850574712643678,
+      "min_clearance_m": 0.20796186101608916,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 13,
+      "seed": 91481,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.803921568627451,
+      "min_clearance_m": 0.049735545565922745,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 14,
+      "seed": 91518,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.002050123683553562,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 15,
+      "seed": 91555,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.022615317472623464,
+      "time_to_goal_s": 7.300000000000001
+    },
+    {
+      "gamma": 0.5,
+      "episode": 16,
+      "seed": 91592,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7368421052631579,
+      "min_clearance_m": -0.013723088956648699,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 17,
+      "seed": 91629,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.027081329619760952,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 18,
+      "seed": 91666,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.016602519446198283,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.5,
+      "episode": 19,
+      "seed": 91703,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.11778842212986673,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 20,
+      "seed": 91740,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8076923076923077,
+      "min_clearance_m": 0.10468823646567849,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 21,
+      "seed": 91777,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.008108330829673882,
+      "time_to_goal_s": 8.0
+    },
+    {
+      "gamma": 0.5,
+      "episode": 22,
+      "seed": 91814,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.028738527897156363,
+      "time_to_goal_s": 7.0
+    },
+    {
+      "gamma": 0.5,
+      "episode": 23,
+      "seed": 91851,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.0060922556345850976,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 24,
+      "seed": 91888,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.1487743163821148,
+      "time_to_goal_s": 8.200000000000001
+    },
+    {
+      "gamma": 0.5,
+      "episode": 25,
+      "seed": 91925,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.0012442079523616867,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 26,
+      "seed": 91962,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.009295543066517975,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 27,
+      "seed": 91999,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.01823967944767163,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.5,
+      "episode": 28,
+      "seed": 92036,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03617597195236999,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.5,
+      "episode": 29,
+      "seed": 92073,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8148148148148148,
+      "min_clearance_m": 0.009034074960597938,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 30,
+      "seed": 92110,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.052401612792967234,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.5,
+      "episode": 31,
+      "seed": 92147,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.00998098166068423,
+      "time_to_goal_s": 8.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 32,
+      "seed": 92184,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.002113802955865385,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 33,
+      "seed": 92221,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.023313666146762002,
+      "time_to_goal_s": 7.9
+    },
+    {
+      "gamma": 0.5,
+      "episode": 34,
+      "seed": 92258,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.9871794871794872,
+      "min_clearance_m": 0.0032789625845093817,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.5,
+      "episode": 35,
+      "seed": 92295,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.11853500226674246,
+      "time_to_goal_s": 7.300000000000001
+    },
+    {
+      "gamma": 0.5,
+      "episode": 36,
+      "seed": 92332,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.029488030506933494,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 0.5,
+      "episode": 37,
+      "seed": 92369,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8148148148148148,
+      "min_clearance_m": 0.01415430218267294,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 38,
+      "seed": 92406,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7368421052631579,
+      "min_clearance_m": -0.00788859309610701,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 39,
+      "seed": 92443,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.0015021357669560698,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 40,
+      "seed": 92480,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03047158588419918,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.5,
+      "episode": 41,
+      "seed": 92517,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.005867047533937353,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 42,
+      "seed": 92554,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.021573335698718776,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 43,
+      "seed": 92591,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.023183651325907995,
+      "time_to_goal_s": 7.800000000000001
+    },
+    {
+      "gamma": 0.5,
+      "episode": 44,
+      "seed": 92628,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.022948888096540776,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 45,
+      "seed": 92665,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.02036747257733773,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 0.5,
+      "episode": 46,
+      "seed": 92702,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.07263902120283261,
+      "time_to_goal_s": 7.7
+    },
+    {
+      "gamma": 0.5,
+      "episode": 47,
+      "seed": 92739,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.030168335499497434,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 0.5,
+      "episode": 48,
+      "seed": 92776,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.7959183673469388,
+      "min_clearance_m": 0.08489541853582028,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 0.5,
+      "episode": 49,
+      "seed": 92813,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.006006243083837681,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 0,
+      "seed": 91000,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.01663819698775576,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 1.0,
+      "episode": 1,
+      "seed": 91037,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.0277515031512352,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 1.0,
+      "episode": 2,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.01824793279261988,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 3,
+      "seed": 91111,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.0022548337747945735,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 4,
+      "seed": 91148,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.0231054093107374,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 5,
+      "seed": 91185,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.00011963571632861436,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 6,
+      "seed": 91222,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.07702978670940264,
+      "time_to_goal_s": 7.300000000000001
+    },
+    {
+      "gamma": 1.0,
+      "episode": 7,
+      "seed": 91259,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.004252292500256938,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 8,
+      "seed": 91296,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.01304292423889114,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 9,
+      "seed": 91333,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.008932272768598926,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 10,
+      "seed": 91370,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.08042544594135687,
+      "time_to_goal_s": 7.0
+    },
+    {
+      "gamma": 1.0,
+      "episode": 11,
+      "seed": 91407,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.9166666666666666,
+      "min_clearance_m": 0.005635003057060106,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 1.0,
+      "episode": 12,
+      "seed": 91444,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8823529411764706,
+      "min_clearance_m": 0.15907844042572683,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 13,
+      "seed": 91481,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.803921568627451,
+      "min_clearance_m": 0.032608185171578596,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 14,
+      "seed": 91518,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.0029195028846765725,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 15,
+      "seed": 91555,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.023843456619398684,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 1.0,
+      "episode": 16,
+      "seed": 91592,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7297297297297297,
+      "min_clearance_m": -0.005722619667543394,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 17,
+      "seed": 91629,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.025431680216956243,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 18,
+      "seed": 91666,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.0030573985716946805,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 19,
+      "seed": 91703,
+      "status": "SUCCESS",
+      "mode": "right",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.0815457116836375,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 1.0,
+      "episode": 20,
+      "seed": 91740,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.803921568627451,
+      "min_clearance_m": 0.0900538278914072,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 21,
+      "seed": 91777,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.004842958458219748,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 22,
+      "seed": 91814,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.021605654987342515,
+      "time_to_goal_s": 6.9
+    },
+    {
+      "gamma": 1.0,
+      "episode": 23,
+      "seed": 91851,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.010629122069504116,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 24,
+      "seed": 91888,
+      "status": "OOB",
+      "mode": "left",
+      "window_validity": 0.8837209302325582,
+      "min_clearance_m": 0.09845470311419074,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 25,
+      "seed": 91925,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.013066266946649974,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 26,
+      "seed": 91962,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.002550117755194925,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 27,
+      "seed": 91999,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 0.9866666666666667,
+      "min_clearance_m": 0.01027042547873569,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 1.0,
+      "episode": 28,
+      "seed": 92036,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.030810927449898773,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 1.0,
+      "episode": 29,
+      "seed": 92073,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.01623463821656651,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 30,
+      "seed": 92110,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.03363227676377084,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 1.0,
+      "episode": 31,
+      "seed": 92147,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7619047619047619,
+      "min_clearance_m": -0.008857713237798659,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 32,
+      "seed": 92184,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.0080600676141791,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 33,
+      "seed": 92221,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.028370002356391255,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 1.0,
+      "episode": 34,
+      "seed": 92258,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.007005714293307264,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 35,
+      "seed": 92295,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.09071446514752446,
+      "time_to_goal_s": 7.1000000000000005
+    },
+    {
+      "gamma": 1.0,
+      "episode": 36,
+      "seed": 92332,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.025273045520707305,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 1.0,
+      "episode": 37,
+      "seed": 92369,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.8113207547169812,
+      "min_clearance_m": 0.009392072233085969,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 38,
+      "seed": 92406,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7368421052631579,
+      "min_clearance_m": -0.03247329244741115,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 39,
+      "seed": 92443,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.00709917530373072,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 40,
+      "seed": 92480,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.02234878881332325,
+      "time_to_goal_s": 7.6000000000000005
+    },
+    {
+      "gamma": 1.0,
+      "episode": 41,
+      "seed": 92517,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7560975609756098,
+      "min_clearance_m": -0.009583016170110314,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 42,
+      "seed": 92554,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.0004952272089911447,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 43,
+      "seed": 92591,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.012456659369081025,
+      "time_to_goal_s": 7.5
+    },
+    {
+      "gamma": 1.0,
+      "episode": 44,
+      "seed": 92628,
+      "status": "OOB",
+      "mode": "right",
+      "window_validity": 0.8214285714285714,
+      "min_clearance_m": 0.0026816144419146704,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 45,
+      "seed": 92665,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.012497348323753876,
+      "time_to_goal_s": 7.2
+    },
+    {
+      "gamma": 1.0,
+      "episode": 46,
+      "seed": 92702,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.0514113863946698,
+      "time_to_goal_s": 7.4
+    },
+    {
+      "gamma": 1.0,
+      "episode": 47,
+      "seed": 92739,
+      "status": "SUCCESS",
+      "mode": "below",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.02951026728966294,
+      "time_to_goal_s": 7.300000000000001
+    },
+    {
+      "gamma": 1.0,
+      "episode": 48,
+      "seed": 92776,
+      "status": "OOB",
+      "mode": "below",
+      "window_validity": 0.7872340425531915,
+      "min_clearance_m": 0.06930227411767159,
+      "time_to_goal_s": null
+    },
+    {
+      "gamma": 1.0,
+      "episode": 49,
+      "seed": 92813,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.011285643794366917,
+      "time_to_goal_s": null
+    }
+  ]
+}

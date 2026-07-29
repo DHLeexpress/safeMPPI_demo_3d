@@ -1,0 +1,32 @@
+{
+  "status": "MINHYUK_EXPERIMENTAL_EXPANDED_VISUAL_HANDOFF",
+  "checkpoint": "expanded_visual_nozB5_r20.pt",
+  "checkpoint_sha256": "f7ce5e52f4705deec924545b4cba16609e3e53ce045e9d628e34ee39b6e06b00",
+  "source_expansion_checkpoint": "../../results/lab_ball_expansion/minhyuk_nozB5_r20/checkpoint_020.pt",
+  "source_expansion_checkpoint_sha256": "d10ce121cc490c9056c1165b5197126be2edbc62d22fff07a44f649ee004db67",
+  "pretrained_checkpoint": "pretrained_visual_hp3d.pt",
+  "pretrained_checkpoint_sha256": "fc4d215817b56d74730a0a90f6abc57d17dbeb7626302add535760399cdeeeb4",
+  "architecture": "unchanged lab_spherical_hp3d_v1",
+  "context_schema": "lab_spherical_hp3d_v1",
+  "plan_shape": [10, 3],
+  "control_limit_mps2": 0.3,
+  "nfe": 16,
+  "sampling_temperature_default": 1.0,
+  "policy_output": "pre_smoothing_raw_acceleration_command",
+  "tracking_and_governor": "external",
+  "expansion_round": 20,
+  "raw_temperature_1_m50_per_gamma": {
+    "episodes": 200,
+    "SR": 0.2,
+    "CR": 0.505,
+    "OOB": 0.295,
+    "window_validity": 0.8377157212229275,
+    "successful_routes": {
+      "below": 0,
+      "above": 23,
+      "left": 1,
+      "right": 16
+    }
+  },
+  "scope": "coverage-promising experimental model; no flight, safety, or task-performance qualification"
+}

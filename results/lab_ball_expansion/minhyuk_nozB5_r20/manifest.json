@@ -1,0 +1,98 @@
+{
+  "status": "MINHYUK_COMPACT_EXPERIMENTAL_EXPANSION_HANDOFF",
+  "task_profile": "minhyuk_lab_ball_visual_expansion",
+  "selected_checkpoint": "checkpoint_020.pt",
+  "selected_checkpoint_sha256": "d10ce121cc490c9056c1165b5197126be2edbc62d22fff07a44f649ee004db67",
+  "pretrained_checkpoint_sha256": "fc4d215817b56d74730a0a90f6abc57d17dbeb7626302add535760399cdeeeb4",
+  "config": {
+    "rounds": 20,
+    "gammas": [0.1, 0.3, 0.5, 1.0],
+    "parallel_episodes": 12,
+    "verifier_workers": 8,
+    "max_retry_batches": 32,
+    "max_steps": 250,
+    "K": 16,
+    "B": 4,
+    "batch_size": 64,
+    "inner_steps": null,
+    "microbatch_repeats": 3,
+    "learning_rate": 1e-05,
+    "first_layer_lr_scale": 0.1,
+    "replay_rounds": 3,
+    "gp_buffer_cap": 768,
+    "gp_noise": 0.01,
+    "rbf_lengthscale": null,
+    "beta": 0.0005,
+    "adaptive_beta": true,
+    "ess_target": 0.1,
+    "negative_alpha": 0.0,
+    "flow_base_std": 1.25,
+    "candidate_perturb_std": 0.0,
+    "candidate_perturb_scope": "coherent_horizon",
+    "execution_rule": "min_cost",
+    "archive_rule": "successful_executed_windows",
+    "successful_trajectory_selector": "lowest_episode_id",
+    "successful_trajectories_per_gamma": 6,
+    "replay_acceptance": "execution_eligible",
+    "paired_noised_representation": false,
+    "seed": 1,
+    "acquisition_feature": "learned_phi",
+    "coverage_replay": "none",
+    "replay_augmentation": "none",
+    "gp_reference_mode": "sliding_success_per_gamma_current_phi",
+    "gp_sliding_row_selector": "trajectory_uniform",
+    "gp_exact_max_rows_per_gamma": 1024
+  },
+  "calibrated_rbf_lengthscale": 0.16679754521162596,
+  "final_beta": 0.011685775127261875,
+  "final_archive": {
+    "D": 35195,
+    "D_plus": 35195,
+    "replay_accepted": 35195
+  },
+  "round_20_diagnostics": {
+    "new_accepted_windows": 1775,
+    "replay_rows": 5350,
+    "adam_steps": 252,
+    "marginal_ESS_over_K": 0.13062931620964754,
+    "selected_ESS_over_K": 0.14896563311032734,
+    "uncertainty_uplift": 0.07544879181313657,
+    "positive_loss": 0.4945089403125975
+  },
+  "evaluation": {
+    "file": "raw_m50_seed191000.json",
+    "protocol": "raw iid temperature-1, no acquisition tilt, M=50 per gamma, seed=191000",
+    "r0": {
+      "SR": 0.585,
+      "CR": 0.275,
+      "OOB": 0.14,
+      "window_validity": 0.8717964916097714,
+      "successful_routes": {
+        "below": 87,
+        "above": 0,
+        "left": 16,
+        "right": 14
+      }
+    },
+    "r20": {
+      "SR": 0.2,
+      "CR": 0.505,
+      "OOB": 0.295,
+      "window_validity": 0.8377157212229275,
+      "successful_routes": {
+        "below": 0,
+        "above": 23,
+        "left": 1,
+        "right": 16
+      },
+      "successful_min_clearance_m": 0.11976707641737264,
+      "successful_time_to_goal_s": 8.2225
+    }
+  },
+  "source_provenance": {
+    "base_commit": "58ed7c68580abf59c9dccf1b9da3f1c34938d6d6",
+    "exact_historical_dirty_patch_available": false,
+    "note": "The selected run was produced from an uncommitted working tree over the base commit. The CLI and algorithm semantics are recorded here, and a second sweep arm reproduced the r20 tensor state bit-for-bit, but this handoff does not claim frozen historical source-byte provenance."
+  },
+  "claim": "Coverage-promising experimental checkpoint, not a safety- or performance-qualified model. The declared expansion target was not met."
+}

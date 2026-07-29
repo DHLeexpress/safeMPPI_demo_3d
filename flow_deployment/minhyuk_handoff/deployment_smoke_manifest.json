@@ -1,0 +1,66 @@
+{
+  "status": "MINHYUK_NATIVE_DEPLOY_SIM_SMOKES_COMPLETE",
+  "scope": "Seed-selected software-interface smokes in unchanged deploy_sim; not an unbiased evaluation or flight certificate.",
+  "acceptance": {
+    "reached": true,
+    "minimum_clearance_beyond_safety_sphere_m": 0.052,
+    "positive_fence_margin_required": true
+  },
+  "pretrained": {
+    "checkpoint": "pretrained_visual_hp3d.pt",
+    "checkpoint_sha256": "fc4d215817b56d74730a0a90f6abc57d17dbeb7626302add535760399cdeeeb4",
+    "gamma": 0.3,
+    "seed": 95440,
+    "gif": "pretrained_deploy_sim_g0p3_s95440.gif",
+    "reached": true,
+    "duration_s": 8.09,
+    "clearance_beyond_safety_sphere_m": 0.1496983484985268,
+    "fence_margin_m": 0.25,
+    "peak_z_m": 0.8999908794432878
+  },
+  "expanded": {
+    "checkpoint": "expanded_visual_nozB5_r20.pt",
+    "checkpoint_sha256": "f7ce5e52f4705deec924545b4cba16609e3e53ce045e9d628e34ee39b6e06b00",
+    "gamma": 0.3,
+    "seed": 192739,
+    "gif": "expanded_deploy_sim_g0p3_s192739.gif",
+    "reached": true,
+    "duration_s": 10.29,
+    "clearance_beyond_safety_sphere_m": 0.22515670592036963,
+    "fence_margin_m": 0.3000120000004769,
+    "peak_z_m": 1.4006247352494732
+  },
+  "all_gamma_native_audit": {
+    "sampling_temperature": 1.0,
+    "gammas": [0.1, 0.3, 0.5, 1.0],
+    "pretrained": {
+      "91703": {
+        "reached": [true, true, true, true],
+        "duration_s": [7.59, 7.59, 7.59, 7.49],
+        "clearance_beyond_safety_sphere_m": [0.0932678346, 0.0871271321, 0.0766370459, 0.0556329283],
+        "fence_margin_m": [0.2, 0.2, 0.2, 0.2]
+      },
+      "95440": {
+        "reached": [true, true, true, true],
+        "duration_s": [8.19, 8.09, 7.99, 7.79],
+        "clearance_beyond_safety_sphere_m": [0.1644215389, 0.1496983485, 0.1326669051, 0.0991669821],
+        "fence_margin_m": [0.25, 0.25, 0.25, 0.25]
+      }
+    },
+    "expanded": {
+      "191481": {
+        "reached": [true, true, true, true],
+        "duration_s": [8.89, 8.69, 8.59, 8.39],
+        "clearance_beyond_safety_sphere_m": [0.1652461245, 0.1377799874, 0.1221084789, 0.0672450297],
+        "fence_margin_m": [0.2, 0.2, 0.2, 0.2]
+      },
+      "192739": {
+        "reached": [true, true, true, true],
+        "duration_s": [10.59, 10.29, 9.79, 8.99],
+        "clearance_beyond_safety_sphere_m": [0.2514448797, 0.2251567059, 0.2029256008, 0.1403294309],
+        "fence_margin_m": [0.2510201931, 0.300012, 0.300012, 0.2]
+      }
+    }
+  },
+  "deploy_sim_lock_verified_before_and_after": true
+}
