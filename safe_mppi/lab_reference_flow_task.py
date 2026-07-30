@@ -95,15 +95,64 @@ def _run_environment(
     return TaskEnvironment(replace(config, obstacles=obstacles))
 
 
-def policy_context(policy, env: TaskEnvironment, state6: np.ndarray,
-                   gamma: float) -> np.ndarray:
+def _raw_history_before(
+    controls: np.ndarray,
+    start: int,
+) -> np.ndarray:
+    from .lab_visual_flow import (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    )
+
+    history = np.zeros(
+        (LAB_VISUAL_HISTORY_LENGTH, LAB_VISUAL_HISTORY_STEP_DIM),
+        np.float32,
+    )
+    values = np.asarray(controls, np.float32).reshape(-1, 3)
+    tail = values[max(0, int(start) - LAB_VISUAL_HISTORY_LENGTH):int(start)]
+    if len(tail):
+        history[-len(tail):, :3] = tail
+        history[-len(tail):, 3] = 1.0
+    return history
+
+
+def _append_raw_history(
+    history: np.ndarray,
+    command: np.ndarray,
+) -> np.ndarray:
+    updated = np.roll(np.asarray(history, np.float32), -1, axis=0)
+    updated[-1, :3] = np.asarray(command, np.float32).reshape(3)
+    updated[-1, 3] = 1.0
+    return updated
+
+
+def policy_context(
+    policy,
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray | None = None,
+) -> np.ndarray:
     """Build the external context declared by a lab policy."""
     schema = getattr(policy, "context_schema", LAB_RAW_CONTEXT_SCHEMA)
     if schema == LAB_RAW_CONTEXT_SCHEMA:
         return build_context(env, state6, gamma)
-    from .lab_visual_flow import LAB_VISUAL_SCHEMA, build_visual_context
+    from .lab_visual_flow import (
+        LAB_VISUAL_HISTORY_SCHEMA,
+        LAB_VISUAL_SCHEMA,
+        build_visual_context,
+        build_visual_history_context,
+    )
     if schema == LAB_VISUAL_SCHEMA:
         return build_visual_context(env, state6, gamma)
+    if schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if raw_history is None:
+            raise ValueError(
+                "visual-history policy context requires past raw commands"
+            )
+        return build_visual_history_context(
+            env, state6, gamma, raw_history,
+        )
     raise ValueError(f"unsupported lab policy context schema {schema!r}")
 
 
@@ -190,14 +239,26 @@ def lab_reference_demo_windows(
                 context = build_context(env, states[start], gamma)
             else:
                 from .lab_visual_flow import (
+                    LAB_VISUAL_HISTORY_SCHEMA,
                     LAB_VISUAL_SCHEMA,
                     build_visual_context,
+                    build_visual_history_context,
                 )
-                if context_schema != LAB_VISUAL_SCHEMA:
+                if context_schema == LAB_VISUAL_SCHEMA:
+                    context = build_visual_context(
+                        env, states[start], gamma,
+                    )
+                elif context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+                    context = build_visual_history_context(
+                        env,
+                        states[start],
+                        gamma,
+                        _raw_history_before(controls, start),
+                    )
+                else:
                     raise ValueError(
                         f"unsupported lab context schema {context_schema!r}"
                     )
-                context = build_visual_context(env, states[start], gamma)
             contexts.append(context)
             plans.append(controls[start:start + PLAN_H])
             metadata.append({
@@ -281,6 +342,7 @@ def raw_reference_rollout(
     env = TaskEnvironment(config)
     governor = ReferenceGovernor(config.safemppi)
     state = env.start.copy()
+    raw_history = _raw_history_before(np.empty((0, 3)), 0)
     states = [state.copy()]
     controls = []
     applied_controls = []
@@ -289,7 +351,13 @@ def raw_reference_rollout(
 
     for step in range(max_steps or config.taskspace.max_steps):
         context = torch.from_numpy(
-            policy_context(policy, env, state, float(gamma))
+            policy_context(
+                policy,
+                env,
+                state,
+                float(gamma),
+                raw_history=raw_history,
+            )
         ).to(device)
         generator = torch.Generator(device=torch.device(device))
         generator.manual_seed(int(seed) * 100_000 + step)
@@ -300,6 +368,7 @@ def raw_reference_rollout(
             base_std=float(sampling_temperature),
         )[0].detach().cpu().numpy()
         control = plan.reshape(PLAN_H, 3)[0]
+        raw_history = _append_raw_history(raw_history, control)
         state, applied, dense = governor.step(state, control)
         states.append(state.copy())
         controls.append(control.copy())
@@ -372,13 +441,16 @@ class LabReferenceFlowController:
                 raise ValueError("raw lab deployment requires the 10-D context")
         else:
             from .lab_visual_flow import (
+                LAB_VISUAL_HISTORY_PACKED_DIM,
+                LAB_VISUAL_HISTORY_SCHEMA,
                 LAB_VISUAL_PACKED_DIM,
                 LAB_VISUAL_SCHEMA,
             )
-            if (
-                schema != LAB_VISUAL_SCHEMA
-                or int(policy.context_dim) != LAB_VISUAL_PACKED_DIM
-            ):
+            expected = {
+                LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+                LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_HISTORY_PACKED_DIM,
+            }
+            if schema not in expected or int(policy.context_dim) != expected[schema]:
                 raise ValueError("unknown lab visual context contract")
         if tuple(policy.plan_shape) != (PLAN_H, 3):
             raise ValueError("lab deployment requires H=10, 3-D plans")
@@ -389,9 +461,11 @@ class LabReferenceFlowController:
         self.device = torch.device(device)
         self.sampling_temperature = float(sampling_temperature)
         self.trace = []
+        self.raw_history = _raw_history_before(np.empty((0, 3)), 0)
 
     def reset(self):
         self.trace = []
+        self.raw_history = _raw_history_before(np.empty((0, 3)), 0)
 
     @torch.no_grad()
     def plan(self, state, goal, gamma, seed=0):
@@ -400,7 +474,13 @@ class LabReferenceFlowController:
         if not np.allclose(goal, self.env.goal, atol=1.0e-6, rtol=0.0):
             raise ValueError("controller goal does not match its lab environment")
         context = torch.from_numpy(
-            policy_context(self.policy, self.env, state, float(gamma))
+            policy_context(
+                self.policy,
+                self.env,
+                state,
+                float(gamma),
+                raw_history=self.raw_history,
+            )
         ).to(self.device)
         generator = torch.Generator(device=self.device)
         generator.manual_seed(int(seed))
@@ -411,6 +491,7 @@ class LabReferenceFlowController:
             base_std=self.sampling_temperature,
         )[0]
         action = plan[0].detach().cpu().numpy().astype(np.float32)
+        self.raw_history = _append_raw_history(self.raw_history, action)
         self.trace.append({
             "seed": int(seed),
             "gamma": float(gamma),

@@ -18,6 +18,13 @@ LAB_VISUAL_GRID_SHAPE = (3, 16, 12, 12)
 LAB_VISUAL_LOW_DIM = 7
 LAB_VISUAL_PACKED_DIM = LAB_VISUAL_LOW_DIM + math.prod(LAB_VISUAL_GRID_SHAPE)
 LAB_VISUAL_SCHEMA = "lab_spherical_hp3d_v1"
+LAB_VISUAL_HISTORY_LENGTH = 10
+LAB_VISUAL_HISTORY_STEP_DIM = 4
+LAB_VISUAL_HISTORY_PACKED_DIM = (
+    LAB_VISUAL_PACKED_DIM
+    + LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+)
+LAB_VISUAL_HISTORY_SCHEMA = "lab_spherical_hp3d_gru_v1"
 LAB_VISUAL_CHANNELS = (
     "occupancy",
     "nominal_polytope_mask",
@@ -139,6 +146,34 @@ def build_visual_context(
     ]).astype(np.float32)
     grid = spherical_safety_grid(env, state6[:3]).astype(np.float32)
     return np.concatenate([low, grid.reshape(-1)]).astype(np.float32)
+
+
+def build_visual_history_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray,
+) -> np.ndarray:
+    """Append ten past raw commands and their left-padding validity bits."""
+    history = np.asarray(raw_history, np.float32)
+    if history.shape != (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    ):
+        raise ValueError(
+            "raw_history must have shape "
+            f"({LAB_VISUAL_HISTORY_LENGTH},{LAB_VISUAL_HISTORY_STEP_DIM})"
+        )
+    if not np.isfinite(history).all():
+        raise ValueError("raw_history must be finite")
+    if not np.isin(history[:, 3], (0.0, 1.0)).all():
+        raise ValueError("raw_history validity bits must be binary")
+    if bool((history[history[:, 3] == 0.0, :3] != 0.0).any()):
+        raise ValueError("padded raw-history actions must be exactly zero")
+    return np.concatenate([
+        build_visual_context(env, state6, gamma),
+        history.reshape(-1),
+    ]).astype(np.float32)
 
 
 class LabVisualFlowPolicy(nn.Module):
@@ -303,6 +338,115 @@ class LabVisualFlowPolicy(nn.Module):
         )
 
 
+class LabVisualHistoryFlowPolicy(LabVisualFlowPolicy):
+    """Visual CFM policy with a compact GRU over past raw commands."""
+
+    context_schema = LAB_VISUAL_HISTORY_SCHEMA
+    context_dim = LAB_VISUAL_HISTORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 32,
+        history_token_dim: int = 16,
+        history_length: int = LAB_VISUAL_HISTORY_LENGTH,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 2,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_VISUAL_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_VISUAL_CHANNELS,
+        grid_frame: str = LAB_VISUAL_FRAME,
+    ):
+        if int(history_length) != LAB_VISUAL_HISTORY_LENGTH:
+            raise ValueError(
+                f"lab visual history length must be {LAB_VISUAL_HISTORY_LENGTH}"
+            )
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+        )
+        self.history_length = int(history_length)
+        self.history_token_dim = int(history_token_dim)
+        self.history_encoder = nn.GRU(
+            input_size=LAB_VISUAL_HISTORY_STEP_DIM,
+            hidden_size=self.history_token_dim,
+            batch_first=True,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + self.history_token_dim
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid_stop = LAB_VISUAL_PACKED_DIM
+        grid = context[:, LAB_VISUAL_LOW_DIM:grid_stop].reshape(
+            -1, *LAB_VISUAL_GRID_SHAPE
+        )
+        history = context[:, grid_stop:].reshape(
+            -1,
+            LAB_VISUAL_HISTORY_LENGTH,
+            LAB_VISUAL_HISTORY_STEP_DIM,
+        )
+        _, hidden = self.history_encoder(history)
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            hidden[-1],
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+    ) -> list[dict[str, object]]:
+        """Freeze the action-history encoder during online expansion."""
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        for parameter in self.history_encoder.parameters():
+            parameter.requires_grad_(False)
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+
 def load_lab_reference_policy(path: str | Path):
     """Load either the legacy raw10 lab policy or the visual lab policy."""
     path = Path(path)
@@ -318,6 +462,21 @@ def load_lab_reference_policy(path: str | Path):
                 f"visual checkpoint is missing semantic fields {sorted(missing)}"
             )
         policy = LabVisualFlowPolicy(**arch)
+    elif kind == LAB_VISUAL_HISTORY_SCHEMA:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "grid_frame",
+            "history_length",
+            "history_token_dim",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "visual-history checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        policy = LabVisualHistoryFlowPolicy(**arch)
     elif kind == "conditional_flow_mlp":
         policy = ConditionalFlowMLP(**arch)
     else:

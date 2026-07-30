@@ -1,4 +1,4 @@
-"""Pretrain and qualify the stateless Minhyuk-frame reference flow policy."""
+"""Pretrain and qualify the Minhyuk-frame reference flow policy."""
 from __future__ import annotations
 
 import argparse
@@ -30,8 +30,12 @@ from safe_mppi.lab_visual_flow import (
     LAB_VISUAL_CHANNELS,
     LAB_VISUAL_FRAME,
     LAB_VISUAL_GRID_SHAPE,
+    LAB_VISUAL_HISTORY_LENGTH,
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
 )
 
@@ -562,9 +566,10 @@ def main():
     parser.add_argument("--nfe", type=int, default=16)
     parser.add_argument(
         "--context-model",
-        choices=("raw10", "visual_hp3d"),
+        choices=("raw10", "visual_hp3d", "visual_hp3d_gru"),
         default="raw10",
     )
+    parser.add_argument("--history-token-dim", type=int, default=16)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--audit-episodes", type=int, default=50)
     parser.add_argument("--audit-seed", type=int, default=91000)
@@ -582,21 +587,21 @@ def main():
         raise FileExistsError(f"refusing to overwrite {args.output}")
     args.output.mkdir(parents=True)
 
-    context_schema = (
-        LAB_VISUAL_SCHEMA
-        if args.context_model == "visual_hp3d"
-        else LAB_RAW_CONTEXT_SCHEMA
-    )
+    context_schema = {
+        "raw10": LAB_RAW_CONTEXT_SCHEMA,
+        "visual_hp3d": LAB_VISUAL_SCHEMA,
+        "visual_hp3d_gru": LAB_VISUAL_HISTORY_SCHEMA,
+    }[args.context_model]
     contexts_np, plans_np, metadata, config = lab_reference_demo_windows(
         args.demo_dir,
         context_schema=context_schema,
     )
     archive_digest = source_archive_digest(args.demo_dir)
-    expected_context_dim = (
-        LAB_VISUAL_PACKED_DIM
-        if args.context_model == "visual_hp3d"
-        else LAB_REFERENCE_CONTEXT_DIM
-    )
+    expected_context_dim = {
+        "raw10": LAB_REFERENCE_CONTEXT_DIM,
+        "visual_hp3d": LAB_VISUAL_PACKED_DIM,
+        "visual_hp3d_gru": LAB_VISUAL_HISTORY_PACKED_DIM,
+    }[args.context_model]
     if contexts_np.shape[1] != expected_context_dim:
         raise RuntimeError("lab reference context contract changed unexpectedly")
     contexts = torch.from_numpy(contexts_np)
@@ -608,6 +613,19 @@ def main():
             hidden=args.hidden,
             representation_dim=args.representation_dim,
             grid_token_dim=args.grid_token_dim,
+            control_limit=config.safemppi.demo_u_max,
+            nfe=args.nfe,
+            trunk_depth=2,
+            time_features="raw1",
+        )
+    elif args.context_model == "visual_hp3d_gru":
+        policy = LabVisualHistoryFlowPolicy(
+            plan_shape=(10, 3),
+            hidden=args.hidden,
+            representation_dim=args.representation_dim,
+            grid_token_dim=args.grid_token_dim,
+            history_token_dim=args.history_token_dim,
+            history_length=LAB_VISUAL_HISTORY_LENGTH,
             control_limit=config.safemppi.demo_u_max,
             nfe=args.nfe,
             trunk_depth=2,
@@ -716,6 +734,23 @@ def main():
             "trunk_depth": 2,
             "time_features": "raw1",
         }
+    elif args.context_model == "visual_hp3d_gru":
+        arch = {
+            "kind": LAB_VISUAL_HISTORY_SCHEMA,
+            "plan_shape": [10, 3],
+            "hidden": args.hidden,
+            "representation_dim": args.representation_dim,
+            "grid_token_dim": args.grid_token_dim,
+            "history_token_dim": args.history_token_dim,
+            "history_length": LAB_VISUAL_HISTORY_LENGTH,
+            "grid_shape": list(LAB_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_VISUAL_CHANNELS),
+            "grid_frame": LAB_VISUAL_FRAME,
+            "control_limit": config.safemppi.demo_u_max,
+            "nfe": args.nfe,
+            "trunk_depth": 2,
+            "time_features": "raw1",
+        }
     else:
         arch = {
             "kind": "conditional_flow_mlp",
@@ -734,6 +769,9 @@ def main():
         "contract": {
             "policy_output": "pre_smoothing_raw_acceleration_command",
             "stateful_governor_in_policy": False,
+            "past_raw_action_history_in_policy": (
+                args.context_model == "visual_hp3d_gru"
+            ),
             "deployment_smoothing_and_tracking": "external",
         },
     }
@@ -753,12 +791,30 @@ def main():
         "context_schema": context_schema,
         "external_context_dim": expected_context_dim,
         "encoded_context_dim": (
-            7 + args.grid_token_dim
-            if args.context_model == "visual_hp3d"
-            else LAB_REFERENCE_CONTEXT_DIM
+            7 + args.grid_token_dim + args.history_token_dim
+            if args.context_model == "visual_hp3d_gru"
+            else (
+                7 + args.grid_token_dim
+                if args.context_model == "visual_hp3d"
+                else LAB_REFERENCE_CONTEXT_DIM
+            )
         ),
         "policy_output": "pre_smoothing_raw_acceleration_command",
         "stateful_governor_in_policy": False,
+        "past_raw_action_history_in_policy": (
+            args.context_model == "visual_hp3d_gru"
+        ),
+        "history_length": (
+            LAB_VISUAL_HISTORY_LENGTH
+            if args.context_model == "visual_hp3d_gru" else 0
+        ),
+        "history_token_dim": (
+            args.history_token_dim
+            if args.context_model == "visual_hp3d_gru" else 0
+        ),
+        "history_encoder_must_freeze_during_expansion": (
+            args.context_model == "visual_hp3d_gru"
+        ),
         "deployment_smoothing_and_tracking": "external",
         "windows": len(contexts),
         "training_windows": len(training_ids),
