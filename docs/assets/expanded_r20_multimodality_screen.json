@@ -1,0 +1,232 @@
+{
+  "status": "INDEPENDENT_SEED_SCREEN_OF_EXPANDED_R20",
+  "scope": "Route-mode screen of expanded_visual_nozB5_r20.pt at FIXED gamma=0.3, temperature 1.0. Search stage rolls the policy through the deployment reference-governor recurrence; selected seeds are then re-validated through a hardware control loop (10 Hz deadline scheduler, geofence, speed aborts). Not an unbiased success-rate estimate and not a flight safety certificate.",
+  "checkpoint": "flow_deployment/minhyuk_handoff/expanded_visual_nozB5_r20.pt",
+  "checkpoint_sha256": "f7ce5e52f4705deec924545b4cba16609e3e53ce045e9d628e34ee39b6e06b00",
+  "gamma": 0.3,
+  "sampling_temperature": 1.0,
+  "task_config": "configs/experiment1_lab_ball.json",
+  "search": {
+    "seeds": "192000-192199",
+    "n": 200,
+    "reached": 119,
+    "routes_all": {
+      "above": 129,
+      "right": 40,
+      "left": 31
+    },
+    "routes_reached": {
+      "above": 85,
+      "right": 28,
+      "left": 6
+    }
+  },
+  "below_mode_unreachable": {
+    "seeds_passing_below_obstacle_centre": 2,
+    "of": 200,
+    "deepest_vertical_offset_m": -0.0245691776275635,
+    "vertical_offset_percentiles_m": {
+      "p10": 0.14367064237594604,
+      "median": 0.29423985481262205,
+      "p90": 0.46863749027252194,
+      "max": 0.670256233215332
+    },
+    "note": "No below route exists at this gamma. The deepest sample passes 25 mm BELOW the obstacle centre, i.e. level, not below. Consistent with the handoff's reported below/above/left/right = 0/23/1/16. A 4x larger seed search did not find one."
+  },
+  "lateral_spread_m": {
+    "min": -0.8230106158765083,
+    "median": 0.05954770226434978,
+    "max": 0.4999004247783282,
+    "left_count": 113,
+    "right_count": 87
+  },
+  "flight_loop_validated": [
+    {
+      "seed": 192164,
+      "maxz": 1.3218477578938925,
+      "minz": 0.8999999761581421,
+      "lat": -0.4736970644375711,
+      "clr_ball": 0.38978960912842325,
+      "fence": 0.19999999999999996,
+      "peakv": 0.6951578026011778,
+      "dur": 9.592694944143446
+    },
+    {
+      "seed": 192073,
+      "maxz": 1.2822000970985497,
+      "minz": 0.899329700255316,
+      "lat": -0.45951848786774774,
+      "clr_ball": 0.372862097487153,
+      "fence": 0.19999999999999996,
+      "peakv": 0.6418813889221107,
+      "dur": 10.194784921873543
+    },
+    {
+      "seed": 192119,
+      "maxz": 1.4124941997366474,
+      "minz": 0.8999999761581421,
+      "lat": -0.39429046515888355,
+      "clr_ball": 0.39952032116377895,
+      "fence": 0.291372084187443,
+      "peakv": 0.7630138633715319,
+      "dur": 8.99383065383897
+    },
+    {
+      "seed": 192185,
+      "maxz": 1.2484792711388106,
+      "minz": 0.8998633072737071,
+      "lat": -0.35739177691593504,
+      "clr_ball": 0.23976855038534262,
+      "fence": 0.30000000000000004,
+      "peakv": 0.7635723682689279,
+      "dur": 9.29512857198731
+    },
+    {
+      "seed": 192054,
+      "maxz": 1.1923344400654077,
+      "minz": 0.6896160519879356,
+      "lat": -0.3071584331474606,
+      "clr_ball": 0.139623316171762,
+      "fence": 0.30000000000000004,
+      "peakv": 0.7283384836622712,
+      "dur": 8.395051862206461
+    },
+    {
+      "seed": 192061,
+      "maxz": 1.3940890544859703,
+      "minz": 0.8999999761581421,
+      "lat": -0.23379550710282349,
+      "clr_ball": 0.30511475993450315,
+      "fence": 0.2997036958507169,
+      "peakv": 0.6769090331884928,
+      "dur": 8.991616202984162
+    },
+    {
+      "seed": 192174,
+      "maxz": 1.3029073220799579,
+      "minz": 0.7440664038316092,
+      "lat": -0.22017536390579404,
+      "clr_ball": 0.1442064777062258,
+      "fence": 0.2215072989392617,
+      "peakv": 0.7652962319576201,
+      "dur": 8.192105959914745
+    },
+    {
+      "seed": 192127,
+      "maxz": 1.46001036071336,
+      "minz": 0.8999999761581421,
+      "lat": -0.13472214190255896,
+      "clr_ball": 0.3465657473524087,
+      "fence": 0.29751805123126895,
+      "peakv": 0.7352642784482192,
+      "dur": 8.495018093846912
+    },
+    {
+      "seed": 192172,
+      "maxz": 1.358246762079047,
+      "minz": 0.8999999761581421,
+      "lat": -0.1124373471898942,
+      "clr_ball": 0.23602219754104836,
+      "fence": 0.30000000000000004,
+      "peakv": 0.7687149145605475,
+      "dur": 8.393657967075828
+    },
+    {
+      "seed": 192082,
+      "maxz": 1.3578763984590305,
+      "minz": 0.8999999761581421,
+      "lat": -7.332099555524066e-05,
+      "clr_ball": 0.17669900490375962,
+      "fence": 0.19999999999999996,
+      "peakv": 0.7731094338763148,
+      "dur": 8.5933985751124
+    },
+    {
+      "seed": 192116,
+      "maxz": 1.4038973443451306,
+      "minz": 0.8999999761581421,
+      "lat": 0.03152213157078631,
+      "clr_ball": 0.2638365038721638,
+      "fence": 0.30000000000000004,
+      "peakv": 0.7161635356799654,
+      "dur": 8.793477180134621
+    },
+    {
+      "seed": 192043,
+      "maxz": 1.3034131779019145,
+      "minz": 0.8999999761581421,
+      "lat": 0.1812362947058933,
+      "clr_ball": 0.20676548015724877,
+      "fence": 0.2617959579569682,
+      "peakv": 0.7931242086708721,
+      "dur": 7.894806669186931
+    },
+    {
+      "seed": 192090,
+      "maxz": 1.2222217524016874,
+      "minz": 0.8999999761581421,
+      "lat": 0.30395137441096287,
+      "clr_ball": 0.21756094585278074,
+      "fence": 0.2851855274273034,
+      "peakv": 0.776212654099104,
+      "dur": 8.595185803156493
+    }
+  ],
+  "selected_five": [
+    {
+      "seed": 192164,
+      "mode": "far right",
+      "lateral_offset_m": -0.4737,
+      "peak_z_m": 1.3218,
+      "min_z_m": 0.9,
+      "fence_margin_m": 0.2,
+      "clearance_to_ball_shell_m": 0.3898,
+      "peak_speed_mps": 0.695,
+      "duration_s": 9.59
+    },
+    {
+      "seed": 192185,
+      "mode": "right",
+      "lateral_offset_m": -0.3574,
+      "peak_z_m": 1.2485,
+      "min_z_m": 0.8999,
+      "fence_margin_m": 0.3,
+      "clearance_to_ball_shell_m": 0.2398,
+      "peak_speed_mps": 0.764,
+      "duration_s": 9.3
+    },
+    {
+      "seed": 192127,
+      "mode": "centre, highest climb",
+      "lateral_offset_m": -0.1347,
+      "peak_z_m": 1.46,
+      "min_z_m": 0.9,
+      "fence_margin_m": 0.2975,
+      "clearance_to_ball_shell_m": 0.3466,
+      "peak_speed_mps": 0.735,
+      "duration_s": 8.5
+    },
+    {
+      "seed": 192043,
+      "mode": "left",
+      "lateral_offset_m": 0.1812,
+      "peak_z_m": 1.3034,
+      "min_z_m": 0.9,
+      "fence_margin_m": 0.2618,
+      "clearance_to_ball_shell_m": 0.2068,
+      "peak_speed_mps": 0.793,
+      "duration_s": 7.89
+    },
+    {
+      "seed": 192090,
+      "mode": "far left",
+      "lateral_offset_m": 0.304,
+      "peak_z_m": 1.2222,
+      "min_z_m": 0.9,
+      "fence_margin_m": 0.2852,
+      "clearance_to_ball_shell_m": 0.2176,
+      "peak_speed_mps": 0.776,
+      "duration_s": 8.6
+    }
+  ]
+}

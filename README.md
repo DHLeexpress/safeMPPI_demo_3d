@@ -369,6 +369,16 @@ state and dense-position arrays with zero error.
 
 ![Lab-frame one-ball pretraining demonstrations](results/lab_ball_pretrain/native_governed_w075_50pg_s0/qualification/lab_ball_demo_overlay.png)
 
+### Expanded r20 — independent multimodality screen
+
+[`docs/EXPANDED_R20_MULTIMODALITY.md`](docs/EXPANDED_R20_MULTIMODALITY.md) is a
+200-seed screen of `expanded_visual_nozB5_r20.pt` at fixed gamma `.3`, with five
+seeds re-validated through a hardware control loop. Two findings worth carrying
+forward: the below route is **absent, not rare** (deepest of 200 samples is `-.025 m`
+relative to the obstacle centre, i.e. level flight), and the reachable
+multimodality is a **78 cm lateral fan** at 1.05-1.55 m of climb. It also records a
+33x control-budget trap from torch thread oversubscription on these small models.
+
 ### Reference-domain properties of the accepted archive
 
 Every stored demonstration is a collision-free, in-bounds, goal-reaching

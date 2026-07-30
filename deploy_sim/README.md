@@ -142,12 +142,21 @@ fence_margin_m                   0.154     # <0.052 ⇒ inside the measured trac
 peak_z_m                         1.143
 ```
 
-Two traps worth knowing, both learned the hard way:
+Three traps worth knowing, all learned the hard way:
 
 1. **Arrival tolerance must exceed tracking error.** A run once passed 0.162 m
    from the goal with a 0.15 m tolerance, so "reached" never fired and the
    vehicle flew on past and out of the fence.
-2. **Differentiate over ~0.1 s, not sample-to-sample.** At 100 Hz with
+2. **Pin `torch.set_num_threads(1)` before building a model.** The lab flow
+   policies are ~28k parameters with a 3x16x12x12 Conv3D encoder. On a 28-core
+   machine where torch defaults to 20 intra-op threads, one `plan()` call costs
+   **142 ms** -- more than a whole 100 ms control period -- against **4.3 ms**
+   single-threaded. The tensors are far too small to amortise thread
+   synchronisation. It fails silently: the flight completes, just at 6.8 Hz with
+   one streamed setpoint per cycle instead of ten. Measure your achieved period;
+   never assume it. See
+   [`../docs/EXPANDED_R20_MULTIMODALITY.md`](../docs/EXPANDED_R20_MULTIMODALITY.md).
+3. **Differentiate over ~0.1 s, not sample-to-sample.** At 100 Hz with
    millimetre noise, a raw finite difference reports roughly double the true
    speed. `summarize()` already does this; do the same in your own analysis.
 
