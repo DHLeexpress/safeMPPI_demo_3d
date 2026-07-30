@@ -127,16 +127,22 @@ def lab_reference_demo_windows(
         }
         if len(scene_rows) != len(scene_bank["scenes"]):
             raise ValueError("scene bank contains duplicate scene_id values")
-        expected_gammas = set(map(float, config.data.gammas))
-        for scene_id in scene_rows:
-            observed = {
-                float(row["gamma"]) for row in manifest["runs"]
-                if str(row.get("scene_id")) == scene_id
-            }
-            if observed != expected_gammas:
-                raise ValueError(
-                    f"scene {scene_id} does not contain every configured gamma"
-                )
+        unconditioned = bool(
+            manifest.get("sampling_distribution", {}).get(
+                "unconditioned_geometry", False,
+            )
+        )
+        if not unconditioned:
+            expected_gammas = set(map(float, config.data.gammas))
+            for scene_id in scene_rows:
+                observed = {
+                    float(row["gamma"]) for row in manifest["runs"]
+                    if str(row.get("scene_id")) == scene_id
+                }
+                if observed != expected_gammas:
+                    raise ValueError(
+                        f"scene {scene_id} does not contain every configured gamma"
+                    )
 
     for row in manifest["runs"]:
         if not row.get("accepted", False):

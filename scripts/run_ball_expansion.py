@@ -28,8 +28,11 @@ from safe_mppi.lab_flow_expansion import (
     load_lab_expansion_policy,
 )
 from safe_mppi.lab_clutter_expansion import (
+    LAB_CLUTTER_GOVERNOR_DIM,
+    LAB_CLUTTER_SCENE_SCHEMA,
     LabClutterSphereExpansionTask,
     load_lab_clutter_expansion_policy,
+    sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 
@@ -159,13 +162,20 @@ def _lab_clutter_profile(task_config) -> bool:
     randomization = task_config.raw.get("scene_randomization", {})
     if not randomization.get("enabled", False):
         return False
-    if (
-        randomization.get("obstacle_family") != "spheres"
-        or int(randomization.get("count", -1)) != 3
-    ):
+    if randomization.get("obstacle_family") != "spheres":
         raise ValueError(
             "--lab-task-config with enabled scene_randomization requires "
-            "exactly three spheres"
+            "exactly three spheres or path-focused variable-count spheres"
+        )
+    if randomization.get("distribution") == (
+        "path_focused_truncated_normal_v1"
+    ):
+        sphere_scene_spec_from_config(task_config)
+        return True
+    if int(randomization.get("count", -1)) != 3:
+        raise ValueError(
+            "--lab-task-config with enabled scene_randomization requires "
+            "exactly three spheres or path-focused variable-count spheres"
         )
     return True
 
@@ -460,6 +470,11 @@ def main():
             "config to transfer a cylinder-pretrained visual policy OOD"
         ),
     )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="policy/CFM device, e.g. cpu, cuda, or cuda:0",
+    )
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument(
@@ -630,6 +645,28 @@ def main():
                                  "softmin_cost", "max_uncertainty",
                                  "uncertainty_cost", "max_step_margin"),
                         default="max_margin")
+    parser.add_argument(
+        "--execution-clearance-exp-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "lab-clutter min_cost-only weight on mean_h "
+            "exp((target-clearance_h)/temperature); 0 exactly restores the "
+            "existing native execution score"
+        ),
+    )
+    parser.add_argument(
+        "--execution-clearance-exp-temperature",
+        type=float,
+        default=0.10,
+        help="positive temperature for --execution-clearance-exp-weight",
+    )
+    parser.add_argument(
+        "--execution-clearance-target-m",
+        type=float,
+        default=0.20,
+        help="clearance target in meters for the optional exponential score",
+    )
     parser.add_argument("--execution-ess-target", type=float, default=0.25)
     parser.add_argument("--execution-uncertainty-weight", type=float, default=1.0)
     parser.add_argument("--acquisition-feature",
@@ -692,6 +729,30 @@ def main():
             "--event-log committed_success requires "
             "--archive-rule successful_executed_windows"
         )
+    if (
+        not np.isfinite(args.execution_clearance_exp_weight)
+        or args.execution_clearance_exp_weight < 0.0
+    ):
+        parser.error(
+            "--execution-clearance-exp-weight must be finite and nonnegative"
+        )
+    if (
+        not np.isfinite(args.execution_clearance_exp_temperature)
+        or args.execution_clearance_exp_temperature <= 0.0
+    ):
+        parser.error(
+            "--execution-clearance-exp-temperature must be finite and positive"
+        )
+    if (
+        not np.isfinite(args.execution_clearance_target_m)
+        or args.execution_clearance_target_m < 0.0
+    ):
+        parser.error(
+            "--execution-clearance-target-m must be finite and nonnegative"
+        )
+    device = torch.device(args.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        parser.error(f"--device {args.device!r} requires CUDA")
     output_was_unsafe = (
         args.output.exists()
         and (
@@ -712,24 +773,44 @@ def main():
             randomization = task_config.raw.get("scene_randomization", {})
             clutter_profile = _lab_clutter_profile(task_config)
             if clutter_profile:
+                scene_spec = sphere_scene_spec_from_config(task_config)
                 policy = load_lab_clutter_expansion_policy(
-                    args.pretrain_dir / "pretrained.pt"
+                    args.pretrain_dir / "pretrained.pt",
+                    verifier_suffix_dim=(
+                        LAB_CLUTTER_GOVERNOR_DIM + scene_spec.packed_dim
+                    ),
+                ).to(device)
+                effective_clearance_weight = (
+                    args.execution_clearance_exp_weight
+                    if args.execution_rule == "min_cost" else 0.0
                 )
                 task = LabClutterSphereExpansionTask(
                     task_config,
                     context_schema=policy.context_schema,
+                    device=device,
                     execution_z_bias_mode=args.execution_z_bias_mode,
                     tight_corridor=args.tight_corridor,
                     verifier_mode=args.verifier_mode,
                     verifier_solver=args.verifier_solver,
+                    execution_clearance_exp_weight=(
+                        effective_clearance_weight
+                    ),
+                    execution_clearance_exp_temperature=(
+                        args.execution_clearance_exp_temperature
+                    ),
+                    execution_clearance_target_m=(
+                        args.execution_clearance_target_m
+                    ),
+                    scene_spec=scene_spec,
                 )
             else:
                 policy = load_lab_expansion_policy(
                     args.pretrain_dir / "pretrained.pt"
-                )
+                ).to(device)
                 task = LabFlowExpansionTask(
                     task_config,
                     context_schema=policy.context_schema,
+                    device=device,
                     execution_z_bias_mode=args.execution_z_bias_mode,
                     tight_corridor=args.tight_corridor,
                     verifier_mode=args.verifier_mode,
@@ -746,7 +827,7 @@ def main():
         context_contract = policy.context_schema
     else:
         clutter_profile = False
-        policy = load_policy(args.pretrain_dir / "pretrained.pt")
+        policy = load_policy(args.pretrain_dir / "pretrained.pt").to(device)
         task_config = load_config(args.pretrain_dir / "demo_config.json")
         context_contract = pretrain.get("context_contract", "legacy10")
         task_type = (
@@ -755,11 +836,20 @@ def main():
         )
         task = task_type(
             task_config,
+            device=device,
             execution_z_bias_mode=args.execution_z_bias_mode,
             tight_corridor=args.tight_corridor,
             target_region=args.target_region,
             verifier_mode=args.verifier_mode,
             verifier_solver=args.verifier_solver,
+        )
+    if (
+        args.execution_clearance_exp_weight > 0.0
+        and not (lab_profile and clutter_profile)
+    ):
+        parser.error(
+            "--execution-clearance-exp-weight is supported only by the "
+            "randomized lab-sphere task"
         )
     if args.acquisition_feature == "task_angular":
         if lab_profile:
@@ -865,7 +955,8 @@ def main():
                 event_context[:7],
                 event_context[
                     -(
-                        18 if clutter_profile else 6
+                        task.verifier_suffix_dim
+                        if clutter_profile else 6
                     ):
                 ],
             ]).astype(np.float32)
@@ -1077,28 +1168,50 @@ def main():
             )
         ),
     }
+    manifest["runtime_device"] = str(device)
     if lab_profile:
         for key in tuple(manifest):
             if key.startswith("ball_"):
                 del manifest[key]
         manifest["task_profile"] = (
-            "minhyuk_lab_random_three_sphere_visual_expansion"
-            if clutter_profile else "minhyuk_lab_ball_visual_expansion"
+            (
+                "minhyuk_lab_random_three_sphere_visual_expansion"
+                if task.scene_schema == LAB_CLUTTER_SCENE_SCHEMA
+                else (
+                    "minhyuk_lab_path_focused_variable_sphere_"
+                    "visual_expansion"
+                )
+            )
+            if clutter_profile
+            else "minhyuk_lab_ball_visual_expansion"
         )
         manifest["lab_conditioning"] = {
             "context_schema": context_contract,
             "policy_context_dim": int(policy.policy_context_dim),
             "verifier_only_context_suffix": (
-                [
-                    "previous_applied_acceleration_3d",
-                    "previous_raw_acceleration_3d",
-                    "three_spheres_flattened_12d",
-                ]
+                (
+                    [
+                        "previous_applied_acceleration_3d",
+                        "previous_raw_acceleration_3d",
+                        "three_spheres_flattened_12d",
+                    ]
+                    if task.scene_schema == LAB_CLUTTER_SCENE_SCHEMA
+                    else [
+                        "previous_applied_acceleration_3d",
+                        "previous_raw_acceleration_3d",
+                        "sphere_count_scalar_1d",
+                        (
+                            "sphere_rows_zero_padded_to_"
+                            f"{task.scene_spec.max_count}x4"
+                        ),
+                    ]
+                )
                 if clutter_profile else [
                     "previous_applied_acceleration_3d",
                     "previous_raw_acceleration_3d",
                 ]
             ),
+            "device": str(device),
             "visual_encoder_and_first_flow_layer_lr_scale": float(
                 args.first_layer_lr_scale
             ),
@@ -1126,6 +1239,25 @@ def main():
             ),
             "excluded_term": "demonstration-only below-plane z bias",
             "execution_rule": args.execution_rule,
+            "execution_clearance_exponential": {
+                "configured_weight": float(
+                    args.execution_clearance_exp_weight
+                ),
+                "effective_weight": float(
+                    args.execution_clearance_exp_weight
+                    if clutter_profile and args.execution_rule == "min_cost"
+                    else 0.0
+                ),
+                "temperature": float(
+                    args.execution_clearance_exp_temperature
+                ),
+                "target_m": float(args.execution_clearance_target_m),
+                "formula": (
+                    "weight * mean_h exp((target_m-clearance_h)/temperature)"
+                ),
+                "predicted_states": "H post-action plan knots",
+                "applies_only_to": "min_cost",
+            },
         }
         manifest["lab_verifier"] = {
             "variant": args.verifier_mode,
@@ -1158,6 +1290,7 @@ def main():
         }
         if clutter_profile:
             manifest["lab_scene_randomization"] = dict(randomization)
+            manifest["lab_scene_schema"] = task.scene_schema
             manifest["lab_scene_ledger"] = list(task.scene_ledger)
             (args.output / "task_config_resolved.json").write_text(
                 json.dumps(task_config.raw, indent=2) + "\n"

@@ -16,6 +16,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from safe_mppi.config import load_config
 from safe_mppi.expansion import mean_pairwise_lengthscale
 from safe_mppi.flow_model import ConditionalFlowMLP
 from safe_mppi.lab_reference_flow_task import (
@@ -344,43 +345,63 @@ def train(
     )
 
 
-def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[dict]]:
+def audit(
+    policy,
+    config,
+    episodes: int,
+    seed0: int,
+    *,
+    device: str | torch.device = "cpu",
+) -> tuple[list[dict], list[dict]]:
     scene_randomization = config.raw.get("scene_randomization", {})
     clutter_scenes = None
     if scene_randomization.get("enabled"):
-        if scene_randomization.get("obstacle_family") != "vertical_cylinders":
-            raise ValueError(
-                "pretraining qualification supports randomized cylinders only"
+        if scene_randomization.get("distribution") == (
+            "path_focused_truncated_normal_v1"
+        ):
+            from safe_mppi.path_focused_clutter import (
+                path_focused_scene_bank,
             )
-        from safe_mppi.lab_clutter import (
-            config_for_scene,
-            cylinder_scene_bank,
-        )
-
-        clutter_scenes = cylinder_scene_bank(
-            episodes,
-            seed=seed0,
-            bounds=config.taskspace.bounds,
-            start=np.asarray(config.taskspace.start),
-            goal=np.asarray(config.taskspace.goal),
-            cylinder_count=int(scene_randomization["count"]),
-            cylinder_radius_m=float(scene_randomization["radius_m"]),
-            min_surface_gap_m=float(
-                scene_randomization["minimum_obstacle_surface_gap_m"]
-            ),
-            start_surface_gap_m=float(
-                scene_randomization["minimum_start_surface_clearance_m"]
-            ),
-            goal_surface_gap_m=float(
-                scene_randomization["minimum_goal_surface_clearance_m"]
-            ),
-            boundary_surface_gap_m=float(
-                scene_randomization[
-                    "minimum_taskspace_wall_surface_clearance_m"
-                ]
-            ),
-        )
+            clutter_scenes = path_focused_scene_bank(
+                config, episodes, seed=seed0,
+            )
+        else:
+            if scene_randomization.get("obstacle_family") != "vertical_cylinders":
+                raise ValueError(
+                    "legacy pretraining qualification supports cylinders only"
+                )
+            from safe_mppi.lab_clutter import cylinder_scene_bank
+            clutter_scenes = cylinder_scene_bank(
+                episodes,
+                seed=seed0,
+                bounds=config.taskspace.bounds,
+                start=np.asarray(config.taskspace.start),
+                goal=np.asarray(config.taskspace.goal),
+                cylinder_count=int(scene_randomization["count"]),
+                cylinder_radius_m=float(scene_randomization["radius_m"]),
+                min_surface_gap_m=float(
+                    scene_randomization["minimum_obstacle_surface_gap_m"]
+                ),
+                start_surface_gap_m=float(
+                    scene_randomization["minimum_start_surface_clearance_m"]
+                ),
+                goal_surface_gap_m=float(
+                    scene_randomization["minimum_goal_surface_clearance_m"]
+                ),
+                boundary_surface_gap_m=float(
+                    scene_randomization[
+                        "minimum_taskspace_wall_surface_clearance_m"
+                    ]
+                ),
+            )
     randomized_clutter = clutter_scenes is not None
+    if clutter_scenes is not None:
+        from safe_mppi.lab_clutter import config_for_scene
+    rollout_kwargs = (
+        {}
+        if torch.device(device).type == "cpu"
+        else {"device": device}
+    )
     rows = []
     for gamma in config.data.gammas:
         for episode in range(episodes):
@@ -393,6 +414,7 @@ def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[d
                 rollout_config,
                 float(gamma),
                 seed0 + 37 * episode,
+                **rollout_kwargs,
             )
             rows.append({
                 "gamma": float(gamma),
@@ -461,8 +483,14 @@ def audit(policy, config, episodes: int, seed0: int) -> tuple[list[dict], list[d
     return rows, summaries
 
 
-def plot_results(history, summaries, output: Path) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.1))
+def plot_results(
+    history,
+    summaries,
+    output: Path,
+    ood_summaries=None,
+) -> None:
+    columns = 3 if ood_summaries is not None else 2
+    fig, axes = plt.subplots(1, columns, figsize=(5.6 * columns, 4.1))
     axes[0].plot(
         [row["epoch"] for row in history],
         [row["train"] for row in history],
@@ -477,32 +505,34 @@ def plot_results(history, summaries, output: Path) -> None:
     axes[0].grid(alpha=0.25)
     axes[0].legend()
 
-    x = np.arange(len(summaries))
-    width = 0.2
-    metrics = [
-        ("SR", "SR"),
-        ("CR", "CR"),
-        ("window_validity", "Window validity"),
-    ]
-    metrics.append(
-        ("OOB", "OOB")
-        if all(row["route_coverage"] is None for row in summaries)
-        else ("route_coverage", "Route coverage")
-    )
-    for offset, (key, label) in enumerate(metrics):
-        axes[1].bar(
-            x + (offset - 1.5) * width,
-            [row[key] for row in summaries],
-            width,
-            label=label,
+    def metric_bars(axis, values, title):
+        x = np.arange(len(values))
+        width = 0.2
+        metrics = [
+            ("SR", "SR"),
+            ("CR", "CR"),
+            ("window_validity", "Window validity"),
+            ("OOB", "OOB"),
+        ]
+        for offset, (key, label) in enumerate(metrics):
+            axis.bar(
+                x + (offset - 1.5) * width,
+                [row[key] for row in values],
+                width,
+                label=label,
+            )
+        axis.set_xticks(
+            x,
+            [rf"$\gamma={row['gamma']:g}$" for row in values],
         )
-    axes[1].set_xticks(
-        x,
-        [rf"$\gamma={row['gamma']:g}$" for row in summaries],
-    )
-    axes[1].set_ylim(0.0, 1.03)
-    axes[1].grid(alpha=0.25, axis="y")
-    axes[1].legend(fontsize=8)
+        axis.set_ylim(0.0, 1.03)
+        axis.set_title(title)
+        axis.grid(alpha=0.25, axis="y")
+        axis.legend(fontsize=8)
+
+    metric_bars(axes[1], summaries, "Cylinder ID")
+    if ood_summaries is not None:
+        metric_bars(axes[2], ood_summaries, "Sphere OOD")
     fig.tight_layout()
     fig.savefig(output, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -535,13 +565,17 @@ def main():
         choices=("raw10", "visual_hp3d"),
         default="raw10",
     )
-    parser.add_argument(
-        "--device",
-        choices=("cpu", "mps"),
-        default="cpu",
-    )
+    parser.add_argument("--device", default="cpu")
     parser.add_argument("--audit-episodes", type=int, default=50)
     parser.add_argument("--audit-seed", type=int, default=91000)
+    parser.add_argument(
+        "--ood-config",
+        type=Path,
+        default=None,
+        help="optional path-focused sphere config for an OOD raw audit",
+    )
+    parser.add_argument("--ood-audit-episodes", type=int, default=None)
+    parser.add_argument("--ood-audit-seed", type=int, default=191000)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     if args.output.exists():
@@ -625,12 +659,47 @@ def main():
         seed=args.seed,
     )
     lengthscale = mean_pairwise_lengthscale(calibration)
+    policy.to(device)
     rows, summaries = audit(
         policy,
         config,
         args.audit_episodes,
         args.audit_seed,
+        device=device,
     )
+    demo_manifest = json.loads(
+        (args.demo_dir / "manifest.json").read_text()
+    )
+    training_scene_hashes = {
+        str(row["scene_hash"])
+        for row in demo_manifest.get("scene_bank", {}).get("scenes", [])
+        if row.get("scene_hash") is not None
+    }
+    id_audit_scene_hashes = {
+        str(row["scene_hash"])
+        for row in rows if row.get("scene_hash") is not None
+    }
+    id_overlap = training_scene_hashes & id_audit_scene_hashes
+    if id_overlap:
+        raise RuntimeError(
+            "raw ID audit scene bank overlaps the demonstration geometry bank"
+        )
+    ood_rows = None
+    ood_summaries = None
+    if args.ood_config is not None:
+        ood_config = load_config(args.ood_config)
+        ood_rows, ood_summaries = audit(
+            policy,
+            ood_config,
+            (
+                args.audit_episodes
+                if args.ood_audit_episodes is None
+                else args.ood_audit_episodes
+            ),
+            args.ood_audit_seed,
+            device=device,
+        )
+    policy.cpu()
 
     if args.context_model == "visual_hp3d":
         arch = {
@@ -720,8 +789,25 @@ def main():
         "raw_temperature": 1.0,
         "raw_audit_episodes_per_gamma": args.audit_episodes,
         "raw_audit_seed": args.audit_seed,
+        "raw_audit_scene_overlap_count": len(id_overlap),
+        "raw_audit_scene_bank_disjoint_from_demo": True,
         "raw_audit_summary": summaries,
         "raw_audit": rows,
+        "ood_raw_audit_config": (
+            str(args.ood_config.resolve())
+            if args.ood_config is not None else None
+        ),
+        "ood_raw_audit_episodes_per_gamma": (
+            args.audit_episodes
+            if args.ood_config is not None
+            and args.ood_audit_episodes is None
+            else args.ood_audit_episodes
+        ),
+        "ood_raw_audit_seed": (
+            args.ood_audit_seed if args.ood_config is not None else None
+        ),
+        "ood_raw_audit_summary": ood_summaries,
+        "ood_raw_audit": ood_rows,
     }
     (args.output / "pretrain_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n"
@@ -730,6 +816,7 @@ def main():
         history,
         summaries,
         args.output / "pretrain_qualification.png",
+        ood_summaries,
     )
     (args.output / ".best_training_state.pt").unlink(missing_ok=True)
     print(json.dumps(summaries, indent=2), flush=True)

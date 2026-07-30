@@ -255,6 +255,71 @@ it keeps every terminal-success trace (including the authoritative committed
 subset) and prunes failed/NVP traces after each round. Checkpoints, query/GP
 archives, replay, and optimization are unchanged.
 
+#### Path-focused variable-clutter v2
+
+The additive v2 contract leaves the fixed-three experiment above reproducible,
+but removes its expert-conditioned scene admission and concentrates geometry
+near the fixed start-goal segment:
+
+| stage | count | physical + vehicle radius | modeled radius |
+|---|---:|---:|---:|
+| cylinder demonstrations | \(N\sim\mathrm{Unif}\{4,\ldots,8\}\) | `.10 + .10 m` | `.20 m` |
+| sphere OOD expansion/evaluation | \(N\sim\mathrm{Unif}\{3,\ldots,6\}\) | `.254 + .10 m` | `.354 m` |
+
+Centers use
+\[
+c_i=s+\lambda_i(g-s)+E_\perp\delta_i,\qquad
+\lambda_i\sim\mathcal U(.15,.85),\quad
+\delta_i\sim\mathcal N(0,.20^2I),
+\]
+followed only by body containment, endpoint non-intersection, and modeled-body
+non-overlap. Extra pairwise and wall gaps are both zero. The `.20 m`
+transverse scale was selected in a same-seed, unconditioned 16-scene sanity
+screen and confirmed on 32 scenes: it retained `109/128` SafeMPPI successes,
+whereas `.40 m` retained `83/128`. Larger scales produced more lateral
+side-changes but made the expert substantially less reliable; `.20 m` still
+interacted with roughly three obstacles per successful rollout. This is a
+configuration screen, not final inference.
+
+The scene bank is materialized before any controller call. Expert failures
+remain declared scene/gamma cells and are never replaced; only successful
+trajectories enter behavior cloning. The variable sphere verifier suffix is
+fixed-width:
+\[
+[\text{previous applied}_3,\text{previous raw}_3,N,
+  \text{zero-padded spheres}_{6\times4}].
+\]
+The learned visual policy never receives these exact sphere coordinates.
+
+```bash
+python scripts/collect_path_focused_clutter_demos.py \
+  --config configs/lab_clutter_cylinders_path_v2.json \
+  --output results/path_v2/cylinder_demos_s0 \
+  --scenes 100 --domain-seed 0 --rollout-seed-start 0
+
+python scripts/pretrain_lab_reference_flow.py \
+  --demo-dir results/path_v2/cylinder_demos_s0 \
+  --output results/path_v2/pretrain_visual_s0 \
+  --context-model visual_hp3d --device cuda \
+  --epochs 500 --batch-size 32 --learning-rate 3e-4 \
+  --audit-episodes 100 --audit-seed 91000 \
+  --ood-config configs/lab_clutter_spheres_path_v2.json \
+  --ood-audit-episodes 100 --ood-audit-seed 191000
+```
+
+Expansion accepts both `--execution-rule max_step_margin` and `min_cost`. For
+the latter only, `--execution-clearance-exp-weight` adds
+\[
+w\,H^{-1}\sum_h
+\exp\!\left((d_{\rm target}-d_h)/T\right)
+\]
+to the native execution-ranking cost; its default weight is zero, which
+exactly restores the prior scorer. `--device cuda` is supported by pretraining,
+expansion, and clutter evaluation. Evaluation reports temperature-one
+randomized-domain metrics pooled, per gamma, per obstacle count, and per
+\((\gamma,N)\), with deterministic one-standard-deviation Wilson/bootstrap
+bands. `deploy_sim/` remains untouched.
+
 #### Canonical 50-round clutter result
 
 The authenticated run used 50 accepted randomized cylinder scenes per gamma
