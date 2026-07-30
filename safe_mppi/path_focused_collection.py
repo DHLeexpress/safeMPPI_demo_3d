@@ -188,6 +188,10 @@ def collect_path_focused_clutter_demos(
     output.mkdir(parents=True, exist_ok=True)
     raw["data"] = dict(raw["data"])
     raw["data"]["episodes_per_gamma"] = count
+    if raw["data"].get("max_attempts_per_gamma") is not None:
+        raw["data"]["max_attempts_per_gamma"] = max(
+            count, int(raw["data"]["max_attempts_per_gamma"])
+        )
     raw["scene_randomization"].update({
         "admission_mode": "geometry_only_no_expert_conditioning",
         "unconditioned_geometry_bank": True,

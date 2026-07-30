@@ -231,6 +231,8 @@ def test_collector_keeps_fixed_bank_and_failed_scene_gamma_cells(tmp_path):
         } == {round(gamma, 6) for gamma in gammas}
 
     resolved = json.loads((output / "resolved_config.json").read_text())
+    assert resolved["data"]["episodes_per_gamma"] == 3
+    assert resolved["data"]["max_attempts_per_gamma"] >= 3
     assert resolved["scene_randomization"]["transverse_std_m"] == 0.50
     assert (
         resolved["scene_randomization"]["expert_rollouts_per_scene_gamma"]
