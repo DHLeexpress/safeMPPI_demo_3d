@@ -15,8 +15,12 @@ from safe_mppi.lab_clutter_expansion import (
     RandomThreeSphereScene,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_VISUAL_HISTORY_LENGTH,
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
     build_visual_context,
 )
@@ -286,6 +290,58 @@ def test_context_packs_exact_scene_after_governor_and_adapter_strips_it():
         state["spheres"].reshape(LAB_CLUTTER_SCENE_DIM),
     )
     assert policy.context_dim == len(context)
+
+
+def test_gru_clutter_context_preserves_history_and_dynamic_suffix():
+    config = load_config(CONFIG)
+    base = LabVisualHistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=4,
+        history_token_dim=3,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=2,
+    )
+    policy = LabClutterExpansionPolicyAdapter(
+        base,
+        freeze_history_encoder=True,
+    )
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 17)
+    context = task.context(state, 0.3)
+    assert context.shape == (
+        LAB_VISUAL_HISTORY_PACKED_DIM
+        + LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    )
+    assert policy._policy_context(context).shape == (
+        LAB_VISUAL_HISTORY_PACKED_DIM,
+    )
+    history = context.numpy()[
+        LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
+    ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4)
+    assert not bool(history[:, 3].any())
+    np.testing.assert_array_equal(
+        task.scene_from_context(context), state["spheres"],
+    )
+
+    candidate = torch.zeros(10, 3)
+    candidate[0] = torch.tensor([0.1, 0.05, -0.02])
+    updated = task.advance(state, candidate)
+    np.testing.assert_array_equal(
+        updated["raw_history"][-1],
+        np.asarray([0.1, 0.05, -0.02, 1.0], np.float32),
+    )
+    updated_context = task.context(updated, 0.3)
+    np.testing.assert_array_equal(
+        updated_context.numpy()[
+            LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
+        ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4),
+        updated["raw_history"],
+    )
 
 
 def test_verifier_receives_all_three_spheres_from_packed_context(monkeypatch):

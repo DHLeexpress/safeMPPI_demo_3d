@@ -28,7 +28,10 @@ from safe_mppi.lab_clutter_expansion import (
     LAB_CLUTTER_SCENE_SCHEMA,
     LabClutterSphereExpansionTask,
 )
-from safe_mppi.lab_visual_flow import LAB_VISUAL_SCHEMA
+from safe_mppi.lab_visual_flow import (
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_SCHEMA,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +53,19 @@ def _manifest(scene_hash: str = "expansion-scene-hash") -> dict:
 def test_clutter_dispatch_requires_task_profile_and_schemas():
     manifest = _manifest()
     assert is_lab_clutter_evaluation_manifest(manifest)
+    history = copy.deepcopy(manifest)
+    history["lab_conditioning"][
+        "context_schema"
+    ] = LAB_VISUAL_HISTORY_SCHEMA
+    history["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    assert is_lab_clutter_evaluation_manifest(history)
+    del history["lab_conditioning"]["history_encoder"]
+    with pytest.raises(ValueError, match="freeze contract"):
+        is_lab_clutter_evaluation_manifest(history)
 
     legacy = copy.deepcopy(manifest)
     legacy["task_profile"] = "minhyuk_lab_ball_visual_expansion"

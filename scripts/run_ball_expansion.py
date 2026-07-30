@@ -35,6 +35,11 @@ from safe_mppi.lab_clutter_expansion import (
     sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
+from safe_mppi.lab_visual_flow import (
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_PACKED_DIM,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -485,6 +490,15 @@ def main():
             "layer and head retain --learning-rate"
         ),
     )
+    parser.add_argument(
+        "--train-gru-during-expansion",
+        action="store_true",
+        help=(
+            "explicitly update a visual-history GRU during expansion; by "
+            "default a GRU checkpoint freezes only its history encoder, and "
+            "this flag is rejected for checkpoints without a GRU"
+        ),
+    )
     parser.add_argument("--beta", type=float, default=None,
                         help="fixed beta; default uses the one-time pretrained calibration")
     parser.add_argument("--adaptive-beta", action="store_true",
@@ -779,6 +793,9 @@ def main():
                     verifier_suffix_dim=(
                         LAB_CLUTTER_GOVERNOR_DIM + scene_spec.packed_dim
                     ),
+                    train_history_encoder=(
+                        args.train_gru_during_expansion
+                    ),
                 ).to(device)
                 effective_clearance_weight = (
                     args.execution_clearance_exp_weight
@@ -805,7 +822,10 @@ def main():
                 )
             else:
                 policy = load_lab_expansion_policy(
-                    args.pretrain_dir / "pretrained.pt"
+                    args.pretrain_dir / "pretrained.pt",
+                    train_history_encoder=(
+                        args.train_gru_during_expansion
+                    ),
                 ).to(device)
                 task = LabFlowExpansionTask(
                     task_config,
@@ -826,6 +846,11 @@ def main():
             raise
         context_contract = policy.context_schema
     else:
+        if args.train_gru_during_expansion:
+            parser.error(
+                "--train-gru-during-expansion requires a lab visual-history "
+                "checkpoint"
+            )
         clutter_profile = False
         policy = load_policy(args.pretrain_dir / "pretrained.pt").to(device)
         task_config = load_config(args.pretrain_dir / "demo_config.json")
@@ -948,17 +973,23 @@ def main():
         nonlocal source_event_count
         event_context = event["context"].numpy()
         if lab_profile:
-            # The 6,919-D visual volume is reproducible from robot state and
+            # The visual grid volume is reproducible from robot state and
             # scene geometry; storing it at every event would add many GB to a
-            # 50-round log without helping the mechanism visualization.
+            # 50-round log.  GRU history is not reconstructible and is kept.
+            suffix_dim = (
+                task.verifier_suffix_dim if clutter_profile else 6
+            )
+            history = (
+                event_context[
+                    LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
+                ]
+                if context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                else np.empty(0, np.float32)
+            )
             event_context = np.concatenate([
                 event_context[:7],
-                event_context[
-                    -(
-                        task.verifier_suffix_dim
-                        if clutter_profile else 6
-                    ):
-                ],
+                history,
+                event_context[-suffix_dim:],
             ]).astype(np.float32)
         compact_event = {
             "round": event["round"], "step": event["step"], "gamma": event["gamma"],
@@ -1188,6 +1219,25 @@ def main():
         manifest["lab_conditioning"] = {
             "context_schema": context_contract,
             "policy_context_dim": int(policy.policy_context_dim),
+            "history_encoder": {
+                "present": bool(
+                    context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                ),
+                "frozen_during_expansion": (
+                    not args.train_gru_during_expansion
+                    if context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                    else None
+                ),
+                "explicit_unfreeze_flag": bool(
+                    args.train_gru_during_expansion
+                ),
+                "history_source": (
+                    "prior_10_executed_pre_smoothing_raw_commands_with_"
+                    "left_padding_validity_bits"
+                    if context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                    else None
+                ),
+            },
             "verifier_only_context_suffix": (
                 (
                     [
@@ -1216,9 +1266,9 @@ def main():
                 args.first_layer_lr_scale
             ),
             "event_context": (
-                "7-D low state plus verifier-only dynamics/scene suffix; "
-                "visual grid omitted because it is reproducible from robot "
-                "state and scene"
+                "7-D low state plus prior raw-command history when present "
+                "plus verifier-only dynamics/scene suffix; visual grid "
+                "omitted because it is reproducible from robot state and scene"
             ),
         }
         manifest["lab_reference_dynamics"] = {

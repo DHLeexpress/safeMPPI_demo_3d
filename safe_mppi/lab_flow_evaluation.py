@@ -154,14 +154,8 @@ def _probe_rows(policy, config, gammas, samples, seed):
     rows = []
     for gamma in gammas:
         for probe_index, state6 in enumerate(probes):
-            state = {
-                "x": np.asarray(state6, np.float32),
-                "previous_applied": np.zeros(3, np.float32),
-                "previous_raw": np.zeros(3, np.float32),
-                "steps": 0,
-                "collided": False,
-                "oob": False,
-            }
+            state = task.reset(float(gamma), probe_index, int(seed))
+            state["x"] = np.asarray(state6, np.float32)
             context = task.context(state, float(gamma))
             candidates = wrapped.sample(
                 context, int(samples), generator, base_std=1.0,

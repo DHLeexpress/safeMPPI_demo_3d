@@ -42,7 +42,13 @@ from .lab_clutter_expansion import (
 )
 from .lab_flow_evaluation import _validate_replay_provenance
 from .lab_reference_flow_task import raw_reference_rollout
-from .lab_visual_flow import LAB_VISUAL_SCHEMA, load_lab_reference_policy
+from .lab_visual_flow import (
+    LAB_VISUAL_HISTORY_LENGTH,
+    LAB_VISUAL_HISTORY_STEP_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_SCHEMA,
+    load_lab_reference_policy,
+)
 
 
 LAB_CLUTTER_TASK_PROFILE = (
@@ -176,11 +182,32 @@ def is_lab_clutter_evaluation_manifest(manifest: dict) -> bool:
     conditioning = manifest.get("lab_conditioning")
     if (
         not isinstance(conditioning, dict)
-        or conditioning.get("context_schema") != LAB_VISUAL_SCHEMA
+        or conditioning.get("context_schema") not in {
+            LAB_VISUAL_SCHEMA,
+            LAB_VISUAL_HISTORY_SCHEMA,
+        }
     ):
         raise ValueError(
             "sphere-clutter expansion requires the visual lab context schema"
         )
+    if conditioning["context_schema"] == LAB_VISUAL_HISTORY_SCHEMA:
+        history = conditioning.get("history_encoder")
+        if (
+            not isinstance(history, dict)
+            or history.get("present") is not True
+            or not isinstance(
+                history.get("frozen_during_expansion"), bool,
+            )
+            or not isinstance(
+                history.get("explicit_unfreeze_flag"), bool,
+            )
+            or history["explicit_unfreeze_flag"]
+            == history["frozen_during_expansion"]
+        ):
+            raise ValueError(
+                "visual-history expansion requires an explicit, consistent "
+                "GRU freeze contract"
+            )
     ledger = manifest.get("lab_scene_ledger")
     if not isinstance(ledger, list) or not ledger:
         raise ValueError(
@@ -1150,10 +1177,17 @@ def _local_path(path: np.ndarray, env: TaskEnvironment, frame: np.ndarray):
 def _decode_event_scene(event: dict, task: LabClutterSphereExpansionTask):
     """Recover exact governor memory and geometry from a clutter event."""
     context = np.asarray(event.get("context"), np.float32).reshape(-1)
-    expected = 13 + int(task.scene_spec.packed_dim)
+    history_dim = (
+        LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+        if task.context_schema == LAB_VISUAL_HISTORY_SCHEMA else 0
+    )
+    governor_start = 7 + history_dim
+    scene_start = governor_start + 6
+    expected = scene_start + int(task.scene_spec.packed_dim)
     if len(context) != expected:
         raise ValueError(
-            "clutter mechanism event lacks low7 + governor6 + packed-sphere "
+            "clutter mechanism event lacks low7 + optional history + "
+            "governor6 + packed-sphere "
             f"context: expected {expected}, found {len(context)}"
         )
     gamma = float(event["gamma"])
@@ -1165,9 +1199,13 @@ def _decode_event_scene(event: dict, task: LabClutterSphereExpansionTask):
         robot[:3], expected_position, atol=2.0e-5, rtol=0.0,
     ):
         raise ValueError("clutter event robot disagrees with compact context")
-    previous_applied = context[7:10].copy()
-    previous_raw = context[10:13].copy()
-    spheres = task.scene_spec.unpack(task.env, context[13:])
+    previous_applied = context[
+        governor_start:governor_start + 3
+    ].copy()
+    previous_raw = context[
+        governor_start + 3:governor_start + 6
+    ].copy()
+    spheres = task.scene_spec.unpack(task.env, context[scene_start:])
     scene_env = task._environment(spheres)
     return {
         "previous_applied": previous_applied,

@@ -2,6 +2,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from safe_mppi.config import load_config
@@ -337,7 +338,11 @@ def test_visual_history_policy_round_trip_and_expansion_freeze(tmp_path):
     loaded = load_lab_reference_policy(checkpoint)
     assert isinstance(loaded, LabVisualHistoryFlowPolicy)
     assert loaded.context_schema == LAB_VISUAL_HISTORY_SCHEMA
-    loaded.expansion_parameter_groups(1.0e-4, 0.1)
+    with pytest.raises(ValueError, match="explicit"):
+        loaded.expansion_parameter_groups(1.0e-4, 0.1)
+    loaded.expansion_parameter_groups(
+        1.0e-4, 0.1, freeze_history_encoder=True,
+    )
     assert not any(
         parameter.requires_grad
         for parameter in loaded.history_encoder.parameters()

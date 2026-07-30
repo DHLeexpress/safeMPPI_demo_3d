@@ -26,8 +26,14 @@ from .lab_clutter import (
     obstacle_scene_hash,
     start_goal_path_diagnostics,
 )
-from .lab_reference_flow_task import policy_context
+from .lab_reference_flow_task import (
+    _append_raw_history,
+    _raw_history_before,
+    policy_context,
+)
 from .lab_visual_flow import (
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
     load_lab_reference_policy,
@@ -438,12 +444,20 @@ class LabClutterExpansionPolicyAdapter(LabExpansionPolicyAdapter):
         self,
         policy: torch.nn.Module,
         verifier_suffix_dim: int = LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+        *,
+        freeze_history_encoder: bool | None = None,
     ):
-        if getattr(policy, "context_schema", None) != LAB_VISUAL_SCHEMA:
+        if getattr(policy, "context_schema", None) not in {
+            LAB_VISUAL_SCHEMA,
+            LAB_VISUAL_HISTORY_SCHEMA,
+        }:
             raise ValueError(
                 "dynamic clutter expansion requires the visual lab policy"
             )
-        super().__init__(policy)
+        super().__init__(
+            policy,
+            freeze_history_encoder=freeze_history_encoder,
+        )
         if int(verifier_suffix_dim) < LAB_CLUTTER_GOVERNOR_DIM:
             raise ValueError("clutter verifier suffix is too short")
         self.verifier_suffix_dim = int(verifier_suffix_dim)
@@ -454,10 +468,22 @@ def load_lab_clutter_expansion_policy(
     path: str | Path,
     *,
     verifier_suffix_dim: int = LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    train_history_encoder: bool = False,
 ) -> LabClutterExpansionPolicyAdapter:
+    policy = load_lab_reference_policy(path)
+    is_history = (
+        getattr(policy, "context_schema", None) == LAB_VISUAL_HISTORY_SCHEMA
+    )
+    if train_history_encoder and not is_history:
+        raise ValueError(
+            "train_history_encoder applies only to a GRU checkpoint"
+        )
     return LabClutterExpansionPolicyAdapter(
-        load_lab_reference_policy(path),
+        policy,
         verifier_suffix_dim=verifier_suffix_dim,
+        freeze_history_encoder=(
+            not train_history_encoder if is_history else None
+        ),
     )
 
 
@@ -479,7 +505,10 @@ class LabClutterSphereExpansionTask:
         execution_clearance_target_m: float = 0.20,
         scene_spec=None,
     ):
-        if context_schema != LAB_VISUAL_SCHEMA:
+        if context_schema not in {
+            LAB_VISUAL_SCHEMA,
+            LAB_VISUAL_HISTORY_SCHEMA,
+        }:
             raise ValueError(
                 "dynamic clutter expansion requires lab visual conditioning"
             )
@@ -542,7 +571,11 @@ class LabClutterSphereExpansionTask:
                 "dynamic sphere expansion requires an empty static obstacle list"
             )
         self.context_schema = context_schema
-        self.policy_context_dim = LAB_VISUAL_PACKED_DIM
+        self.policy_context_dim = (
+            LAB_VISUAL_HISTORY_PACKED_DIM
+            if context_schema == LAB_VISUAL_HISTORY_SCHEMA
+            else LAB_VISUAL_PACKED_DIM
+        )
         self.device = torch.device(device)
         self.tight_corridor = bool(tight_corridor)
         self.verifier_mode = verifier_mode
@@ -598,6 +631,10 @@ class LabClutterSphereExpansionTask:
             "collided": False,
             "oob": False,
         }
+        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+            state["raw_history"] = _raw_history_before(
+                np.empty((0, 3), np.float32), 0,
+            )
         self.scene_ledger.append({
             "reset_index": len(self.scene_ledger),
             "gamma": float(gamma),
@@ -643,6 +680,7 @@ class LabClutterSphereExpansionTask:
             scene_env,
             state["x"],
             float(gamma),
+            raw_history=state.get("raw_history"),
         )
         packed = np.concatenate([
             learned,
@@ -848,7 +886,7 @@ class LabClutterSphereExpansionTask:
         ).copy()
         after, applied, dense = governor.step(state["x"], command)
         clearance = env.obstacle_clearance(dense)
-        return {
+        updated = {
             "x": after,
             "previous_applied": applied,
             "previous_raw": np.asarray(command, np.float32).copy(),
@@ -868,6 +906,11 @@ class LabClutterSphereExpansionTask:
                 or not env.inside_taskspace(dense).all()
             ),
         }
+        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+            updated["raw_history"] = _append_raw_history(
+                state["raw_history"], command,
+            )
+        return updated
 
     def terminal(self, state):
         if state["collided"]:

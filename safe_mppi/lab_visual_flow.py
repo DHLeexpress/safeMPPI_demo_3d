@@ -424,14 +424,21 @@ class LabVisualHistoryFlowPolicy(LabVisualFlowPolicy):
         self,
         base_lr: float,
         first_layer_lr_scale: float = 1.0,
+        *,
+        freeze_history_encoder: bool | None = None,
     ) -> list[dict[str, object]]:
-        """Freeze the action-history encoder during online expansion."""
+        """Build expansion groups under an explicit GRU freeze contract."""
         if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
             raise ValueError(
                 "require base_lr>0 and first_layer_lr_scale in (0,1]"
             )
+        if freeze_history_encoder is None:
+            raise ValueError(
+                "GRU expansion requires an explicit freeze_history_encoder "
+                "contract"
+            )
         for parameter in self.history_encoder.parameters():
-            parameter.requires_grad_(False)
+            parameter.requires_grad_(not freeze_history_encoder)
         slow = (
             list(self.grid_encoder.parameters())
             + list(self.flow.trunk[0].parameters())
