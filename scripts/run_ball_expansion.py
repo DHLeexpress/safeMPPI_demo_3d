@@ -37,6 +37,8 @@ from safe_mppi.lab_clutter_expansion import (
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 from safe_mppi.lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
     LAB_HP100_SCHEMA,
@@ -56,6 +58,7 @@ LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
 })
 LAB_CONTEXT_BASE_PACKED_DIMS = {
+    LAB_HP100_EXACT_MEMORY_SCHEMA: LAB_HP100_EXACT_MEMORY_PACKED_DIM,
     LAB_HP100_HISTORY_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
@@ -1303,6 +1306,9 @@ def main():
         manifest["lab_conditioning"] = {
             "context_schema": context_contract,
             "policy_context_dim": int(policy.policy_context_dim),
+            "exact_previous_raw_and_applied_in_policy": (
+                context_contract == LAB_HP100_EXACT_MEMORY_SCHEMA
+            ),
             "history_encoder": {
                 "present": history_present,
                 "frozen_during_expansion": history_frozen,

@@ -33,6 +33,8 @@ from .lab_reference_flow_task import (
     policy_context,
 )
 from .lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_HISTORY_PACKED_DIM,
     LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
@@ -62,6 +64,7 @@ LAB_CLUTTER_VERIFIER_SUFFIX_DIM = (
 )
 LAB_CLUTTER_SCENE_SCHEMA = "lab_random_three_spheres_v1"
 LAB_CLUTTER_VISUAL_CONTEXT_DIMS = {
+    LAB_HP100_EXACT_MEMORY_SCHEMA: LAB_HP100_EXACT_MEMORY_PACKED_DIM,
     LAB_HP100_HISTORY_SCHEMA: LAB_HP100_HISTORY_PACKED_DIM,
     LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
@@ -696,6 +699,8 @@ class LabClutterSphereExpansionTask:
             state["x"],
             float(gamma),
             raw_history=state.get("raw_history"),
+            previous_raw=state["previous_raw"],
+            previous_applied=state["previous_applied"],
         )
         packed = np.concatenate([
             learned,
@@ -895,6 +900,11 @@ class LabClutterSphereExpansionTask:
         spheres = self.scene_spec.validate(self.env, state["spheres"])
         env = self._environment(spheres)
         command = candidate.detach().cpu().numpy().reshape(-1, 3)[0]
+        limited_command = np.clip(
+            command,
+            -float(self.config.safemppi.demo_u_max),
+            float(self.config.safemppi.demo_u_max),
+        ).astype(np.float32)
         governor = ReferenceGovernor(self.config.safemppi)
         governor.previous_applied = np.asarray(
             state["previous_applied"], np.float32,
@@ -904,7 +914,7 @@ class LabClutterSphereExpansionTask:
         updated = {
             "x": after,
             "previous_applied": applied,
-            "previous_raw": np.asarray(command, np.float32).copy(),
+            "previous_raw": limited_command,
             "spheres": spheres,
             "scene_seed": int(state["scene_seed"]),
             "scene_hash": str(state["scene_hash"]),

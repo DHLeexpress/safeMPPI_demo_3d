@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from safe_mppi.config import load_config
-from safe_mppi.environment import TaskEnvironment
+from safe_mppi.environment import ReferenceGovernor, TaskEnvironment
 from safe_mppi.geometry import build_nominal_polytope
 from safe_mppi.lab_clutter_expansion import (
     LabClutterExpansionPolicyAdapter,
@@ -19,6 +19,8 @@ from safe_mppi.lab_clutter_evaluation import (
 )
 from safe_mppi.lab_reference_flow_task import (
     LabReferenceFlowController,
+    _raw_and_applied_memories,
+    lab_reference_demo_windows,
     policy_context,
 )
 from safe_mppi.lab_visual_flow import (
@@ -26,6 +28,8 @@ from safe_mppi.lab_visual_flow import (
     LAB_HP100_DYNAMIC_FACE_COUNT,
     LAB_HP100_FRAME,
     LAB_HP100_GRID_SHAPE,
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_HISTORY_PACKED_DIM,
     LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
@@ -33,6 +37,7 @@ from safe_mppi.lab_visual_flow import (
     LAB_HP100_RADIAL_EDGES,
     LAB_HP100_SCHEMA,
     LabUniformHp100Encoder,
+    LabUniformHp100ExactMemoryFlowPolicy,
     LabUniformHp100FlowPolicy,
     LabUniformHp100HistoryFlowPolicy,
     LabUniformHp100Rasterizer,
@@ -400,3 +405,191 @@ def test_hp100_gru32_closed_loop_history_and_clutter_event_routing():
     assert run_expansion.LAB_CONTEXT_BASE_PACKED_DIMS[
         LAB_HP100_HISTORY_SCHEMA
     ] == LAB_HP100_PACKED_DIM
+
+
+def _exact_memory_arch(config) -> dict:
+    return pretrain.pretraining_arch(
+        "uniform_hp100_exact_memory",
+        config,
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=0,
+        nfe=1,
+        trunk_depth=3,
+    )
+
+
+def test_exact_memory_reconstructs_reference_governor_and_packs_context():
+    config = load_config(SPHERE_CONFIG)
+    env = TaskEnvironment(config)
+    controls = np.asarray([
+        [0.4, -0.1, 0.2],
+        [-0.2, 0.3, -0.4],
+        [0.05, 0.06, 0.07],
+    ], np.float32)
+    raw_memory, applied_memory = _raw_and_applied_memories(
+        controls, config.safemppi,
+    )
+    governor = ReferenceGovernor(config.safemppi)
+    state = env.start.copy()
+    for step, command in enumerate(controls):
+        assert np.array_equal(raw_memory[step], (
+            np.zeros(3, np.float32)
+            if step == 0
+            else np.clip(
+                controls[step - 1],
+                -config.safemppi.demo_u_max,
+                config.safemppi.demo_u_max,
+            )
+        ))
+        assert np.array_equal(
+            applied_memory[step], governor.previous_applied,
+        )
+        state, _, _ = governor.step(state, command)
+    assert np.array_equal(applied_memory[-1], governor.previous_applied)
+
+    exact = policy_context(
+        type(
+            "Policy", (),
+            {"context_schema": LAB_HP100_EXACT_MEMORY_SCHEMA},
+        )(),
+        env,
+        env.start,
+        0.3,
+        previous_raw=raw_memory[2],
+        previous_applied=applied_memory[2],
+    )
+    legacy = policy_context(
+        type("Policy", (), {"context_schema": LAB_HP100_SCHEMA})(),
+        env,
+        env.start,
+        0.3,
+    )
+    assert exact.shape == (LAB_HP100_EXACT_MEMORY_PACKED_DIM,)
+    assert np.array_equal(exact[:LAB_HP100_PACKED_DIM], legacy)
+    assert np.array_equal(
+        exact[LAB_HP100_PACKED_DIM:],
+        np.concatenate([raw_memory[2], applied_memory[2]]),
+    )
+    legacy_with_unused_memory = policy_context(
+        type("Policy", (), {"context_schema": LAB_HP100_SCHEMA})(),
+        env,
+        env.start,
+        0.3,
+        previous_raw=raw_memory[2],
+        previous_applied=applied_memory[2],
+    )
+    assert np.array_equal(legacy_with_unused_memory, legacy)
+
+
+def test_hp100_exact_memory_demo_archive_uses_pre_step_raw_and_applied():
+    contexts, _, metadata, config = lab_reference_demo_windows(
+        REFERENCE_CONFIG.parent,
+        validate_archive=False,
+        context_schema=LAB_HP100_EXACT_MEMORY_SCHEMA,
+        max_windows_per_trajectory=2,
+    )
+    first_run = np.load(
+        REFERENCE_CONFIG.parent / metadata[0]["file"],
+    )
+    raw, applied = _raw_and_applied_memories(
+        first_run["controls"], config.safemppi,
+    )
+    assert metadata[0]["t"] == 0
+    assert np.count_nonzero(contexts[0, -6:]) == 0
+    assert metadata[1]["file"] == metadata[0]["file"]
+    second_start = int(metadata[1]["t"])
+    assert second_start > 0
+    assert np.array_equal(
+        contexts[1, -6:],
+        np.concatenate([raw[second_start], applied[second_start]]),
+    )
+
+
+def test_hp100_exact_memory_checkpoint_expansion_and_eval_routing(tmp_path):
+    config = load_config(SPHERE_CONFIG)
+    policy = pretrain.build_pretraining_policy(
+        "uniform_hp100_exact_memory",
+        config,
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=0,
+        nfe=1,
+        trunk_depth=3,
+    )
+    checkpoint = tmp_path / "hp100_exact_memory.pt"
+    torch.save({
+        "model": policy.state_dict(),
+        "arch": _exact_memory_arch(config),
+    }, checkpoint)
+    loaded = load_lab_reference_policy(checkpoint)
+    assert isinstance(loaded, LabUniformHp100ExactMemoryFlowPolicy)
+    assert loaded.context_schema == LAB_HP100_EXACT_MEMORY_SCHEMA
+    assert loaded.context_dim == LAB_HP100_EXACT_MEMORY_PACKED_DIM
+
+    scene_spec = sphere_scene_spec_from_config(config)
+    wrapped = load_lab_clutter_expansion_policy(
+        checkpoint,
+        verifier_suffix_dim=6 + scene_spec.packed_dim,
+    )
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=wrapped.context_schema,
+        scene_spec=scene_spec,
+    )
+    state = task.reset(0.3, 0, 17)
+    state["previous_raw"][:] = [0.1, -0.2, 0.3]
+    state["previous_applied"][:] = [0.04, -0.08, 0.12]
+    context = task.context(state, 0.3)
+    learned = wrapped._policy_context(context)
+    assert learned.shape == (LAB_HP100_EXACT_MEMORY_PACKED_DIM,)
+    assert torch.allclose(
+        learned[-6:],
+        torch.tensor([0.1, -0.2, 0.3, 0.04, -0.08, 0.12]),
+    )
+    assert LAB_HP100_EXACT_MEMORY_SCHEMA in (
+        SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS
+    )
+    assert run_expansion.LAB_CONTEXT_BASE_PACKED_DIMS[
+        LAB_HP100_EXACT_MEMORY_SCHEMA
+    ] == LAB_HP100_EXACT_MEMORY_PACKED_DIM
+
+
+def test_hp100_exact_memory_controller_updates_raw_and_applied_channels():
+    config = load_config(SPHERE_CONFIG)
+    env = TaskEnvironment(config)
+
+    class RecordingPolicy(torch.nn.Module):
+        context_schema = LAB_HP100_EXACT_MEMORY_SCHEMA
+        context_dim = LAB_HP100_EXACT_MEMORY_PACKED_DIM
+        plan_shape = (10, 3)
+
+        def __init__(self):
+            super().__init__()
+            self.anchor = torch.nn.Parameter(torch.zeros(()))
+            self.contexts = []
+
+        def sample(self, context, count, generator, base_std=1.0):
+            del generator, base_std
+            self.contexts.append(context.detach().cpu().clone())
+            plan = torch.zeros(count, 10, 3, device=context.device)
+            plan[:] = torch.tensor([0.1, -0.2, 0.05])
+            return plan
+
+    policy = RecordingPolicy()
+    controller = LabReferenceFlowController(policy, env)
+    controller.plan(env.start, env.goal, 0.3, seed=1)
+    controller.plan(env.start, env.goal, 0.3, seed=2)
+    assert torch.count_nonzero(
+        policy.contexts[0][LAB_HP100_PACKED_DIM:]
+    ) == 0
+    smooth = float(config.safemppi.deployment_accel_smooth)
+    assert torch.allclose(
+        policy.contexts[1][LAB_HP100_PACKED_DIM:],
+        torch.tensor([
+            0.1, -0.2, 0.05,
+            smooth * 0.1, smooth * -0.2, smooth * 0.05,
+        ]),
+    )

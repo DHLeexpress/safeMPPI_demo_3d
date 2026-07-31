@@ -43,6 +43,7 @@ from .lab_clutter_expansion import (
 from .lab_flow_evaluation import _validate_replay_provenance
 from .lab_reference_flow_task import raw_reference_rollout
 from .lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
@@ -77,6 +78,7 @@ SUPPORTED_SPHERE_SCENE_SCHEMAS = frozenset({
     PATH_FOCUSED_SPHERE_SCENE_SCHEMA,
 })
 SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_SCHEMA,
     LAB_VISUAL_SCHEMA,

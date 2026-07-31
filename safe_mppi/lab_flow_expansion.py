@@ -235,6 +235,8 @@ class LabFlowExpansionTask:
             state["x"],
             float(gamma),
             raw_history=state.get("raw_history"),
+            previous_raw=state["previous_raw"],
+            previous_applied=state["previous_applied"],
         )
         packed = np.concatenate([
             learned,
@@ -396,6 +398,11 @@ class LabFlowExpansionTask:
 
     def advance(self, state, candidate: torch.Tensor):
         command = candidate.detach().cpu().numpy().reshape(-1, 3)[0]
+        limited_command = np.clip(
+            command,
+            -float(self.config.safemppi.demo_u_max),
+            float(self.config.safemppi.demo_u_max),
+        ).astype(np.float32)
         governor = ReferenceGovernor(self.config.safemppi)
         governor.previous_applied = np.asarray(
             state["previous_applied"], np.float32,
@@ -405,7 +412,7 @@ class LabFlowExpansionTask:
         updated = {
             "x": after,
             "previous_applied": applied,
-            "previous_raw": np.asarray(command, np.float32).copy(),
+            "previous_raw": limited_command,
             "steps": int(state["steps"]) + 1,
             "collided": bool(
                 state["collided"]

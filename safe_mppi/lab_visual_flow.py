@@ -100,6 +100,13 @@ LAB_HP100_HISTORY_PACKED_DIM = (
 LAB_HP100_HISTORY_SCHEMA = (
     "lab_spherical_hp3d_uniform_radial100_planepack_gru_v1"
 )
+LAB_HP100_EXACT_MEMORY_DIM = 6
+LAB_HP100_EXACT_MEMORY_PACKED_DIM = (
+    LAB_HP100_PACKED_DIM + LAB_HP100_EXACT_MEMORY_DIM
+)
+LAB_HP100_EXACT_MEMORY_SCHEMA = (
+    "lab_spherical_hp3d_uniform_radial100_planepack_exact_memory_v1"
+)
 LAB_HP100_FRAME = (
     "robot_centered_world_spherical_equal_area_uniform_radial_planepack"
 )
@@ -728,6 +735,31 @@ def build_uniform_hp100_history_context(
     return packed
 
 
+def build_uniform_hp100_exact_memory_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    previous_raw: np.ndarray,
+    previous_applied: np.ndarray,
+) -> np.ndarray:
+    """Append the exact raw/applied controller memory to uniform H_P."""
+    memory = np.concatenate([
+        np.asarray(previous_raw, np.float32).reshape(3),
+        np.asarray(previous_applied, np.float32).reshape(3),
+    ]).astype(np.float32)
+    if not np.isfinite(memory).all():
+        raise ValueError("exact controller memory must be finite")
+    packed = np.concatenate([
+        build_uniform_hp100_context(env, state6, gamma),
+        memory,
+    ]).astype(np.float32)
+    if packed.shape != (LAB_HP100_EXACT_MEMORY_PACKED_DIM,):
+        raise RuntimeError(
+            "uniform H_P exact-memory context violated its packed dimension"
+        )
+    return packed
+
+
 def build_nonuniform_radial_visual_history_context(
     env: TaskEnvironment,
     state6: np.ndarray,
@@ -1195,6 +1227,76 @@ class LabUniformHp100FlowPolicy(LabNonuniformRadialFlowPolicy):
         return encoded[0] if single else encoded
 
 
+class LabUniformHp100ExactMemoryFlowPolicy(LabUniformHp100FlowPolicy):
+    """Uniform H_P policy with exact previous raw/applied accelerations."""
+
+    context_schema = LAB_HP100_EXACT_MEMORY_SCHEMA
+    context_dim = LAB_HP100_EXACT_MEMORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+            radial_edges=radial_edges,
+            plane_face_count=plane_face_count,
+            plane_row_channels=plane_row_channels,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + LAB_HP100_EXACT_MEMORY_DIM
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(
+            context[:, LAB_VISUAL_LOW_DIM:LAB_HP100_PACKED_DIM]
+        )
+        memory = context[:, LAB_HP100_PACKED_DIM:]
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            memory,
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+
 class LabUniformHp100HistoryFlowPolicy(LabUniformHp100FlowPolicy):
     """Uniform H_P policy with GRU32 over ten prior raw commands."""
 
@@ -1594,7 +1696,11 @@ def load_lab_reference_policy(path: str | Path):
                 f"{sorted(missing)}"
             )
         policy = LabNonuniformRadialFlowPolicy(**arch)
-    elif kind in {LAB_HP100_SCHEMA, LAB_HP100_HISTORY_SCHEMA}:
+    elif kind in {
+        LAB_HP100_SCHEMA,
+        LAB_HP100_EXACT_MEMORY_SCHEMA,
+        LAB_HP100_HISTORY_SCHEMA,
+    }:
         required = {
             "grid_shape",
             "grid_channels",
@@ -1618,6 +1724,8 @@ def load_lab_reference_policy(path: str | Path):
                     f"{sorted(missing)}"
                 )
             policy = LabUniformHp100HistoryFlowPolicy(**arch)
+        elif kind == LAB_HP100_EXACT_MEMORY_SCHEMA:
+            policy = LabUniformHp100ExactMemoryFlowPolicy(**arch)
         else:
             policy = LabUniformHp100FlowPolicy(**arch)
     elif kind == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:

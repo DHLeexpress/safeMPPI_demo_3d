@@ -31,6 +31,9 @@ from safe_mppi.lab_reference_flow_task import (
 from safe_mppi.lab_visual_flow import (
     LAB_HP100_CHANNELS,
     LAB_HP100_DYNAMIC_FACE_COUNT,
+    LAB_HP100_EXACT_MEMORY_DIM,
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
     LAB_HP100_FRAME,
     LAB_HP100_GRID_SHAPE,
     LAB_HP100_HISTORY_PACKED_DIM,
@@ -60,6 +63,7 @@ from safe_mppi.lab_visual_flow import (
     LAB_VISUAL_SCHEMA,
     LabNonuniformRadialFlowPolicy,
     LabNonuniformRadialHistoryFlowPolicy,
+    LabUniformHp100ExactMemoryFlowPolicy,
     LabUniformHp100FlowPolicy,
     LabUniformHp100HistoryFlowPolicy,
     LabVisualHistoryFlowPolicy,
@@ -1052,6 +1056,11 @@ def build_pretraining_policy(
             grid_token_dim=grid_token_dim,
             **common,
         )
+    if context_model == "uniform_hp100_exact_memory":
+        return LabUniformHp100ExactMemoryFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            **common,
+        )
     if context_model == "uniform_hp100_gru":
         if int(history_token_dim) != 32:
             raise ValueError(
@@ -1119,12 +1128,20 @@ def pretraining_arch(
         "trunk_depth": int(trunk_depth),
         "time_features": "raw1",
     }
-    if context_model in {"uniform_hp100", "uniform_hp100_gru"}:
+    if context_model in {
+        "uniform_hp100",
+        "uniform_hp100_exact_memory",
+        "uniform_hp100_gru",
+    }:
         arch.update({
             "kind": (
-                LAB_HP100_HISTORY_SCHEMA
-                if context_model == "uniform_hp100_gru"
-                else LAB_HP100_SCHEMA
+                LAB_HP100_EXACT_MEMORY_SCHEMA
+                if context_model == "uniform_hp100_exact_memory"
+                else (
+                    LAB_HP100_HISTORY_SCHEMA
+                    if context_model == "uniform_hp100_gru"
+                    else LAB_HP100_SCHEMA
+                )
             ),
             "grid_token_dim": int(grid_token_dim),
             "grid_shape": list(LAB_HP100_GRID_SHAPE),
@@ -1235,6 +1252,7 @@ def main():
             "radial_hp3d",
             "radial_hp3d_gru",
             "uniform_hp100",
+            "uniform_hp100_exact_memory",
             "uniform_hp100_gru",
         ),
         default="raw10",
@@ -1271,7 +1289,11 @@ def main():
         cuda_amp=args.cuda_amp,
         device=torch.device(args.device),
     )
-    if args.context_model in {"uniform_hp100", "uniform_hp100_gru"} and (
+    if args.context_model in {
+        "uniform_hp100",
+        "uniform_hp100_exact_memory",
+        "uniform_hp100_gru",
+    } and (
         args.grid_token_dim != 64 or args.trunk_depth != 3
     ):
         parser.error(
@@ -1284,7 +1306,11 @@ def main():
     ):
         parser.error("uniform_hp100_gru requires --history-token-dim 32")
     if (
-        args.context_model in {"uniform_hp100", "uniform_hp100_gru"}
+        args.context_model in {
+            "uniform_hp100",
+            "uniform_hp100_exact_memory",
+            "uniform_hp100_gru",
+        }
         and args.context_cache is not None
     ):
         parser.error(
@@ -1310,6 +1336,7 @@ def main():
         "radial_hp3d": LAB_RADIAL_VISUAL_SCHEMA,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
         "uniform_hp100": LAB_HP100_SCHEMA,
+        "uniform_hp100_exact_memory": LAB_HP100_EXACT_MEMORY_SCHEMA,
         "uniform_hp100_gru": LAB_HP100_HISTORY_SCHEMA,
     }[args.context_model]
     cache_manifest = None
@@ -1348,6 +1375,7 @@ def main():
         "radial_hp3d": LAB_RADIAL_VISUAL_PACKED_DIM,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
         "uniform_hp100": LAB_HP100_PACKED_DIM,
+        "uniform_hp100_exact_memory": LAB_HP100_EXACT_MEMORY_PACKED_DIM,
         "uniform_hp100_gru": LAB_HP100_HISTORY_PACKED_DIM,
     }[args.context_model]
     if contexts_np.shape[1] != expected_context_dim:
@@ -1469,6 +1497,9 @@ def main():
         "radial_hp3d_gru",
         "uniform_hp100_gru",
     }
+    exact_memory_model = (
+        args.context_model == "uniform_hp100_exact_memory"
+    )
     checkpoint = {
         "model": policy.state_dict(),
         "arch": arch,
@@ -1476,6 +1507,7 @@ def main():
             "policy_output": "pre_smoothing_raw_acceleration_command",
             "stateful_governor_in_policy": False,
             "past_raw_action_history_in_policy": history_model,
+            "exact_previous_raw_and_applied_in_policy": exact_memory_model,
             "deployment_smoothing_and_tracking": "external",
             "policy_initialization_seed": policy_initialization_seed,
             "cfm_training_rng_seed": training_random_seed,
@@ -1511,11 +1543,16 @@ def main():
                 7
                 + args.grid_token_dim
                 + (args.history_token_dim if history_model else 0)
+                + (
+                    LAB_HP100_EXACT_MEMORY_DIM
+                    if exact_memory_model else 0
+                )
             )
         ),
         "policy_output": "pre_smoothing_raw_acceleration_command",
         "stateful_governor_in_policy": False,
         "past_raw_action_history_in_policy": history_model,
+        "exact_previous_raw_and_applied_in_policy": exact_memory_model,
         "history_length": (
             LAB_VISUAL_HISTORY_LENGTH
             if history_model else 0

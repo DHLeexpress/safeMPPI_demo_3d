@@ -157,18 +157,42 @@ def _append_raw_history(
     return updated
 
 
+def _raw_and_applied_memories(
+    controls: np.ndarray,
+    mppi_config,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return exact pre-step raw/applied memory for every trajectory state."""
+    values = np.asarray(controls, np.float32).reshape(-1, 3)
+    previous_raw = np.zeros((len(values) + 1, 3), np.float32)
+    previous_applied = np.zeros((len(values) + 1, 3), np.float32)
+    applied = np.zeros(3, np.float32)
+    smooth = float(mppi_config.deployment_accel_smooth)
+    limit = float(mppi_config.demo_u_max)
+    for step, command in enumerate(values):
+        raw = np.clip(command, -limit, limit).astype(np.float32)
+        applied = (
+            smooth * raw + (1.0 - smooth) * applied
+        ).astype(np.float32)
+        previous_raw[step + 1] = raw
+        previous_applied[step + 1] = applied
+    return previous_raw, previous_applied
+
+
 def policy_context(
     policy,
     env: TaskEnvironment,
     state6: np.ndarray,
     gamma: float,
     raw_history: np.ndarray | None = None,
+    previous_raw: np.ndarray | None = None,
+    previous_applied: np.ndarray | None = None,
 ) -> np.ndarray:
     """Build the external context declared by a lab policy."""
     schema = getattr(policy, "context_schema", LAB_RAW_CONTEXT_SCHEMA)
     if schema == LAB_RAW_CONTEXT_SCHEMA:
         return build_context(env, state6, gamma)
     from .lab_visual_flow import (
+        LAB_HP100_EXACT_MEMORY_SCHEMA,
         LAB_HP100_HISTORY_SCHEMA,
         LAB_HP100_SCHEMA,
         LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
@@ -177,6 +201,7 @@ def policy_context(
         LAB_VISUAL_SCHEMA,
         build_nonuniform_radial_visual_history_context,
         build_nonuniform_radial_visual_context,
+        build_uniform_hp100_exact_memory_context,
         build_uniform_hp100_history_context,
         build_uniform_hp100_context,
         build_visual_context,
@@ -188,6 +213,19 @@ def policy_context(
         return build_nonuniform_radial_visual_context(env, state6, gamma)
     if schema == LAB_HP100_SCHEMA:
         return build_uniform_hp100_context(env, state6, gamma)
+    if schema == LAB_HP100_EXACT_MEMORY_SCHEMA:
+        if previous_raw is None or previous_applied is None:
+            raise ValueError(
+                "uniform H_P exact-memory policy requires previous raw and "
+                "applied commands"
+            )
+        return build_uniform_hp100_exact_memory_context(
+            env,
+            state6,
+            gamma,
+            previous_raw,
+            previous_applied,
+        )
     if schema == LAB_HP100_HISTORY_SCHEMA:
         if raw_history is None:
             raise ValueError(
@@ -304,6 +342,12 @@ def lab_reference_demo_windows(
                 )
 
         gamma = float(row["gamma"])
+        from .lab_visual_flow import LAB_HP100_EXACT_MEMORY_SCHEMA
+        previous_raw = previous_applied = None
+        if context_schema == LAB_HP100_EXACT_MEMORY_SCHEMA:
+            previous_raw, previous_applied = _raw_and_applied_memories(
+                controls, config.safemppi,
+            )
         available_window_count = max(0, len(controls) - PLAN_H + 1)
         selected_starts = stratified_window_starts(
             available_window_count,
@@ -314,6 +358,7 @@ def lab_reference_demo_windows(
                 context = build_context(env, states[start], gamma)
             else:
                 from .lab_visual_flow import (
+                    LAB_HP100_EXACT_MEMORY_SCHEMA,
                     LAB_HP100_HISTORY_SCHEMA,
                     LAB_HP100_SCHEMA,
                     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
@@ -322,6 +367,7 @@ def lab_reference_demo_windows(
                     LAB_VISUAL_SCHEMA,
                     build_nonuniform_radial_visual_history_context,
                     build_nonuniform_radial_visual_context,
+                    build_uniform_hp100_exact_memory_context,
                     build_uniform_hp100_history_context,
                     build_uniform_hp100_context,
                     build_visual_context,
@@ -338,6 +384,14 @@ def lab_reference_demo_windows(
                 elif context_schema == LAB_HP100_SCHEMA:
                     context = build_uniform_hp100_context(
                         env, states[start], gamma,
+                    )
+                elif context_schema == LAB_HP100_EXACT_MEMORY_SCHEMA:
+                    context = build_uniform_hp100_exact_memory_context(
+                        env,
+                        states[start],
+                        gamma,
+                        previous_raw[start],
+                        previous_applied[start],
                     )
                 elif context_schema == LAB_HP100_HISTORY_SCHEMA:
                     context = build_uniform_hp100_history_context(
@@ -466,6 +520,15 @@ def raw_reference_rollout(
                 state,
                 float(gamma),
                 raw_history=raw_history,
+                previous_raw=(
+                    np.clip(
+                        controls[-1],
+                        -float(config.safemppi.demo_u_max),
+                        float(config.safemppi.demo_u_max),
+                    ).astype(np.float32)
+                    if controls else np.zeros(3, np.float32)
+                ),
+                previous_applied=governor.previous_applied,
             )
         ).to(device)
         generator = torch.Generator(device=torch.device(device))
@@ -550,6 +613,8 @@ class LabReferenceFlowController:
                 raise ValueError("raw lab deployment requires the 10-D context")
         else:
             from .lab_visual_flow import (
+                LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+                LAB_HP100_EXACT_MEMORY_SCHEMA,
                 LAB_HP100_HISTORY_PACKED_DIM,
                 LAB_HP100_HISTORY_SCHEMA,
                 LAB_HP100_PACKED_DIM,
@@ -566,6 +631,9 @@ class LabReferenceFlowController:
             expected = {
                 LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
                 LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
+                LAB_HP100_EXACT_MEMORY_SCHEMA: (
+                    LAB_HP100_EXACT_MEMORY_PACKED_DIM
+                ),
                 LAB_HP100_HISTORY_SCHEMA: LAB_HP100_HISTORY_PACKED_DIM,
                 LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
                 LAB_RADIAL_VISUAL_HISTORY_SCHEMA: (
@@ -585,10 +653,14 @@ class LabReferenceFlowController:
         self.sampling_temperature = float(sampling_temperature)
         self.trace = []
         self.raw_history = _raw_history_before(np.empty((0, 3)), 0)
+        self.previous_raw = np.zeros(3, np.float32)
+        self.previous_applied = np.zeros(3, np.float32)
 
     def reset(self):
         self.trace = []
         self.raw_history = _raw_history_before(np.empty((0, 3)), 0)
+        self.previous_raw = np.zeros(3, np.float32)
+        self.previous_applied = np.zeros(3, np.float32)
 
     @torch.no_grad()
     def plan(self, state, goal, gamma, seed=0):
@@ -603,6 +675,8 @@ class LabReferenceFlowController:
                 state,
                 float(gamma),
                 raw_history=self.raw_history,
+                previous_raw=self.previous_raw,
+                previous_applied=self.previous_applied,
             )
         ).to(self.device)
         generator = torch.Generator(device=self.device)
@@ -615,6 +689,17 @@ class LabReferenceFlowController:
         )[0]
         action = plan[0].detach().cpu().numpy().astype(np.float32)
         self.raw_history = _append_raw_history(self.raw_history, action)
+        limited_action = np.clip(
+            action,
+            -float(self.env.mppi.demo_u_max),
+            float(self.env.mppi.demo_u_max),
+        ).astype(np.float32)
+        smooth = float(self.env.mppi.deployment_accel_smooth)
+        self.previous_applied = (
+            smooth * limited_action
+            + (1.0 - smooth) * self.previous_applied
+        ).astype(np.float32)
+        self.previous_raw = limited_action
         self.trace.append({
             "seed": int(seed),
             "gamma": float(gamma),
