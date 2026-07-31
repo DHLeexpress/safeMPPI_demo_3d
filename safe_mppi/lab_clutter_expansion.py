@@ -18,6 +18,7 @@ from .ball_flow_task import PLAN_H, nominal_hp_chain_margins
 from .environment import ReferenceGovernor, TaskEnvironment
 from .expansion import Verification
 from .lab_flow_expansion import LabExpansionPolicyAdapter
+from .lab_flow_expansion import _is_history_context_schema
 from .lab_clutter import (
     ClutterScene,
     LAB_BOUNDS,
@@ -32,6 +33,10 @@ from .lab_reference_flow_task import (
     policy_context,
 )
 from .lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_HISTORY_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
@@ -49,6 +54,14 @@ LAB_CLUTTER_VERIFIER_SUFFIX_DIM = (
     LAB_CLUTTER_GOVERNOR_DIM + LAB_CLUTTER_SCENE_DIM
 )
 LAB_CLUTTER_SCENE_SCHEMA = "lab_random_three_spheres_v1"
+LAB_CLUTTER_VISUAL_CONTEXT_DIMS = {
+    LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA: (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+    ),
+}
 
 
 def canonical_sphere_rows(
@@ -447,10 +460,10 @@ class LabClutterExpansionPolicyAdapter(LabExpansionPolicyAdapter):
         *,
         freeze_history_encoder: bool | None = None,
     ):
-        if getattr(policy, "context_schema", None) not in {
-            LAB_VISUAL_SCHEMA,
-            LAB_VISUAL_HISTORY_SCHEMA,
-        }:
+        if (
+            getattr(policy, "context_schema", None)
+            not in LAB_CLUTTER_VISUAL_CONTEXT_DIMS
+        ):
             raise ValueError(
                 "dynamic clutter expansion requires the visual lab policy"
             )
@@ -471,8 +484,8 @@ def load_lab_clutter_expansion_policy(
     train_history_encoder: bool = False,
 ) -> LabClutterExpansionPolicyAdapter:
     policy = load_lab_reference_policy(path)
-    is_history = (
-        getattr(policy, "context_schema", None) == LAB_VISUAL_HISTORY_SCHEMA
+    is_history = _is_history_context_schema(
+        getattr(policy, "context_schema", ""),
     )
     if train_history_encoder and not is_history:
         raise ValueError(
@@ -505,10 +518,7 @@ class LabClutterSphereExpansionTask:
         execution_clearance_target_m: float = 0.20,
         scene_spec=None,
     ):
-        if context_schema not in {
-            LAB_VISUAL_SCHEMA,
-            LAB_VISUAL_HISTORY_SCHEMA,
-        }:
+        if context_schema not in LAB_CLUTTER_VISUAL_CONTEXT_DIMS:
             raise ValueError(
                 "dynamic clutter expansion requires lab visual conditioning"
             )
@@ -571,11 +581,9 @@ class LabClutterSphereExpansionTask:
                 "dynamic sphere expansion requires an empty static obstacle list"
             )
         self.context_schema = context_schema
-        self.policy_context_dim = (
-            LAB_VISUAL_HISTORY_PACKED_DIM
-            if context_schema == LAB_VISUAL_HISTORY_SCHEMA
-            else LAB_VISUAL_PACKED_DIM
-        )
+        self.policy_context_dim = LAB_CLUTTER_VISUAL_CONTEXT_DIMS[
+            context_schema
+        ]
         self.device = torch.device(device)
         self.tight_corridor = bool(tight_corridor)
         self.verifier_mode = verifier_mode
@@ -631,7 +639,7 @@ class LabClutterSphereExpansionTask:
             "collided": False,
             "oob": False,
         }
-        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if _is_history_context_schema(self.context_schema):
             state["raw_history"] = _raw_history_before(
                 np.empty((0, 3), np.float32), 0,
             )
@@ -906,7 +914,7 @@ class LabClutterSphereExpansionTask:
                 or not env.inside_taskspace(dense).all()
             ),
         }
-        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if _is_history_context_schema(self.context_schema):
             updated["raw_history"] = _append_raw_history(
                 state["raw_history"], command,
             )

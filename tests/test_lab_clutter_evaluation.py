@@ -29,6 +29,10 @@ from safe_mppi.lab_clutter_expansion import (
     LabClutterSphereExpansionTask,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_SCHEMA,
 )
@@ -63,6 +67,24 @@ def test_clutter_dispatch_requires_task_profile_and_schemas():
         "explicit_unfreeze_flag": False,
     }
     assert is_lab_clutter_evaluation_manifest(history)
+
+    radial = copy.deepcopy(manifest)
+    radial["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_SCHEMA
+    )
+    assert is_lab_clutter_evaluation_manifest(radial)
+
+    radial_history = copy.deepcopy(manifest)
+    radial_history["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    )
+    radial_history["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    assert is_lab_clutter_evaluation_manifest(radial_history)
+
     del history["lab_conditioning"]["history_encoder"]
     with pytest.raises(ValueError, match="freeze contract"):
         is_lab_clutter_evaluation_manifest(history)
@@ -276,6 +298,51 @@ def test_event_scene_index_decodes_compact_context_and_rejects_mixing():
     mixed = _compact_event(task, second, 0.3, step=1)
     with pytest.raises(ValueError, match="changed within one expansion episode"):
         _event_scene_index([event, mixed], task, manifest)
+
+
+def test_event_scene_index_decodes_radial_gru_compact_context():
+    config = load_config(CONFIG)
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 321)
+    state["previous_applied"][:] = [0.03, -0.02, 0.01]
+    context = task.context(state, 0.3).detach().cpu().numpy()
+    event = {
+        "round": 1,
+        "gamma": 0.3,
+        "episode": 0,
+        "step": 0,
+        "robot": np.asarray(state["x"], np.float32),
+        "context": np.concatenate([
+            context[:7],
+            context[
+                LAB_RADIAL_VISUAL_PACKED_DIM:
+                LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+            ],
+            context[-18:],
+        ]),
+    }
+    manifest = _manifest()
+    manifest["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    )
+    manifest["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    manifest["lab_scene_ledger"] = copy.deepcopy(task.scene_ledger)
+
+    index = _event_scene_index([event], task, manifest)
+    decoded = index[(1, 0.3, 0)]
+    assert decoded["scene_hash"] == state["scene_hash"]
+    assert np.allclose(
+        decoded["previous_applied"],
+        [0.03, -0.02, 0.01],
+    )
 
 
 def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):

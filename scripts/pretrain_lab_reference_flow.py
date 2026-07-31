@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import sys
 
 import matplotlib
@@ -27,20 +29,38 @@ from safe_mppi.lab_reference_flow_task import (
     raw_reference_rollout,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_CHANNELS,
+    LAB_RADIAL_VISUAL_ENCODER_CHANNELS,
+    LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE,
+    LAB_RADIAL_VISUAL_FRAME,
+    LAB_RADIAL_VISUAL_GRID_SHAPE,
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_CHANNELS,
     LAB_VISUAL_FRAME,
     LAB_VISUAL_GRID_SHAPE,
     LAB_VISUAL_HISTORY_LENGTH,
     LAB_VISUAL_HISTORY_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_HISTORY_STEP_DIM,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabNonuniformRadialFlowPolicy,
+    LabNonuniformRadialHistoryFlowPolicy,
     LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CFM_TRAINING_RNG_OFFSET = 1_000_003
+
+
+def cfm_training_rng_seed(seed: int) -> int:
+    return int(seed) + CFM_TRAINING_RNG_OFFSET
 
 
 def source_archive_digest(run_dir: str | Path) -> dict:
@@ -115,6 +135,326 @@ def split_provenance(
         "training_scene_hashes": selected_scene_hashes(training_ids),
         "validation_scene_hashes": selected_scene_hashes(validation_ids),
     }
+
+
+RADIAL_CONTEXT_CACHE_SCHEMA = "lab_radial_context_cache_v1"
+RADIAL_CONTEXT_CACHE_FILES = (
+    "contexts.npy",
+    "plans.npy",
+    "metadata.json",
+    "training_ids.npy",
+    "validation_ids.npy",
+)
+
+
+def context_builder_implementation_digest() -> dict:
+    """Hash every source module that assigns physical meaning to cache rows."""
+    from safe_mppi import environment
+    from safe_mppi import geometry
+    from safe_mppi import lab_reference_flow_task as task
+    from safe_mppi import lab_visual_flow as visual
+
+    modules = (
+        task,
+        visual,
+        geometry,
+        environment,
+    )
+    digest = hashlib.sha256()
+    digest.update(b"lab_radial_context_builder_source_v2\0")
+    names = []
+    for module in modules:
+        name = module.__name__
+        source_path = Path(module.__file__).resolve()
+        source = source_path.read_bytes()
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(source).to_bytes(8, "big"))
+        digest.update(source)
+        names.append(name)
+    return {
+        "algorithm": "sha256",
+        "schema": "lab_radial_context_builder_source_v2",
+        "sha256": digest.hexdigest(),
+        "modules": names,
+    }
+
+
+def metadata_row_key_digest(metadata: list[dict]) -> dict:
+    """Bind cached array order to its authoritative demonstration windows."""
+    keys = []
+    for index, row in enumerate(metadata):
+        missing = {"scene_hash", "gamma", "seed", "t", "file"}.difference(row)
+        if missing:
+            raise ValueError(
+                f"cache metadata row {index} lacks keys {sorted(missing)}"
+            )
+        keys.append([
+            row["scene_hash"],
+            float(row["gamma"]).hex(),
+            int(row["seed"]),
+            int(row["t"]),
+            str(row["file"]),
+        ])
+    encoded = json.dumps(
+        keys,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return {
+        "algorithm": "sha256",
+        "schema": "lab_radial_context_ordered_row_keys_v1",
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "count": len(keys),
+        "fields": ["scene_hash", "gamma_hex", "seed", "t", "file"],
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_radial_context_cache(
+    demo_dir: str | Path,
+    output: str | Path,
+    *,
+    split_seed: int,
+    validate_archive: bool = True,
+) -> dict:
+    """Build one immutable history-superset cache for all radial arms."""
+    demo_dir = Path(demo_dir).resolve()
+    output = Path(output)
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite context cache {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.parent / f".{output.name}.building-{os.getpid()}"
+    if temporary.exists():
+        raise FileExistsError(f"stale cache build directory {temporary}")
+    temporary.mkdir()
+    try:
+        contexts, plans, metadata, _ = lab_reference_demo_windows(
+            demo_dir,
+            validate_archive=validate_archive,
+            context_schema=LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        )
+        if contexts.shape[1:] != (LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,):
+            raise RuntimeError("radial-history cache context shape changed")
+        if plans.shape[1:] != (10, 3) or len(plans) != len(contexts):
+            raise RuntimeError("radial-history cache plan shape changed")
+        training_ids, validation_ids = trajectory_split(metadata, split_seed)
+        arrays = {
+            "contexts.npy": np.asarray(contexts, np.float32),
+            "plans.npy": np.asarray(plans, np.float32),
+            "training_ids.npy": training_ids.numpy().astype(np.int64),
+            "validation_ids.npy": validation_ids.numpy().astype(np.int64),
+        }
+        for name, values in arrays.items():
+            np.save(temporary / name, values, allow_pickle=False)
+        (temporary / "metadata.json").write_text(
+            json.dumps(metadata, separators=(",", ":")) + "\n"
+        )
+        files = {}
+        for name in RADIAL_CONTEXT_CACHE_FILES:
+            path = temporary / name
+            files[name] = {
+                "bytes": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        manifest = {
+            "status": "LAB_RADIAL_CONTEXT_CACHE_COMPLETE",
+            "schema": RADIAL_CONTEXT_CACHE_SCHEMA,
+            "source_demo_dir": str(demo_dir),
+            "archive_replay_validation": bool(validate_archive),
+            "source_archive_digest": source_archive_digest(demo_dir),
+            "resolved_config_sha256": _sha256_file(
+                demo_dir / "resolved_config.json"
+            ),
+            "context_builder_implementation_digest": (
+                context_builder_implementation_digest()
+            ),
+            "ordered_row_key_digest": metadata_row_key_digest(metadata),
+            "stored_context_schema": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+            "supported_context_models": ["radial_hp3d", "radial_hp3d_gru"],
+            "stored_context_shape": list(contexts.shape),
+            "stored_context_dtype": str(contexts.dtype),
+            "plan_shape": list(plans.shape),
+            "plan_dtype": str(plans.dtype),
+            "grid_shape": list(LAB_RADIAL_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_RADIAL_VISUAL_CHANNELS),
+            "encoder_grid_shape": list(
+                LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE
+            ),
+            "encoder_grid_channels": list(
+                LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+            ),
+            "grid_frame": LAB_RADIAL_VISUAL_FRAME,
+            "radial_edges": list(LAB_RADIAL_VISUAL_RADIAL_EDGES),
+            "history_length": LAB_VISUAL_HISTORY_LENGTH,
+            "history_step_dim": LAB_VISUAL_HISTORY_STEP_DIM,
+            "split_provenance": split_provenance(
+                metadata,
+                training_ids,
+                validation_ids,
+                split_seed,
+            ),
+            "files": files,
+        }
+        manifest_path = temporary / "cache_manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        (temporary / "CACHE_COMPLETE.json").write_text(json.dumps({
+            "status": "LAB_RADIAL_CONTEXT_CACHE_COMPLETE",
+            "schema": RADIAL_CONTEXT_CACHE_SCHEMA,
+            "cache_manifest_sha256": _sha256_file(manifest_path),
+        }, indent=2) + "\n")
+        temporary.rename(output)
+        return manifest
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+
+
+def load_radial_context_cache(
+    cache_dir: str | Path,
+    demo_dir: str | Path,
+    *,
+    context_model: str,
+    split_seed: int,
+):
+    """Load a verified cache as copy-on-write mmap arrays."""
+    if context_model not in {"radial_hp3d", "radial_hp3d_gru"}:
+        raise ValueError("radial context cache requires a radial context model")
+    cache_dir = Path(cache_dir)
+    demo_dir = Path(demo_dir).resolve()
+    manifest_path = cache_dir / "cache_manifest.json"
+    complete_path = cache_dir / "CACHE_COMPLETE.json"
+    if not complete_path.is_file():
+        raise FileNotFoundError(
+            f"radial context cache is incomplete: {complete_path}"
+        )
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"radial context cache is incomplete: {manifest_path}"
+        )
+    manifest = json.loads(manifest_path.read_text())
+    complete = json.loads(complete_path.read_text())
+    if complete != {
+        "status": "LAB_RADIAL_CONTEXT_CACHE_COMPLETE",
+        "schema": RADIAL_CONTEXT_CACHE_SCHEMA,
+        "cache_manifest_sha256": _sha256_file(manifest_path),
+    }:
+        raise ValueError("radial context cache completion seal mismatch")
+    required_contract = {
+        "status": "LAB_RADIAL_CONTEXT_CACHE_COMPLETE",
+        "schema": RADIAL_CONTEXT_CACHE_SCHEMA,
+        "stored_context_schema": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        "grid_shape": list(LAB_RADIAL_VISUAL_GRID_SHAPE),
+        "grid_channels": list(LAB_RADIAL_VISUAL_CHANNELS),
+        "encoder_grid_shape": list(
+            LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE
+        ),
+        "encoder_grid_channels": list(
+            LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+        ),
+        "grid_frame": LAB_RADIAL_VISUAL_FRAME,
+        "radial_edges": list(LAB_RADIAL_VISUAL_RADIAL_EDGES),
+        "history_length": LAB_VISUAL_HISTORY_LENGTH,
+        "history_step_dim": LAB_VISUAL_HISTORY_STEP_DIM,
+    }
+    for key, expected in required_contract.items():
+        if manifest.get(key) != expected:
+            raise ValueError(
+                f"radial context cache {key} mismatch: "
+                f"{manifest.get(key)!r} != {expected!r}"
+            )
+    if int(manifest["split_provenance"]["split_seed"]) != int(split_seed):
+        raise ValueError("radial context cache split seed mismatch")
+    if manifest.get(
+        "context_builder_implementation_digest"
+    ) != context_builder_implementation_digest():
+        raise ValueError(
+            "radial context cache context-builder implementation mismatch"
+        )
+    if manifest.get("source_archive_digest") != source_archive_digest(demo_dir):
+        raise ValueError("radial context cache source archive mismatch")
+    if manifest.get("resolved_config_sha256") != _sha256_file(
+        demo_dir / "resolved_config.json"
+    ):
+        raise ValueError("radial context cache resolved config mismatch")
+    declared_files = manifest.get("files", {})
+    if set(declared_files) != set(RADIAL_CONTEXT_CACHE_FILES):
+        raise ValueError("radial context cache file declaration mismatch")
+    for name in RADIAL_CONTEXT_CACHE_FILES:
+        path = cache_dir / name
+        if not path.is_file():
+            raise FileNotFoundError(f"radial context cache file missing: {path}")
+        declaration = declared_files[name]
+        if int(declaration.get("bytes", -1)) != path.stat().st_size:
+            raise ValueError(f"radial context cache size mismatch: {name}")
+        if declaration.get("sha256") != _sha256_file(path):
+            raise ValueError(f"radial context cache hash mismatch: {name}")
+
+    contexts = np.load(
+        cache_dir / "contexts.npy",
+        mmap_mode="c",
+        allow_pickle=False,
+    )
+    plans = np.load(
+        cache_dir / "plans.npy",
+        mmap_mode="c",
+        allow_pickle=False,
+    )
+    training_ids = torch.from_numpy(np.load(
+        cache_dir / "training_ids.npy",
+        allow_pickle=False,
+    ))
+    validation_ids = torch.from_numpy(np.load(
+        cache_dir / "validation_ids.npy",
+        allow_pickle=False,
+    ))
+    metadata = json.loads((cache_dir / "metadata.json").read_text())
+    if (
+        list(contexts.shape) != manifest["stored_context_shape"]
+        or str(contexts.dtype) != manifest["stored_context_dtype"]
+        or list(plans.shape) != manifest["plan_shape"]
+        or str(plans.dtype) != manifest["plan_dtype"]
+        or len(contexts) != len(plans)
+        or len(contexts) != len(metadata)
+    ):
+        raise ValueError("radial context cache array contract mismatch")
+    if manifest.get("ordered_row_key_digest") != metadata_row_key_digest(
+        metadata
+    ):
+        raise ValueError("radial context cache ordered row-key mismatch")
+    expected_training, expected_validation = trajectory_split(
+        metadata, split_seed,
+    )
+    if not torch.equal(training_ids, expected_training) or not torch.equal(
+        validation_ids, expected_validation,
+    ):
+        raise ValueError("radial context cache split contents mismatch")
+    if context_model == "radial_hp3d":
+        contexts = contexts[:, :LAB_RADIAL_VISUAL_PACKED_DIM]
+    expected_dim = (
+        LAB_RADIAL_VISUAL_PACKED_DIM
+        if context_model == "radial_hp3d"
+        else LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+    )
+    if contexts.shape[1] != expected_dim:
+        raise ValueError("radial context cache model view mismatch")
+    return (
+        contexts,
+        plans,
+        metadata,
+        load_config(demo_dir / "resolved_config.json"),
+        training_ids,
+        validation_ids,
+        manifest,
+    )
 
 
 @torch.no_grad()
@@ -269,8 +609,25 @@ def train(
     seed: int,
     device: torch.device,
     recovery_path: Path | None = None,
+    training_ids: torch.Tensor | None = None,
+    validation_ids: torch.Tensor | None = None,
 ):
-    training_ids, validation_ids = trajectory_split(metadata, seed)
+    if (training_ids is None) != (validation_ids is None):
+        raise ValueError(
+            "training_ids and validation_ids must be supplied together"
+        )
+    if training_ids is None:
+        training_ids, validation_ids = trajectory_split(metadata, seed)
+    else:
+        expected_training, expected_validation = trajectory_split(
+            metadata, seed,
+        )
+        if not torch.equal(training_ids, expected_training) or not torch.equal(
+            validation_ids, expected_validation,
+        ):
+            raise ValueError(
+                "cached train/validation split does not match current metadata"
+            )
     generator = torch.Generator().manual_seed(seed)
     optimizer = torch.optim.Adam(policy.parameters(), lr=learning_rate)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -542,6 +899,126 @@ def plot_results(
     plt.close(fig)
 
 
+def build_pretraining_policy(
+    context_model: str,
+    config,
+    *,
+    hidden: int,
+    representation_dim: int,
+    grid_token_dim: int,
+    history_token_dim: int,
+    nfe: int,
+    trunk_depth: int,
+):
+    common = {
+        "plan_shape": (10, 3),
+        "hidden": int(hidden),
+        "representation_dim": int(representation_dim),
+        "control_limit": config.safemppi.demo_u_max,
+        "nfe": int(nfe),
+        "trunk_depth": int(trunk_depth),
+        "time_features": "raw1",
+    }
+    if context_model == "radial_hp3d":
+        return LabNonuniformRadialFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            **common,
+        )
+    if context_model == "radial_hp3d_gru":
+        if int(history_token_dim) != 32:
+            raise ValueError(
+                "radial_hp3d_gru requires history-token-dim=32"
+            )
+        return LabNonuniformRadialHistoryFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            history_token_dim=history_token_dim,
+            history_length=LAB_VISUAL_HISTORY_LENGTH,
+            **common,
+        )
+    if context_model == "visual_hp3d":
+        return LabVisualFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            **common,
+        )
+    if context_model == "visual_hp3d_gru":
+        return LabVisualHistoryFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            history_token_dim=history_token_dim,
+            history_length=LAB_VISUAL_HISTORY_LENGTH,
+            **common,
+        )
+    if context_model == "raw10":
+        return ConditionalFlowMLP(
+            context_dim=LAB_REFERENCE_CONTEXT_DIM,
+            **common,
+        )
+    raise ValueError(f"unsupported context model {context_model!r}")
+
+
+def pretraining_arch(
+    context_model: str,
+    config,
+    *,
+    hidden: int,
+    representation_dim: int,
+    grid_token_dim: int,
+    history_token_dim: int,
+    nfe: int,
+    trunk_depth: int,
+) -> dict:
+    arch = {
+        "plan_shape": [10, 3],
+        "hidden": int(hidden),
+        "representation_dim": int(representation_dim),
+        "control_limit": config.safemppi.demo_u_max,
+        "nfe": int(nfe),
+        "trunk_depth": int(trunk_depth),
+        "time_features": "raw1",
+    }
+    if context_model in {"radial_hp3d", "radial_hp3d_gru"}:
+        arch.update({
+            "kind": (
+                LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+                if context_model == "radial_hp3d_gru"
+                else LAB_RADIAL_VISUAL_SCHEMA
+            ),
+            "grid_token_dim": int(grid_token_dim),
+            "grid_shape": list(LAB_RADIAL_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_RADIAL_VISUAL_CHANNELS),
+            "encoder_grid_shape": list(
+                LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE
+            ),
+            "encoder_grid_channels": list(
+                LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+            ),
+            "grid_frame": LAB_RADIAL_VISUAL_FRAME,
+            "radial_edges": list(LAB_RADIAL_VISUAL_RADIAL_EDGES),
+        })
+    elif context_model in {"visual_hp3d", "visual_hp3d_gru"}:
+        arch.update({
+            "kind": (
+                LAB_VISUAL_HISTORY_SCHEMA
+                if context_model == "visual_hp3d_gru"
+                else LAB_VISUAL_SCHEMA
+            ),
+            "grid_token_dim": int(grid_token_dim),
+            "grid_shape": list(LAB_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_VISUAL_CHANNELS),
+            "grid_frame": LAB_VISUAL_FRAME,
+        })
+    else:
+        arch.update({
+            "kind": "conditional_flow_mlp",
+            "context_dim": LAB_REFERENCE_CONTEXT_DIM,
+        })
+    if context_model in {"radial_hp3d_gru", "visual_hp3d_gru"}:
+        arch.update({
+            "history_token_dim": int(history_token_dim),
+            "history_length": LAB_VISUAL_HISTORY_LENGTH,
+        })
+    return arch
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -566,10 +1043,23 @@ def main():
     parser.add_argument("--nfe", type=int, default=16)
     parser.add_argument(
         "--context-model",
-        choices=("raw10", "visual_hp3d", "visual_hp3d_gru"),
+        choices=(
+            "raw10",
+            "visual_hp3d",
+            "visual_hp3d_gru",
+            "radial_hp3d",
+            "radial_hp3d_gru",
+        ),
         default="raw10",
     )
     parser.add_argument("--history-token-dim", type=int, default=16)
+    parser.add_argument("--trunk-depth", type=int, choices=(2, 3), default=2)
+    parser.add_argument(
+        "--context-cache",
+        type=Path,
+        default=None,
+        help="verified mmap cache built by build_lab_radial_context_cache.py",
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--audit-episodes", type=int, default=50)
     parser.add_argument("--audit-seed", type=int, default=91000)
@@ -591,57 +1081,58 @@ def main():
         "raw10": LAB_RAW_CONTEXT_SCHEMA,
         "visual_hp3d": LAB_VISUAL_SCHEMA,
         "visual_hp3d_gru": LAB_VISUAL_HISTORY_SCHEMA,
+        "radial_hp3d": LAB_RADIAL_VISUAL_SCHEMA,
+        "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
     }[args.context_model]
-    contexts_np, plans_np, metadata, config = lab_reference_demo_windows(
-        args.demo_dir,
-        context_schema=context_schema,
-    )
+    cache_manifest = None
+    cached_training_ids = None
+    cached_validation_ids = None
+    if args.context_cache is None:
+        contexts_np, plans_np, metadata, config = lab_reference_demo_windows(
+            args.demo_dir,
+            context_schema=context_schema,
+        )
+    else:
+        (
+            contexts_np,
+            plans_np,
+            metadata,
+            config,
+            cached_training_ids,
+            cached_validation_ids,
+            cache_manifest,
+        ) = load_radial_context_cache(
+            args.context_cache,
+            args.demo_dir,
+            context_model=args.context_model,
+            split_seed=args.seed,
+        )
     archive_digest = source_archive_digest(args.demo_dir)
     expected_context_dim = {
         "raw10": LAB_REFERENCE_CONTEXT_DIM,
         "visual_hp3d": LAB_VISUAL_PACKED_DIM,
         "visual_hp3d_gru": LAB_VISUAL_HISTORY_PACKED_DIM,
+        "radial_hp3d": LAB_RADIAL_VISUAL_PACKED_DIM,
+        "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
     }[args.context_model]
     if contexts_np.shape[1] != expected_context_dim:
         raise RuntimeError("lab reference context contract changed unexpectedly")
     contexts = torch.from_numpy(contexts_np)
     plans = torch.from_numpy(plans_np)
+    policy_initialization_seed = int(args.seed)
     torch.manual_seed(args.seed)
-    if args.context_model == "visual_hp3d":
-        policy = LabVisualFlowPolicy(
-            plan_shape=(10, 3),
-            hidden=args.hidden,
-            representation_dim=args.representation_dim,
-            grid_token_dim=args.grid_token_dim,
-            control_limit=config.safemppi.demo_u_max,
-            nfe=args.nfe,
-            trunk_depth=2,
-            time_features="raw1",
-        )
-    elif args.context_model == "visual_hp3d_gru":
-        policy = LabVisualHistoryFlowPolicy(
-            plan_shape=(10, 3),
-            hidden=args.hidden,
-            representation_dim=args.representation_dim,
-            grid_token_dim=args.grid_token_dim,
-            history_token_dim=args.history_token_dim,
-            history_length=LAB_VISUAL_HISTORY_LENGTH,
-            control_limit=config.safemppi.demo_u_max,
-            nfe=args.nfe,
-            trunk_depth=2,
-            time_features="raw1",
-        )
-    else:
-        policy = ConditionalFlowMLP(
-            context_dim=LAB_REFERENCE_CONTEXT_DIM,
-            plan_shape=(10, 3),
-            hidden=args.hidden,
-            representation_dim=args.representation_dim,
-            control_limit=config.safemppi.demo_u_max,
-            nfe=args.nfe,
-            trunk_depth=2,
-            time_features="raw1",
-        )
+    policy = build_pretraining_policy(
+        args.context_model,
+        config,
+        hidden=args.hidden,
+        representation_dim=args.representation_dim,
+        grid_token_dim=args.grid_token_dim,
+        history_token_dim=args.history_token_dim,
+        nfe=args.nfe,
+        trunk_depth=args.trunk_depth,
+    )
+    training_random_seed = cfm_training_rng_seed(args.seed)
+    torch.manual_seed(training_random_seed)
     device = torch.device(args.device)
     policy.to(device)
     print(
@@ -666,6 +1157,8 @@ def main():
         seed=args.seed,
         device=device,
         recovery_path=args.output / ".best_training_state.pt",
+        training_ids=cached_training_ids,
+        validation_ids=cached_validation_ids,
     )
 
     policy.cpu()
@@ -719,60 +1212,31 @@ def main():
         )
     policy.cpu()
 
-    if args.context_model == "visual_hp3d":
-        arch = {
-            "kind": LAB_VISUAL_SCHEMA,
-            "plan_shape": [10, 3],
-            "hidden": args.hidden,
-            "representation_dim": args.representation_dim,
-            "grid_token_dim": args.grid_token_dim,
-            "grid_shape": list(LAB_VISUAL_GRID_SHAPE),
-            "grid_channels": list(LAB_VISUAL_CHANNELS),
-            "grid_frame": LAB_VISUAL_FRAME,
-            "control_limit": config.safemppi.demo_u_max,
-            "nfe": args.nfe,
-            "trunk_depth": 2,
-            "time_features": "raw1",
-        }
-    elif args.context_model == "visual_hp3d_gru":
-        arch = {
-            "kind": LAB_VISUAL_HISTORY_SCHEMA,
-            "plan_shape": [10, 3],
-            "hidden": args.hidden,
-            "representation_dim": args.representation_dim,
-            "grid_token_dim": args.grid_token_dim,
-            "history_token_dim": args.history_token_dim,
-            "history_length": LAB_VISUAL_HISTORY_LENGTH,
-            "grid_shape": list(LAB_VISUAL_GRID_SHAPE),
-            "grid_channels": list(LAB_VISUAL_CHANNELS),
-            "grid_frame": LAB_VISUAL_FRAME,
-            "control_limit": config.safemppi.demo_u_max,
-            "nfe": args.nfe,
-            "trunk_depth": 2,
-            "time_features": "raw1",
-        }
-    else:
-        arch = {
-            "kind": "conditional_flow_mlp",
-            "context_dim": LAB_REFERENCE_CONTEXT_DIM,
-            "plan_shape": [10, 3],
-            "hidden": args.hidden,
-            "representation_dim": args.representation_dim,
-            "control_limit": config.safemppi.demo_u_max,
-            "nfe": args.nfe,
-            "trunk_depth": 2,
-            "time_features": "raw1",
-        }
+    arch = pretraining_arch(
+        args.context_model,
+        config,
+        hidden=args.hidden,
+        representation_dim=args.representation_dim,
+        grid_token_dim=args.grid_token_dim,
+        history_token_dim=args.history_token_dim,
+        nfe=args.nfe,
+        trunk_depth=args.trunk_depth,
+    )
+    history_model = args.context_model in {
+        "visual_hp3d_gru",
+        "radial_hp3d_gru",
+    }
     checkpoint = {
         "model": policy.state_dict(),
         "arch": arch,
         "contract": {
             "policy_output": "pre_smoothing_raw_acceleration_command",
             "stateful_governor_in_policy": False,
-            "past_raw_action_history_in_policy": (
-                args.context_model == "visual_hp3d_gru"
-            ),
+            "past_raw_action_history_in_policy": history_model,
             "deployment_smoothing_and_tracking": "external",
+            "policy_initialization_seed": policy_initialization_seed,
+            "cfm_training_rng_seed": training_random_seed,
+            "cfm_rng_reset_after_policy_construction": True,
         },
     }
     torch.save(checkpoint, args.output / "pretrained.pt")
@@ -791,29 +1255,49 @@ def main():
         "context_schema": context_schema,
         "external_context_dim": expected_context_dim,
         "encoded_context_dim": (
-            7 + args.grid_token_dim + args.history_token_dim
-            if args.context_model == "visual_hp3d_gru"
+            LAB_REFERENCE_CONTEXT_DIM
+            if args.context_model == "raw10"
             else (
-                7 + args.grid_token_dim
-                if args.context_model == "visual_hp3d"
-                else LAB_REFERENCE_CONTEXT_DIM
+                7
+                + args.grid_token_dim
+                + (args.history_token_dim if history_model else 0)
             )
         ),
         "policy_output": "pre_smoothing_raw_acceleration_command",
         "stateful_governor_in_policy": False,
-        "past_raw_action_history_in_policy": (
-            args.context_model == "visual_hp3d_gru"
-        ),
+        "past_raw_action_history_in_policy": history_model,
         "history_length": (
             LAB_VISUAL_HISTORY_LENGTH
-            if args.context_model == "visual_hp3d_gru" else 0
+            if history_model else 0
         ),
         "history_token_dim": (
             args.history_token_dim
-            if args.context_model == "visual_hp3d_gru" else 0
+            if history_model else 0
         ),
-        "history_encoder_must_freeze_during_expansion": (
-            args.context_model == "visual_hp3d_gru"
+        "history_encoder_must_freeze_during_expansion": history_model,
+        "trunk_depth": args.trunk_depth,
+        "grid_token_dim": (
+            args.grid_token_dim
+            if args.context_model != "raw10" else 0
+        ),
+        "trainable_parameter_count": int(sum(
+            parameter.numel() for parameter in policy.parameters()
+        )),
+        "context_cache": (
+            None
+            if cache_manifest is None
+            else {
+                "path": str(args.context_cache.resolve()),
+                "schema": cache_manifest["schema"],
+                "source_archive_digest": cache_manifest[
+                    "source_archive_digest"
+                ],
+                "split_provenance": cache_manifest["split_provenance"],
+                "archive_replay_validation": cache_manifest[
+                    "archive_replay_validation"
+                ],
+                "files": cache_manifest["files"],
+            }
         ),
         "deployment_smoothing_and_tracking": "external",
         "windows": len(contexts),
@@ -822,6 +1306,9 @@ def main():
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
+        "policy_initialization_seed": policy_initialization_seed,
+        "cfm_training_rng_seed": training_random_seed,
+        "cfm_rng_reset_after_policy_construction": True,
         "final_train_loss": history[-1]["train"],
         "final_valid_loss": history[-1]["valid"],
         "selected_epoch": best_epoch,

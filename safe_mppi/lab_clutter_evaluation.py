@@ -43,6 +43,8 @@ from .lab_clutter_expansion import (
 from .lab_flow_evaluation import _validate_replay_provenance
 from .lab_reference_flow_task import raw_reference_rollout
 from .lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_HISTORY_LENGTH,
     LAB_VISUAL_HISTORY_STEP_DIM,
     LAB_VISUAL_HISTORY_SCHEMA,
@@ -71,6 +73,16 @@ PATH_FOCUSED_SPHERE_SCENE_SCHEMA = (
 SUPPORTED_SPHERE_SCENE_SCHEMAS = frozenset({
     LAB_CLUTTER_SCENE_SCHEMA,
     PATH_FOCUSED_SPHERE_SCENE_SCHEMA,
+})
+SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS = frozenset({
+    LAB_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
 })
 
 
@@ -182,15 +194,16 @@ def is_lab_clutter_evaluation_manifest(manifest: dict) -> bool:
     conditioning = manifest.get("lab_conditioning")
     if (
         not isinstance(conditioning, dict)
-        or conditioning.get("context_schema") not in {
-            LAB_VISUAL_SCHEMA,
-            LAB_VISUAL_HISTORY_SCHEMA,
-        }
+        or conditioning.get("context_schema")
+        not in SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS
     ):
         raise ValueError(
             "sphere-clutter expansion requires the visual lab context schema"
         )
-    if conditioning["context_schema"] == LAB_VISUAL_HISTORY_SCHEMA:
+    if (
+        conditioning["context_schema"]
+        in LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS
+    ):
         history = conditioning.get("history_encoder")
         if (
             not isinstance(history, dict)
@@ -1179,7 +1192,7 @@ def _decode_event_scene(event: dict, task: LabClutterSphereExpansionTask):
     context = np.asarray(event.get("context"), np.float32).reshape(-1)
     history_dim = (
         LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
-        if task.context_schema == LAB_VISUAL_HISTORY_SCHEMA else 0
+        if task.context_schema in LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS else 0
     )
     governor_start = 7 + history_dim
     scene_start = governor_start + 6

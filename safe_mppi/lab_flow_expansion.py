@@ -25,6 +25,7 @@ from .lab_reference_flow_task import (
     policy_context,
 )
 from .lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     load_lab_reference_policy,
 )
@@ -32,6 +33,14 @@ from .verifier_polytope import certify_single_sphere_affine, certify_window
 
 
 LAB_VERIFIER_STATE_DIM = 6
+LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+
+
+def _is_history_context_schema(context_schema: str) -> bool:
+    return str(context_schema) in LAB_HISTORY_CONTEXT_SCHEMAS
 
 
 class LabExpansionPolicyAdapter(nn.Module):
@@ -59,14 +68,14 @@ class LabExpansionPolicyAdapter(nn.Module):
         self.context_schema = getattr(policy, "context_schema", "lab_raw10_v1")
         self.freeze_history_encoder = freeze_history_encoder
         if (
-            self.context_schema != LAB_VISUAL_HISTORY_SCHEMA
+            not _is_history_context_schema(self.context_schema)
             and freeze_history_encoder is not None
         ):
             raise ValueError(
                 "history freeze contract applies only to a GRU policy"
             )
         if (
-            self.context_schema == LAB_VISUAL_HISTORY_SCHEMA
+            _is_history_context_schema(self.context_schema)
             and freeze_history_encoder is not None
         ):
             for parameter in self.policy.history_encoder.parameters():
@@ -115,7 +124,7 @@ class LabExpansionPolicyAdapter(nn.Module):
         )
 
     def expansion_parameter_groups(self, base_lr, first_layer_lr_scale=1.0):
-        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if _is_history_context_schema(self.context_schema):
             if self.freeze_history_encoder is None:
                 raise ValueError(
                     "GRU expansion requires an explicit history freeze "
@@ -153,8 +162,8 @@ def load_lab_expansion_policy(
     train_history_encoder: bool = False,
 ) -> LabExpansionPolicyAdapter:
     policy = load_lab_reference_policy(path)
-    is_history = (
-        getattr(policy, "context_schema", None) == LAB_VISUAL_HISTORY_SCHEMA
+    is_history = _is_history_context_schema(
+        getattr(policy, "context_schema", ""),
     )
     if train_history_encoder and not is_history:
         raise ValueError(
@@ -211,7 +220,7 @@ class LabFlowExpansionTask:
             "collided": False,
             "oob": False,
         }
-        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if _is_history_context_schema(self.context_schema):
             state["raw_history"] = _raw_history_before(
                 np.empty((0, 3), np.float32), 0,
             )
@@ -408,7 +417,7 @@ class LabFlowExpansionTask:
                 or not self.env.inside_taskspace(dense).all()
             ),
         }
-        if self.context_schema == LAB_VISUAL_HISTORY_SCHEMA:
+        if _is_history_context_schema(self.context_schema):
             updated["raw_history"] = _append_raw_history(
                 state["raw_history"], command,
             )

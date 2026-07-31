@@ -138,13 +138,31 @@ def policy_context(
     if schema == LAB_RAW_CONTEXT_SCHEMA:
         return build_context(env, state6, gamma)
     from .lab_visual_flow import (
+        LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        LAB_RADIAL_VISUAL_SCHEMA,
         LAB_VISUAL_HISTORY_SCHEMA,
         LAB_VISUAL_SCHEMA,
+        build_nonuniform_radial_visual_history_context,
+        build_nonuniform_radial_visual_context,
         build_visual_context,
         build_visual_history_context,
     )
     if schema == LAB_VISUAL_SCHEMA:
         return build_visual_context(env, state6, gamma)
+    if schema == LAB_RADIAL_VISUAL_SCHEMA:
+        return build_nonuniform_radial_visual_context(env, state6, gamma)
+    if schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
+        if raw_history is None:
+            raise ValueError(
+                "radial visual-history policy context requires past raw "
+                "commands"
+            )
+        return build_nonuniform_radial_visual_history_context(
+            env,
+            state6,
+            gamma,
+            raw_history,
+        )
     if schema == LAB_VISUAL_HISTORY_SCHEMA:
         if raw_history is None:
             raise ValueError(
@@ -239,14 +257,29 @@ def lab_reference_demo_windows(
                 context = build_context(env, states[start], gamma)
             else:
                 from .lab_visual_flow import (
+                    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+                    LAB_RADIAL_VISUAL_SCHEMA,
                     LAB_VISUAL_HISTORY_SCHEMA,
                     LAB_VISUAL_SCHEMA,
+                    build_nonuniform_radial_visual_history_context,
+                    build_nonuniform_radial_visual_context,
                     build_visual_context,
                     build_visual_history_context,
                 )
                 if context_schema == LAB_VISUAL_SCHEMA:
                     context = build_visual_context(
                         env, states[start], gamma,
+                    )
+                elif context_schema == LAB_RADIAL_VISUAL_SCHEMA:
+                    context = build_nonuniform_radial_visual_context(
+                        env, states[start], gamma,
+                    )
+                elif context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
+                    context = build_nonuniform_radial_visual_history_context(
+                        env,
+                        states[start],
+                        gamma,
+                        _raw_history_before(controls, start),
                     )
                 elif context_schema == LAB_VISUAL_HISTORY_SCHEMA:
                     context = build_visual_history_context(
@@ -265,7 +298,9 @@ def lab_reference_demo_windows(
                 "gamma": gamma,
                 "seed": int(row["seed"]),
                 "t": int(start),
+                "file": str(row["file"]),
                 "scene_id": row.get("scene_id"),
+                "scene_index": row.get("scene_index"),
                 "scene_hash": row.get("scene_hash"),
             })
 
@@ -441,6 +476,10 @@ class LabReferenceFlowController:
                 raise ValueError("raw lab deployment requires the 10-D context")
         else:
             from .lab_visual_flow import (
+                LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+                LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+                LAB_RADIAL_VISUAL_PACKED_DIM,
+                LAB_RADIAL_VISUAL_SCHEMA,
                 LAB_VISUAL_HISTORY_PACKED_DIM,
                 LAB_VISUAL_HISTORY_SCHEMA,
                 LAB_VISUAL_PACKED_DIM,
@@ -448,6 +487,10 @@ class LabReferenceFlowController:
             )
             expected = {
                 LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+                LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+                LAB_RADIAL_VISUAL_HISTORY_SCHEMA: (
+                    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+                ),
                 LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_HISTORY_PACKED_DIM,
             }
             if schema not in expected or int(policy.context_dim) != expected[schema]:

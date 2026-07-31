@@ -13,8 +13,12 @@ from safe_mppi.lab_flow_expansion import (
 )
 from safe_mppi.lab_visual_flow import LabVisualFlowPolicy
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
     LAB_VISUAL_HISTORY_LENGTH,
     LAB_VISUAL_PACKED_DIM,
+    LabNonuniformRadialHistoryFlowPolicy,
+    LabNonuniformRadialFlowPolicy,
     LabVisualHistoryFlowPolicy,
 )
 
@@ -227,3 +231,88 @@ def test_gru_loader_freezes_by_default_and_unfreezes_only_explicitly(
         load_lab_expansion_policy(
             "/unused", train_history_encoder=True,
         )
+
+
+def test_radial_gru_expansion_samples_embeds_and_freezes_history():
+    config = load_config(ROOT / "configs" / "lab_ball_pretrain.json")
+    base = LabNonuniformRadialHistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        control_limit=0.3,
+        nfe=1,
+        trunk_depth=3,
+    )
+    policy = LabExpansionPolicyAdapter(
+        base,
+        freeze_history_encoder=True,
+    )
+    task = LabFlowExpansionTask(
+        config,
+        context_schema=policy.context_schema,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 11)
+    context = task.context(state, 0.3)
+    assert context.shape == (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM + 6,
+    )
+    assert not any(
+        parameter.requires_grad
+        for parameter in base.history_encoder.parameters()
+    )
+    assert all(
+        parameter.requires_grad
+        for parameter in base.grid_encoder.parameters()
+    )
+
+    generator = torch.Generator().manual_seed(13)
+    candidates = policy.sample(context, 1, generator)
+    assert candidates.shape == (1, 10, 3)
+    features = policy.embed(
+        context[None],
+        candidates,
+    )
+    assert features.shape == (1, 4)
+
+    groups = policy.expansion_parameter_groups(1.0e-4, 0.1)
+    slow_ids = {id(parameter) for parameter in groups[0]["params"]}
+    assert groups[0]["lr"] == 1.0e-5
+    assert all(
+        id(parameter) in slow_ids
+        for parameter in base.grid_encoder.parameters()
+    )
+    assert all(
+        id(parameter) in slow_ids
+        for parameter in base.flow.trunk[0].parameters()
+    )
+    assert not any(
+        id(parameter) in {
+            id(group_parameter)
+            for group in groups
+            for group_parameter in group["params"]
+        }
+        for parameter in base.history_encoder.parameters()
+    )
+
+
+def test_radial_visual_adapter_preserves_full_policy_context():
+    config = load_config(ROOT / "configs" / "lab_ball_pretrain.json")
+    base = LabNonuniformRadialFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        control_limit=0.3,
+        nfe=1,
+    )
+    policy = LabExpansionPolicyAdapter(base)
+    task = LabFlowExpansionTask(
+        config,
+        context_schema=policy.context_schema,
+    )
+    context = task.context(task.reset(0.3, 0, 17), 0.3)
+    assert context.shape == (LAB_RADIAL_VISUAL_PACKED_DIM + 6,)
+    assert policy._policy_context(context).shape == (
+        LAB_RADIAL_VISUAL_PACKED_DIM,
+    )

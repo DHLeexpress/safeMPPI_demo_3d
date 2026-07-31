@@ -36,12 +36,25 @@ from safe_mppi.lab_clutter_expansion import (
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 from safe_mppi.lab_visual_flow import (
-    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_SCHEMA,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+LAB_CONTEXT_BASE_PACKED_DIMS = {
+    LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+}
 
 
 def _resolved_success_episode_keys(
@@ -979,11 +992,13 @@ def main():
             suffix_dim = (
                 task.verifier_suffix_dim if clutter_profile else 6
             )
+            base_packed_dim = LAB_CONTEXT_BASE_PACKED_DIMS.get(
+                context_contract,
+                int(policy.policy_context_dim),
+            )
             history = (
-                event_context[
-                    LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
-                ]
-                if context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                event_context[base_packed_dim:policy.policy_context_dim]
+                if context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
                 else np.empty(0, np.float32)
             )
             event_context = np.concatenate([
@@ -1204,6 +1219,25 @@ def main():
         for key in tuple(manifest):
             if key.startswith("ball_"):
                 del manifest[key]
+        history_present = (
+            context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
+        )
+        history_frozen = (
+            not any(
+                parameter.requires_grad
+                for parameter in policy.policy.history_encoder.parameters()
+            )
+            if history_present
+            else None
+        )
+        if (
+            history_present
+            and history_frozen == args.train_gru_during_expansion
+        ):
+            raise RuntimeError(
+                "actual GRU freeze state disagrees with the explicit "
+                "expansion contract"
+            )
         manifest["task_profile"] = (
             (
                 "minhyuk_lab_random_three_sphere_visual_expansion"
@@ -1220,21 +1254,15 @@ def main():
             "context_schema": context_contract,
             "policy_context_dim": int(policy.policy_context_dim),
             "history_encoder": {
-                "present": bool(
-                    context_contract == LAB_VISUAL_HISTORY_SCHEMA
-                ),
-                "frozen_during_expansion": (
-                    not args.train_gru_during_expansion
-                    if context_contract == LAB_VISUAL_HISTORY_SCHEMA
-                    else None
-                ),
+                "present": history_present,
+                "frozen_during_expansion": history_frozen,
                 "explicit_unfreeze_flag": bool(
                     args.train_gru_during_expansion
                 ),
                 "history_source": (
                     "prior_10_executed_pre_smoothing_raw_commands_with_"
                     "left_padding_validity_bits"
-                    if context_contract == LAB_VISUAL_HISTORY_SCHEMA
+                    if context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
                     else None
                 ),
             },

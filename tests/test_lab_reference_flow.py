@@ -8,6 +8,7 @@ import torch
 from safe_mppi.config import load_config
 from safe_mppi.environment import TaskEnvironment
 from safe_mppi.flow_model import ConditionalFlowMLP
+from safe_mppi.geometry import build_nominal_polytope
 from safe_mppi.lab_reference_flow_task import (
     LAB_REFERENCE_CONTEXT_DIM,
     LabReferenceFlowController,
@@ -17,6 +18,16 @@ from safe_mppi.lab_reference_flow_task import (
     reference_window_validity_fraction,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_CHANNELS,
+    LAB_RADIAL_VISUAL_ENCODER_CHANNELS,
+    LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE,
+    LAB_RADIAL_VISUAL_FRAME,
+    LAB_RADIAL_VISUAL_GRID_SHAPE,
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    LAB_RADIAL_VISUAL_SCHEMA,
     LAB_VISUAL_CHANNELS,
     LAB_VISUAL_FRAME,
     LAB_VISUAL_GRID_SHAPE,
@@ -25,9 +36,15 @@ from safe_mppi.lab_visual_flow import (
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabNonuniformRadialEncoder,
+    LabNonuniformRadialFlowPolicy,
+    LabNonuniformRadialHistoryFlowPolicy,
     LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
+    _SphericalTopologyPad3d,
     load_lab_reference_policy,
+    nonuniform_radial_grid_points,
+    nonuniform_radial_safety_grid,
     spherical_grid_points,
     spherical_safety_grid,
 )
@@ -202,6 +219,215 @@ def test_visual_grid_reconstructs_sphere_and_cylinder_occupancy():
     assert np.array_equal(
         grid[1].astype(bool),
         grid[2] >= 0.0,
+    )
+
+
+def test_nonuniform_radial_grid_preserves_physical_bins():
+    config = load_config(CONFIG)
+    env = TaskEnvironment(config)
+    observer = env.start[:3]
+    points = nonuniform_radial_grid_points(observer)
+    grid = nonuniform_radial_safety_grid(env, observer)
+    edges = np.asarray(LAB_RADIAL_VISUAL_RADIAL_EDGES)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    widths = np.diff(edges)
+
+    assert points.shape == (32, 32, 13, 3)
+    assert grid.shape == LAB_RADIAL_VISUAL_GRID_SHAPE
+    assert np.allclose(
+        np.linalg.norm(points - observer, axis=-1),
+        centers[None, None, :],
+    )
+    assert np.isin(grid[0], [0.0, 1.0]).all()
+    assert np.array_equal(grid[1].astype(bool), grid[2] >= 0.0)
+    encoder = LabNonuniformRadialEncoder(64)
+    assert np.allclose(
+        encoder.radius_center_m.numpy()[0],
+        np.broadcast_to(centers[None, None, :], (32, 32, 13)),
+    )
+    assert np.allclose(
+        encoder.radius_bin_width_m.numpy()[0],
+        np.broadcast_to(widths[None, None, :], (32, 32, 13)),
+    )
+
+
+def test_nonuniform_radial_cached_hp_matches_full_polytope_product():
+    config = load_config(CONFIG)
+    env = TaskEnvironment(config)
+    observer = env.start[:3] + np.asarray([0.17, -0.11, 0.09])
+    points = nonuniform_radial_grid_points(observer).reshape(-1, 3)
+    polytope = build_nominal_polytope(
+        observer,
+        env.spheres,
+        env.cylinders,
+        env.bounds,
+        sensing_range=env.mppi.sensing_range,
+        obstacle_margin=0.0,
+    )
+    margins = np.maximum(polytope.margins, 1.0e-3)
+    expected = (
+        polytope.b[None] - points @ polytope.A.T
+    ) / margins[None]
+    expected = np.clip(expected.min(axis=1), -1.0, 1.0)
+    observed = nonuniform_radial_safety_grid(
+        env,
+        observer,
+    )[2].reshape(-1)
+    assert np.allclose(observed, expected, rtol=0.0, atol=1.0e-6)
+
+
+@pytest.mark.parametrize("token_dim", [64, 128, 256])
+def test_nonuniform_radial_encoder_keeps_radius_until_learned_mixing(
+    token_dim,
+):
+    encoder = LabNonuniformRadialEncoder(token_dim)
+    grid = torch.randn(2, *LAB_RADIAL_VISUAL_GRID_SHAPE)
+    encoder_grid = encoder.encoder_grid(grid)
+    assert encoder_grid.shape == (2, *LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE)
+    spatial = encoder.conv3d(encoder_grid)
+    assert spatial.shape == (2, 48, 8, 8, 13)
+    assert encoder(grid).shape == (2, token_dim)
+    assert not any(
+        isinstance(module, torch.nn.AvgPool3d)
+        for module in encoder.modules()
+    )
+
+
+def test_nonuniform_radial_padding_wraps_azimuth_and_crosses_poles():
+    values = torch.arange(4 * 3 * 2, dtype=torch.float32).reshape(
+        1, 1, 4, 3, 2,
+    )
+    padded = _SphericalTopologyPad3d()(values)
+    assert padded.shape == (1, 1, 6, 5, 4)
+    assert torch.equal(
+        padded[:, :, 1:-1, 1:-1, 1:-1],
+        values,
+    )
+    assert torch.equal(
+        padded[:, :, 1:-1, 0, 1:-1],
+        torch.roll(values[:, :, :, 0, :], shifts=2, dims=2),
+    )
+    assert torch.equal(
+        padded[:, :, 1:-1, -1, 1:-1],
+        torch.roll(values[:, :, :, -1, :], shifts=2, dims=2),
+    )
+    assert torch.equal(
+        padded[:, :, 0, 1:-1, 1:-1],
+        values[:, :, -1],
+    )
+
+
+def test_nonuniform_radial_policy_loader_round_trip(tmp_path):
+    config = load_config(CONFIG)
+    env = TaskEnvironment(config)
+    torch.manual_seed(44)
+    policy = LabNonuniformRadialFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=2,
+    )
+    context = torch.from_numpy(
+        policy_context(policy, env, env.start, 0.3)
+    )
+    assert context.shape == (LAB_RADIAL_VISUAL_PACKED_DIM,)
+    assert policy.encode_context(context).shape == (7 + 64,)
+
+    checkpoint = tmp_path / "radial_visual.pt"
+    torch.save({
+        "model": policy.state_dict(),
+        "arch": {
+            "kind": LAB_RADIAL_VISUAL_SCHEMA,
+            "plan_shape": [10, 3],
+            "hidden": 8,
+            "representation_dim": 4,
+            "grid_token_dim": 64,
+            "grid_shape": list(LAB_RADIAL_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_RADIAL_VISUAL_CHANNELS),
+            "encoder_grid_shape": list(
+                LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE
+            ),
+            "encoder_grid_channels": list(
+                LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+            ),
+            "grid_frame": LAB_RADIAL_VISUAL_FRAME,
+            "radial_edges": list(LAB_RADIAL_VISUAL_RADIAL_EDGES),
+            "control_limit": config.safemppi.demo_u_max,
+            "nfe": 2,
+            "trunk_depth": 2,
+            "time_features": "raw1",
+        },
+    }, checkpoint)
+    loaded = load_lab_reference_policy(checkpoint)
+    assert isinstance(loaded, LabNonuniformRadialFlowPolicy)
+    assert loaded.context_schema == LAB_RADIAL_VISUAL_SCHEMA
+    assert torch.equal(
+        loaded.grid_encoder.radial_mixer[0].weight,
+        policy.grid_encoder.radial_mixer[0].weight,
+    )
+
+
+def test_nonuniform_radial_deep_gru_loader_and_freeze(tmp_path):
+    config = load_config(CONFIG)
+    env = TaskEnvironment(config)
+    policy = LabNonuniformRadialHistoryFlowPolicy(
+        hidden=48,
+        representation_dim=32,
+        grid_token_dim=64,
+        history_token_dim=32,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=2,
+        trunk_depth=3,
+    )
+    history = np.zeros((LAB_VISUAL_HISTORY_LENGTH, 4), np.float32)
+    context = torch.from_numpy(policy_context(
+        policy,
+        env,
+        env.start,
+        0.3,
+        raw_history=history,
+    ))
+    assert context.shape == (LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,)
+    assert policy.encode_context(context).shape == (7 + 64 + 32,)
+
+    checkpoint = tmp_path / "radial_visual_history.pt"
+    torch.save({
+        "model": policy.state_dict(),
+        "arch": {
+            "kind": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+            "plan_shape": [10, 3],
+            "hidden": 48,
+            "representation_dim": 32,
+            "grid_token_dim": 64,
+            "history_token_dim": 32,
+            "history_length": LAB_VISUAL_HISTORY_LENGTH,
+            "grid_shape": list(LAB_RADIAL_VISUAL_GRID_SHAPE),
+            "grid_channels": list(LAB_RADIAL_VISUAL_CHANNELS),
+            "encoder_grid_shape": list(
+                LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE
+            ),
+            "encoder_grid_channels": list(
+                LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+            ),
+            "grid_frame": LAB_RADIAL_VISUAL_FRAME,
+            "radial_edges": list(LAB_RADIAL_VISUAL_RADIAL_EDGES),
+            "control_limit": config.safemppi.demo_u_max,
+            "nfe": 2,
+            "trunk_depth": 3,
+            "time_features": "raw1",
+        },
+    }, checkpoint)
+    loaded = load_lab_reference_policy(checkpoint)
+    assert isinstance(loaded, LabNonuniformRadialHistoryFlowPolicy)
+    loaded.expansion_parameter_groups(
+        1.0e-4,
+        0.1,
+        freeze_history_encoder=True,
+    )
+    assert not any(
+        parameter.requires_grad
+        for parameter in loaded.history_encoder.parameters()
     )
 
 

@@ -15,11 +15,15 @@ from safe_mppi.lab_clutter_expansion import (
     RandomThreeSphereScene,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
     LAB_VISUAL_HISTORY_LENGTH,
     LAB_VISUAL_HISTORY_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabNonuniformRadialHistoryFlowPolicy,
     LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
     build_visual_context,
@@ -342,6 +346,48 @@ def test_gru_clutter_context_preserves_history_and_dynamic_suffix():
         ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4),
         updated["raw_history"],
     )
+
+
+def test_radial_gru_clutter_context_preserves_history_and_scene_suffix():
+    config = load_config(CONFIG)
+    base = LabNonuniformRadialHistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=1,
+        trunk_depth=3,
+    )
+    policy = LabClutterExpansionPolicyAdapter(
+        base,
+        freeze_history_encoder=True,
+    )
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 23)
+    context = task.context(state, 0.3)
+    assert context.shape == (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+        + LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    )
+    assert policy._policy_context(context).shape == (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    )
+    history = context.numpy()[
+        LAB_RADIAL_VISUAL_PACKED_DIM:
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+    ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4)
+    assert not bool(history[:, 3].any())
+    np.testing.assert_array_equal(
+        task.scene_from_context(context),
+        state["spheres"],
+    )
+    assert task.context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    assert base.context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA
 
 
 def test_verifier_receives_all_three_spheres_from_packed_context(monkeypatch):
