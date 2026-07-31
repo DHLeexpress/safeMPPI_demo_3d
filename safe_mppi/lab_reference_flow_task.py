@@ -26,6 +26,37 @@ LAB_ROUTE_MODES = ("below", "above", "left", "right")
 LAB_RAW_CONTEXT_SCHEMA = "lab_raw10_v1"
 
 
+def stratified_window_starts(
+    window_count: int,
+    max_windows_per_trajectory: int | None,
+) -> np.ndarray:
+    """Select deterministic, endpoint-inclusive starts across one trajectory."""
+    window_count = int(window_count)
+    if window_count < 0:
+        raise ValueError("window_count must be nonnegative")
+    if max_windows_per_trajectory is None:
+        return np.arange(window_count, dtype=np.int64)
+    maximum = int(max_windows_per_trajectory)
+    if maximum < 2:
+        raise ValueError(
+            "max_windows_per_trajectory must be at least 2 so both trajectory "
+            "endpoints remain represented"
+        )
+    if window_count <= maximum:
+        return np.arange(window_count, dtype=np.int64)
+    starts = np.rint(
+        np.linspace(0, window_count - 1, maximum)
+    ).astype(np.int64)
+    if (
+        len(starts) != maximum
+        or starts[0] != 0
+        or starts[-1] != window_count - 1
+        or np.any(np.diff(starts) <= 0)
+    ):
+        raise RuntimeError("stratified window selection contract failed")
+    return starts
+
+
 def _run_environment(
     config: ExperimentConfig,
     data,
@@ -183,8 +214,15 @@ def lab_reference_demo_windows(
     *,
     validate_archive: bool = True,
     context_schema: str = LAB_RAW_CONTEXT_SCHEMA,
+    max_windows_per_trajectory: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[dict], ExperimentConfig]:
-    """Load declared contexts and pre-smoothing raw-command windows."""
+    """Load declared contexts and pre-smoothing raw-command windows.
+
+    An optional positive cap selects deterministic endpoint-inclusive strata
+    before contexts are constructed.  Thus every declared trajectory remains
+    represented without paying the context-construction cost for discarded
+    windows.  ``None`` preserves the historical all-window behavior.
+    """
     run_dir = Path(run_dir)
     manifest = json.loads((run_dir / "manifest.json").read_text())
     config = load_config(run_dir / "resolved_config.json")
@@ -256,7 +294,12 @@ def lab_reference_demo_windows(
                 )
 
         gamma = float(row["gamma"])
-        for start in range(len(controls) - PLAN_H + 1):
+        available_window_count = max(0, len(controls) - PLAN_H + 1)
+        selected_starts = stratified_window_starts(
+            available_window_count,
+            max_windows_per_trajectory,
+        )
+        for start in selected_starts.tolist():
             if context_schema == LAB_RAW_CONTEXT_SCHEMA:
                 context = build_context(env, states[start], gamma)
             else:
@@ -312,6 +355,8 @@ def lab_reference_demo_windows(
                 "scene_id": row.get("scene_id"),
                 "scene_index": row.get("scene_index"),
                 "scene_hash": row.get("scene_hash"),
+                "trajectory_available_windows": available_window_count,
+                "trajectory_selected_windows": len(selected_starts),
             })
 
     return (

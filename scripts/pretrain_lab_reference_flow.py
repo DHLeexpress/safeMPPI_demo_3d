@@ -609,6 +609,64 @@ def validate_early_stopping_contract(
         raise ValueError("min_epochs must lie in [0, epochs]")
 
 
+def validate_training_efficiency_contract(
+    *,
+    max_windows_per_trajectory: int | None,
+    cuda_amp: bool,
+    device: torch.device,
+) -> None:
+    if (
+        max_windows_per_trajectory is not None
+        and int(max_windows_per_trajectory) < 2
+    ):
+        raise ValueError(
+            "max_windows_per_trajectory must be at least 2 so both trajectory "
+            "endpoints remain represented"
+        )
+    if bool(cuda_amp) and device.type != "cuda":
+        raise ValueError("CUDA AMP requires a CUDA training device")
+
+
+def window_sampling_provenance(
+    metadata: list[dict],
+    max_windows_per_trajectory: int | None,
+) -> dict:
+    observed_counts: dict[str, int] = {}
+    trajectories = {}
+    for row in metadata:
+        filename = str(row["file"])
+        observed_counts[filename] = observed_counts.get(filename, 0) + 1
+        if "trajectory_available_windows" not in row:
+            continue
+        value = (
+            int(row["trajectory_available_windows"]),
+            int(row["trajectory_selected_windows"]),
+        )
+        if filename in trajectories and trajectories[filename] != value:
+            raise ValueError(
+                f"inconsistent trajectory window counts for {filename}"
+            )
+        trajectories[filename] = value
+    for filename, observed in observed_counts.items():
+        trajectories.setdefault(filename, (observed, observed))
+    return {
+        "schema": "endpoint_stratified_per_trajectory_v1",
+        "enabled": max_windows_per_trajectory is not None,
+        "max_windows_per_trajectory": (
+            None
+            if max_windows_per_trajectory is None
+            else int(max_windows_per_trajectory)
+        ),
+        "endpoint_inclusive": True,
+        "trajectory_count": len(trajectories),
+        "available_windows": sum(value[0] for value in trajectories.values()),
+        "selected_windows": sum(value[1] for value in trajectories.values()),
+        "all_trajectories_represented": all(
+            selected > 0 for _, selected in trajectories.values()
+        ),
+    }
+
+
 def train(
     policy,
     contexts,
@@ -626,12 +684,18 @@ def train(
     patience: int = 0,
     min_delta: float = 0.0,
     min_epochs: int = 0,
+    cuda_amp: bool = False,
 ):
     validate_early_stopping_contract(
         epochs=epochs,
         patience=patience,
         min_delta=min_delta,
         min_epochs=min_epochs,
+    )
+    validate_training_efficiency_contract(
+        max_windows_per_trajectory=None,
+        cuda_amp=cuda_amp,
+        device=device,
     )
     if (training_ids is None) != (validation_ids is None):
         raise ValueError(
@@ -670,11 +734,16 @@ def train(
         losses = []
         for start in range(0, len(order), batch_size):
             indices = order[start:start + batch_size]
-            loss = policy.cfm_loss(
-                contexts[indices].to(device),
-                plans[indices].to(device),
-                reduction="mean",
-            )
+            with torch.autocast(
+                device_type=device.type,
+                dtype=torch.bfloat16,
+                enabled=bool(cuda_amp),
+            ):
+                loss = policy.cfm_loss(
+                    contexts[indices].to(device),
+                    plans[indices].to(device),
+                    reduction="mean",
+                )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -684,11 +753,17 @@ def train(
             validation_losses = []
             for start in range(0, len(validation_ids), 256):
                 indices = validation_ids[start:start + 256]
-                validation_losses.append(policy.cfm_loss(
-                    contexts[indices].to(device),
-                    plans[indices].to(device),
-                    reduction="none",
-                ).cpu())
+                with torch.autocast(
+                    device_type=device.type,
+                    dtype=torch.bfloat16,
+                    enabled=bool(cuda_amp),
+                ):
+                    values = policy.cfm_loss(
+                        contexts[indices].to(device),
+                        plans[indices].to(device),
+                        reduction="none",
+                    )
+                validation_losses.append(values.float().cpu())
             validation = float(torch.cat(validation_losses).mean())
         history.append({
             "epoch": epoch,
@@ -1110,6 +1185,20 @@ def main():
     parser.add_argument("--min-delta", type=float, default=0.0)
     parser.add_argument("--min-epochs", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--max-windows-per-trajectory",
+        type=int,
+        default=None,
+        help=(
+            "optional endpoint-inclusive deterministic window cap applied "
+            "before context construction; default uses every window"
+        ),
+    )
+    parser.add_argument(
+        "--cuda-amp",
+        action="store_true",
+        help="use CUDA bfloat16 autocast for CFM training and validation",
+    )
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--hidden", type=int, default=48)
     parser.add_argument("--representation-dim", type=int, default=32)
@@ -1154,6 +1243,11 @@ def main():
         min_delta=args.min_delta,
         min_epochs=args.min_epochs,
     )
+    validate_training_efficiency_contract(
+        max_windows_per_trajectory=args.max_windows_per_trajectory,
+        cuda_amp=args.cuda_amp,
+        device=torch.device(args.device),
+    )
     if args.context_model == "uniform_hp100" and (
         args.grid_token_dim != 64 or args.trunk_depth != 3
     ):
@@ -1164,6 +1258,14 @@ def main():
         parser.error(
             "uniform_hp100 uses compact plane contexts and does not accept the "
             "legacy radial mmap cache"
+        )
+    if (
+        args.max_windows_per_trajectory is not None
+        and args.context_cache is not None
+    ):
+        parser.error(
+            "--max-windows-per-trajectory must be applied while contexts are "
+            "built and cannot be combined with a prebuilt context cache"
         )
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite {args.output}")
@@ -1184,6 +1286,7 @@ def main():
         contexts_np, plans_np, metadata, config = lab_reference_demo_windows(
             args.demo_dir,
             context_schema=context_schema,
+            max_windows_per_trajectory=args.max_windows_per_trajectory,
         )
     else:
         (
@@ -1201,6 +1304,10 @@ def main():
             split_seed=args.seed,
         )
     archive_digest = source_archive_digest(args.demo_dir)
+    sampling_provenance = window_sampling_provenance(
+        metadata,
+        args.max_windows_per_trajectory,
+    )
     expected_context_dim = {
         "raw10": LAB_REFERENCE_CONTEXT_DIM,
         "visual_hp3d": LAB_VISUAL_PACKED_DIM,
@@ -1257,6 +1364,7 @@ def main():
         patience=args.patience,
         min_delta=args.min_delta,
         min_epochs=args.min_epochs,
+        cuda_amp=args.cuda_amp,
     )
 
     policy.cpu()
@@ -1406,6 +1514,7 @@ def main():
         ),
         "deployment_smoothing_and_tracking": "external",
         "windows": len(contexts),
+        "window_sampling": sampling_provenance,
         "training_windows": len(training_ids),
         "validation_windows": len(validation_ids),
         "epochs": args.epochs,
@@ -1413,6 +1522,11 @@ def main():
         "actual_epochs": len(history),
         "early_stopping": early_stopping,
         "batch_size": args.batch_size,
+        "cuda_amp": {
+            "enabled": bool(args.cuda_amp),
+            "dtype": "bfloat16" if args.cuda_amp else None,
+            "device_type": device.type,
+        },
         "learning_rate": args.learning_rate,
         "policy_initialization_seed": policy_initialization_seed,
         "cfm_training_rng_seed": training_random_seed,

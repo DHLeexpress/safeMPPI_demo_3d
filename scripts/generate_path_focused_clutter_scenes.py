@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 import sys
@@ -20,6 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 from safe_mppi.config import load_config  # noqa: E402
 from safe_mppi.path_focused_clutter import (  # noqa: E402
+    PATH_FOCUSED_DISTRIBUTION,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_DISTRIBUTION,
     PathFocusedClutterSpec,
     path_focused_scene_bank,
 )
@@ -30,6 +33,8 @@ BOUNDS = np.asarray(
 )
 START = np.asarray([-2.1, 1.5, 0.9], dtype=np.float64)
 GOAL = np.asarray([0.7, -1.5, 0.9], dtype=np.float64)
+DEFAULT_CYLINDER_CONFIG = ROOT / "configs/lab_clutter_cylinders_path_v2.json"
+DEFAULT_SPHERE_CONFIG = ROOT / "configs/lab_clutter_spheres_path_v2.json"
 
 
 def _scene_payload(scene, spec: PathFocusedClutterSpec) -> dict:
@@ -46,6 +51,69 @@ def _scene_payload(scene, spec: PathFocusedClutterSpec) -> dict:
         "minimum_obstacle_surface_gap_m": spec.minimum_surface_gap_m,
         "obstacles": [list(map(float, row)) for row in obstacles],
     }
+
+
+def _sampling_payload(spec: PathFocusedClutterSpec) -> dict:
+    payload = {
+        "distribution": spec.distribution,
+        "longitudinal_fraction": [
+            spec.longitudinal_min,
+            spec.longitudinal_max,
+        ],
+        "minimum_obstacle_surface_gap_m": spec.minimum_surface_gap_m,
+        "minimum_taskspace_wall_surface_clearance_m": (
+            spec.boundary_surface_gap_m
+        ),
+        "minimum_start_goal_surface_clearance_m": spec.endpoint_surface_gap_m,
+    }
+    if spec.distribution == PATH_FOCUSED_DISTRIBUTION:
+        payload.update({
+            "transverse_distribution": "normal",
+            "transverse_std_m": spec.transverse_std_m,
+        })
+    elif spec.distribution == PATH_FOCUSED_MIDPOINT_UNIFORM_DISTRIBUTION:
+        payload.update({
+            "transverse_distribution": (
+                "uniform_symmetric_with_longitudinal_halfwidth"
+            ),
+            "transverse_halfwidth_formula": (
+                "scale_m * (0.5 - abs(lambda - 0.5))"
+            ),
+            "transverse_halfwidth_scale_m": (
+                spec.transverse_halfwidth_scale_m
+            ),
+        })
+    else:  # pragma: no cover - PathFocusedClutterSpec rejects this earlier.
+        raise ValueError(f"unsupported preview distribution {spec.distribution!r}")
+    if spec.obstacle_family == "spheres" and spec.sphere_z_mean_m is not None:
+        payload.update({
+            "sphere_z_distribution": "truncated_normal",
+            "sphere_z_mean_m": spec.sphere_z_mean_m,
+            "sphere_z_std_m": spec.sphere_z_std_m,
+            "sphere_z_center_range_m": [
+                spec.sphere_z_lower_m,
+                spec.sphere_z_upper_m,
+            ],
+        })
+    return payload
+
+
+def _override_legacy_transverse_std(config, value: float):
+    raw = copy.deepcopy(config.raw)
+    randomization = raw["scene_randomization"]
+    if randomization.get("distribution") != PATH_FOCUSED_DISTRIBUTION:
+        raise ValueError(
+            "--transverse-std-m only applies to the legacy "
+            f"{PATH_FOCUSED_DISTRIBUTION} scene law"
+        )
+    randomization["transverse_std_m"] = float(value)
+    return type(config)(
+        config.taskspace,
+        config.obstacles,
+        config.safemppi,
+        config.data,
+        raw,
+    )
 
 
 def _plot_cylinder_scene(ax, scene: dict) -> None:
@@ -117,38 +185,39 @@ def main() -> None:
     parser.add_argument("--scenes", type=int, default=12)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--cylinder-config",
+        type=Path,
+        default=DEFAULT_CYLINDER_CONFIG,
+        help="explicit cylinder scene config (legacy default is preserved)",
+    )
+    parser.add_argument(
+        "--sphere-config",
+        type=Path,
+        default=DEFAULT_SPHERE_CONFIG,
+        help="explicit sphere scene config (legacy default is preserved)",
+    )
+    parser.add_argument(
         "--transverse-std-m",
         type=float,
         default=None,
-        help="preview-only override applied identically to both scene families",
+        help=(
+            "preview-only override for both legacy truncated-normal configs; "
+            "not valid for midpoint-uniform v2"
+        ),
     )
     args = parser.parse_args()
     if args.scenes < 1:
         raise ValueError("--scenes must be positive")
 
-    cylinder_config = load_config(
-        ROOT / "configs/lab_clutter_cylinders_path_v2.json"
-    )
-    sphere_config = load_config(
-        ROOT / "configs/lab_clutter_spheres_path_v2.json"
-    )
+    cylinder_config = load_config(args.cylinder_config)
+    sphere_config = load_config(args.sphere_config)
     if args.transverse_std_m is not None:
-        import copy
-
-        def override(config):
-            raw = copy.deepcopy(config.raw)
-            raw["scene_randomization"]["transverse_std_m"] = float(
-                args.transverse_std_m
-            )
-            temporary = args.output / "_preview_config.json"
-            temporary.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(json.dumps(raw))
-            loaded = load_config(temporary)
-            temporary.unlink()
-            return loaded
-
-        cylinder_config = override(cylinder_config)
-        sphere_config = override(sphere_config)
+        cylinder_config = _override_legacy_transverse_std(
+            cylinder_config, args.transverse_std_m,
+        )
+        sphere_config = _override_legacy_transverse_std(
+            sphere_config, args.transverse_std_m,
+        )
     cylinder_spec = PathFocusedClutterSpec.from_config(cylinder_config)
     sphere_spec = PathFocusedClutterSpec.from_config(sphere_config)
     cylinders = [
@@ -163,24 +232,20 @@ def main() -> None:
             sphere_config, args.scenes, seed=args.seed,
         )
     ]
+    sampling = _sampling_payload(cylinder_spec)
+    sampling["sphere_sampling"] = _sampling_payload(sphere_spec)
 
     args.output.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": "path_focused_variable_clutter_preview_v2",
+        "config_paths": {
+            "cylinders": str(args.cylinder_config.resolve()),
+            "spheres": str(args.sphere_config.resolve()),
+        },
         "taskspace_bounds": BOUNDS.tolist(),
         "start": START.tolist(),
         "goal": GOAL.tolist(),
-        "sampling": {
-            "longitudinal_fraction": [
-                cylinder_spec.longitudinal_min,
-                cylinder_spec.longitudinal_max,
-            ],
-            "transverse_distribution": "normal",
-            "transverse_std_m": cylinder_spec.transverse_std_m,
-            "minimum_obstacle_surface_gap_m": 0.0,
-            "minimum_taskspace_wall_surface_clearance_m": 0.0,
-            "minimum_start_goal_surface_clearance_m": 0.0,
-        },
+        "sampling": sampling,
         "cylinder_scenes": cylinders,
         "sphere_scenes": spheres,
     }
