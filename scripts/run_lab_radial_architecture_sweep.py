@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import json
 import os
@@ -88,6 +89,13 @@ def main() -> None:
     parser.add_argument("--audit-seed", type=int, default=91000)
     parser.add_argument("--ood-audit-seed", type=int, default=191000)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--max-parallel-arms",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="run at most two independent arms on the declared device",
+    )
     args = parser.parse_args()
     if args.output_root.exists():
         raise FileExistsError(
@@ -107,12 +115,12 @@ def main() -> None:
         "audit_seed": args.audit_seed,
         "ood_audit_seed": args.ood_audit_seed,
         "seed": args.seed,
+        "max_parallel_arms": args.max_parallel_arms,
     }
     (args.output_root / "sweep_recipe.json").write_text(
         json.dumps(recipe, indent=2) + "\n"
     )
-    rows = []
-    for arm in ARMS:
+    def run_arm(arm: dict) -> dict:
         output = args.output_root / arm["name"]
         command = [
             sys.executable,
@@ -139,7 +147,23 @@ def main() -> None:
             "--seed", str(args.seed),
         ]
         subprocess.run(command, check=True, env=os.environ.copy())
-        rows.append(_summary_row(arm, output))
+        return _summary_row(arm, output)
+
+    rows_by_name = {}
+    with ThreadPoolExecutor(max_workers=args.max_parallel_arms) as executor:
+        future_to_arm = {
+            executor.submit(run_arm, arm): arm
+            for arm in ARMS
+        }
+        try:
+            for future in as_completed(future_to_arm):
+                arm = future_to_arm[future]
+                rows_by_name[arm["name"]] = future.result()
+        except BaseException:
+            for future in future_to_arm:
+                future.cancel()
+            raise
+    rows = [rows_by_name[arm["name"]] for arm in ARMS]
 
     (args.output_root / "architecture_table.json").write_text(
         json.dumps(rows, indent=2) + "\n"
