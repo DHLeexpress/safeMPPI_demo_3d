@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any
 
 import numpy as np
@@ -67,6 +68,53 @@ def build_arms(
                 "device": devices[index % len(devices)],
             })
     return arms
+
+
+def gpu_uuid(device: str) -> str:
+    match = re.fullmatch(r"cuda:(\d+)", device)
+    if match is None:
+        raise ValueError(
+            "exclusive-device waiting requires devices formatted as cuda:N"
+        )
+    result = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,uuid",
+            "--format=csv,noheader,nounits",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    index = int(match.group(1))
+    for row in result.stdout.splitlines():
+        row_index, row_uuid = (value.strip() for value in row.split(",", 1))
+        if int(row_index) == index:
+            return row_uuid
+    raise ValueError(f"CUDA device index {index} is not visible")
+
+
+def wait_for_exclusive_device(device: str, poll_seconds: float) -> None:
+    expected_uuid = gpu_uuid(device)
+    while True:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=gpu_uuid,pid",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        occupied = any(
+            row.split(",", 1)[0].strip() == expected_uuid
+            for row in result.stdout.splitlines()
+            if row.strip()
+        )
+        if not occupied:
+            return
+        time.sleep(poll_seconds)
 
 
 def trainer_command(args: argparse.Namespace, arm: dict[str, Any]) -> list[str]:
@@ -180,6 +228,12 @@ def main() -> None:
     parser.add_argument("--device", action="append", required=True)
     parser.add_argument("--max-parallel-per-device", type=int, default=1)
     parser.add_argument("--cpu-threads-per-arm", type=int, default=8)
+    parser.add_argument(
+        "--wait-for-exclusive-devices",
+        action="store_true",
+        help="start each device queue only after that physical GPU is idle",
+    )
+    parser.add_argument("--device-poll-seconds", type=float, default=15.0)
     parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
@@ -198,6 +252,8 @@ def main() -> None:
         raise ValueError("--max-parallel-per-device must be positive")
     if args.cpu_threads_per_arm < 1:
         raise ValueError("--cpu-threads-per-arm must be positive")
+    if args.device_poll_seconds <= 0.0:
+        raise ValueError("--device-poll-seconds must be positive")
     if min(args.patience, args.min_delta, args.min_epochs) < 0:
         raise ValueError("early-stop values must be nonnegative")
     if args.min_epochs > args.epochs:
@@ -221,6 +277,8 @@ def main() -> None:
         "devices": list(args.device),
         "max_parallel_per_device": args.max_parallel_per_device,
         "cpu_threads_per_arm": args.cpu_threads_per_arm,
+        "wait_for_exclusive_devices": args.wait_for_exclusive_devices,
+        "device_poll_seconds": args.device_poll_seconds,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
@@ -245,6 +303,11 @@ def main() -> None:
     }
 
     def run_device_queue(device_arms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if args.wait_for_exclusive_devices:
+            wait_for_exclusive_device(
+                device_arms[0]["device"],
+                args.device_poll_seconds,
+            )
         if args.max_parallel_per_device == 1:
             return [run_arm(args, arm) for arm in device_arms]
         with ThreadPoolExecutor(

@@ -110,6 +110,26 @@ def test_run_arm_bounds_cpu_threads(tmp_path, monkeypatch):
     assert captured["OPENBLAS_NUM_THREADS"] == "8"
 
 
+def test_exclusive_device_wait_uses_physical_gpu_uuid(monkeypatch):
+    outputs = iter([
+        "1, GPU-one\n3, GPU-three\n",
+        "GPU-three, 123\n",
+        "",
+    ])
+    sleeps = []
+
+    def fake_run(command, **kwargs):
+        del command, kwargs
+        return argparse.Namespace(stdout=next(outputs))
+
+    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
+    monkeypatch.setattr(MODULE.time, "sleep", sleeps.append)
+
+    MODULE.wait_for_exclusive_device("cuda:3", 2.5)
+
+    assert sleeps == [2.5]
+
+
 def test_summary_row_aggregates_id_and_ood(tmp_path):
     arm = MODULE.build_arms(_datasets(tmp_path), ["cuda:0"])[0]
     output = tmp_path / "arm"
