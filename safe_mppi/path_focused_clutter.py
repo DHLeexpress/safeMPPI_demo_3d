@@ -21,6 +21,37 @@ from .lab_clutter import (
 
 
 PATH_FOCUSED_DISTRIBUTION = "path_focused_truncated_normal_v1"
+PATH_FOCUSED_MIDPOINT_UNIFORM_DISTRIBUTION = (
+    "path_focused_midpoint_uniform_v2"
+)
+PATH_FOCUSED_DISTRIBUTIONS = frozenset({
+    PATH_FOCUSED_DISTRIBUTION,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_DISTRIBUTION,
+})
+
+
+def midpoint_uniform_halfwidth(
+    longitudinal_fraction: float,
+    scale_m: float,
+) -> float:
+    """Return the symmetric transverse proposal half-width in metres."""
+    return float(scale_m) * (
+        0.5 - abs(float(longitudinal_fraction) - 0.5)
+    )
+
+
+def _sample_truncated_normal(
+    rng: np.random.Generator,
+    *,
+    mean: float,
+    std: float,
+    lower: float,
+    upper: float,
+) -> float:
+    while True:
+        value = float(rng.normal(mean, std))
+        if lower <= value <= upper:
+            return value
 
 
 def _orthogonal_basis(direction: np.ndarray) -> np.ndarray:
@@ -37,6 +68,7 @@ def _orthogonal_basis(direction: np.ndarray) -> np.ndarray:
 
 @dataclass(frozen=True)
 class PathFocusedClutterSpec:
+    distribution: str
     obstacle_family: str
     count_min: int
     count_max: int
@@ -45,7 +77,12 @@ class PathFocusedClutterSpec:
     modeled_radius_m: float
     longitudinal_min: float
     longitudinal_max: float
-    transverse_std_m: float
+    transverse_std_m: float | None
+    transverse_halfwidth_scale_m: float | None
+    sphere_z_mean_m: float | None
+    sphere_z_std_m: float | None
+    sphere_z_lower_m: float | None
+    sphere_z_upper_m: float | None
     minimum_surface_gap_m: float
     endpoint_surface_gap_m: float
     boundary_surface_gap_m: float
@@ -53,6 +90,8 @@ class PathFocusedClutterSpec:
     max_layout_attempts: int = 100_000
 
     def __post_init__(self) -> None:
+        if self.distribution not in PATH_FOCUSED_DISTRIBUTIONS:
+            raise ValueError("unsupported path-focused distribution")
         if self.obstacle_family not in {"vertical_cylinders", "spheres"}:
             raise ValueError("unsupported path-focused obstacle family")
         if self.count_min < 1 or self.count_max < self.count_min:
@@ -74,13 +113,52 @@ class PathFocusedClutterSpec:
         if not 0.0 < self.longitudinal_min < self.longitudinal_max < 1.0:
             raise ValueError("longitudinal fractions must lie strictly inside (0,1)")
         if (
-            self.transverse_std_m <= 0.0
-            or self.minimum_surface_gap_m < 0.0
+            self.minimum_surface_gap_m < 0.0
             or self.endpoint_surface_gap_m < 0.0
             or self.boundary_surface_gap_m < 0.0
             or self.max_layout_attempts < self.count_max
         ):
             raise ValueError("path-focused scales/margins are invalid")
+        if self.distribution == PATH_FOCUSED_DISTRIBUTION:
+            if self.transverse_std_m is None or self.transverse_std_m <= 0.0:
+                raise ValueError("legacy path-focused scenes require positive std")
+            if any(value is not None for value in (
+                self.transverse_halfwidth_scale_m,
+                self.sphere_z_mean_m,
+                self.sphere_z_std_m,
+                self.sphere_z_lower_m,
+                self.sphere_z_upper_m,
+            )):
+                raise ValueError("legacy path-focused scenes reject v2 parameters")
+        else:
+            if (
+                self.transverse_std_m is not None
+                or self.transverse_halfwidth_scale_m is None
+                or self.transverse_halfwidth_scale_m <= 0.0
+            ):
+                raise ValueError(
+                    "midpoint-uniform scenes require a positive half-width scale"
+                )
+            z_values = (
+                self.sphere_z_mean_m,
+                self.sphere_z_std_m,
+                self.sphere_z_lower_m,
+                self.sphere_z_upper_m,
+            )
+            if self.obstacle_family == "spheres":
+                if any(value is None for value in z_values):
+                    raise ValueError(
+                        "midpoint-uniform spheres require a truncated-normal z law"
+                    )
+                if not (
+                    self.sphere_z_std_m > 0.0
+                    and self.sphere_z_lower_m
+                    < self.sphere_z_mean_m
+                    < self.sphere_z_upper_m
+                ):
+                    raise ValueError("invalid truncated-normal sphere z law")
+            elif any(value is not None for value in z_values):
+                raise ValueError("cylinder scenes reject sphere z parameters")
 
     @classmethod
     def from_config(
@@ -92,9 +170,10 @@ class PathFocusedClutterSpec:
         raw = config.raw.get("scene_randomization")
         if not isinstance(raw, dict) or raw.get("enabled") is not True:
             raise ValueError("path-focused scene_randomization must be enabled")
-        if raw.get("distribution") != PATH_FOCUSED_DISTRIBUTION:
+        distribution = str(raw.get("distribution"))
+        if distribution not in PATH_FOCUSED_DISTRIBUTIONS:
             raise ValueError(
-                f"scene distribution must be {PATH_FOCUSED_DISTRIBUTION!r}"
+                "scene distribution must be a supported path-focused law"
             )
         family = str(raw.get("obstacle_family"))
         if expected_family is not None and family != expected_family:
@@ -107,6 +186,20 @@ class PathFocusedClutterSpec:
         longitudinal = raw.get("longitudinal_fraction", (0.15, 0.85))
         if len(longitudinal) != 2:
             raise ValueError("longitudinal_fraction must contain [minimum, maximum]")
+        z_range = raw.get("sphere_z_center_range_m")
+        if z_range is not None and (
+            not isinstance(z_range, (list, tuple)) or len(z_range) != 2
+        ):
+            raise ValueError("sphere_z_center_range_m must contain [lower, upper]")
+        if (
+            distribution == PATH_FOCUSED_MIDPOINT_UNIFORM_DISTRIBUTION
+            and family == "spheres"
+            and raw.get("sphere_z_distribution") != "truncated_normal"
+        ):
+            raise ValueError(
+                "midpoint-uniform spheres require sphere_z_distribution="
+                "'truncated_normal'"
+            )
         start_gap = float(raw.get("minimum_start_surface_clearance_m", 0.0))
         goal_gap = float(raw.get("minimum_goal_surface_clearance_m", 0.0))
         if not np.isclose(start_gap, goal_gap, rtol=0.0, atol=0.0):
@@ -114,6 +207,7 @@ class PathFocusedClutterSpec:
                 "path-focused scenes currently require equal start/goal gaps"
             )
         return cls(
+            distribution=distribution,
             obstacle_family=family,
             count_min=count_min,
             count_max=count_max,
@@ -122,7 +216,29 @@ class PathFocusedClutterSpec:
             modeled_radius_m=float(raw["radius_m"]),
             longitudinal_min=float(longitudinal[0]),
             longitudinal_max=float(longitudinal[1]),
-            transverse_std_m=float(raw["transverse_std_m"]),
+            transverse_std_m=(
+                float(raw["transverse_std_m"])
+                if raw.get("transverse_std_m") is not None else None
+            ),
+            transverse_halfwidth_scale_m=(
+                float(raw["transverse_halfwidth_scale_m"])
+                if raw.get("transverse_halfwidth_scale_m") is not None
+                else None
+            ),
+            sphere_z_mean_m=(
+                float(raw["sphere_z_mean_m"])
+                if raw.get("sphere_z_mean_m") is not None else None
+            ),
+            sphere_z_std_m=(
+                float(raw["sphere_z_std_m"])
+                if raw.get("sphere_z_std_m") is not None else None
+            ),
+            sphere_z_lower_m=(
+                float(z_range[0]) if z_range is not None else None
+            ),
+            sphere_z_upper_m=(
+                float(z_range[1]) if z_range is not None else None
+            ),
             minimum_surface_gap_m=float(
                 raw["minimum_obstacle_surface_gap_m"]
             ),
@@ -145,7 +261,9 @@ class PathFocusedClutterSpec:
             if self.obstacle_family == "vertical_cylinders"
             else "spheres"
         )
-        return f"lab_path_focused_variable_{family}_v2"
+        if self.distribution == PATH_FOCUSED_DISTRIBUTION:
+            return f"lab_path_focused_variable_{family}_v2"
+        return f"lab_path_focused_midpoint_uniform_variable_{family}_v2"
 
     def _sample_rows(
         self,
@@ -202,12 +320,43 @@ class PathFocusedClutterSpec:
             along = rng.uniform(
                 self.longitudinal_min, self.longitudinal_max,
             )
-            offset = rng.normal(
-                0.0, self.transverse_std_m, size=transverse.shape[1],
-            )
-            candidate = (
-                start + along * (goal - start) + transverse @ offset
-            ).astype(np.float32).astype(np.float64)
+            if self.distribution == PATH_FOCUSED_DISTRIBUTION:
+                offset = rng.normal(
+                    0.0, self.transverse_std_m, size=transverse.shape[1],
+                )
+                candidate = (
+                    start + along * (goal - start) + transverse @ offset
+                )
+            else:
+                start_xy = start[:2]
+                goal_xy = goal[:2]
+                horizontal = goal_xy - start_xy
+                horizontal_length = float(np.linalg.norm(horizontal))
+                if horizontal_length <= 1.0e-12:
+                    raise ValueError(
+                        "midpoint-uniform scenes require horizontal progress"
+                    )
+                horizontal /= horizontal_length
+                normal = np.asarray(
+                    [-horizontal[1], horizontal[0]], np.float64,
+                )
+                halfwidth = midpoint_uniform_halfwidth(
+                    along, self.transverse_halfwidth_scale_m,
+                )
+                delta = rng.uniform(-halfwidth, halfwidth)
+                xy = start_xy + along * (goal_xy - start_xy) + normal * delta
+                if dimensions == 2:
+                    candidate = xy
+                else:
+                    z = _sample_truncated_normal(
+                        rng,
+                        mean=self.sphere_z_mean_m,
+                        std=self.sphere_z_std_m,
+                        lower=self.sphere_z_lower_m,
+                        upper=self.sphere_z_upper_m,
+                    )
+                    candidate = np.concatenate([xy, [z]])
+            candidate = candidate.astype(np.float32).astype(np.float64)
             if bool((candidate < lower).any() or (candidate > upper).any()):
                 continue
             if (

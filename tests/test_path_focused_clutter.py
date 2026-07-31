@@ -3,9 +3,14 @@ from pathlib import Path
 
 import numpy as np
 
+from scripts import pretrain_lab_reference_flow as pretrain
 from safe_mppi.config import load_config
 from safe_mppi.lab_clutter import LAB_BOUNDS, LAB_GOAL, LAB_START
-from safe_mppi.path_focused_clutter import path_focused_scene_bank
+from safe_mppi.path_focused_clutter import (
+    _sample_truncated_normal,
+    midpoint_uniform_halfwidth,
+    path_focused_scene_bank,
+)
 from safe_mppi.path_focused_collection import (
     collect_path_focused_clutter_demos,
 )
@@ -14,6 +19,12 @@ from safe_mppi.path_focused_collection import (
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/lab_clutter_cylinders_path_v2.json"
 SPHERE_CONFIG = ROOT / "configs/lab_clutter_spheres_path_v2.json"
+MIDPOINT_CYLINDER_CONFIG = (
+    ROOT / "configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json"
+)
+MIDPOINT_SPHERE_CONFIG = (
+    ROOT / "configs/lab_clutter_spheres_path_midpoint_uniform_v2.json"
+)
 SIGMA_PERP_VALUES = (0.20, 0.35, 0.50, 0.65)
 
 
@@ -127,6 +138,129 @@ def test_path_focused_spheres_cover_declared_counts_and_zero_extra_gaps():
                     >= sphere[3] + other[3] - 2.0e-6
                 )
     assert counts == {3, 4, 5, 6}
+
+
+def _longitudinal_and_transverse(xy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    start = LAB_START[:2].astype(np.float64)
+    path = LAB_GOAL[:2].astype(np.float64) - start
+    length = float(np.linalg.norm(path))
+    direction = path / length
+    normal = np.asarray([-direction[1], direction[0]])
+    displacement = np.asarray(xy, np.float64) - start[None]
+    return displacement @ direction / length, displacement @ normal
+
+
+def test_midpoint_uniform_halfwidth_matches_declared_law():
+    np.testing.assert_allclose(
+        [midpoint_uniform_halfwidth(value, 3.0) for value in (0.15, 0.5, 0.85)],
+        [0.45, 1.5, 0.45],
+        rtol=0.0,
+        atol=1.0e-12,
+    )
+
+
+def test_midpoint_uniform_cylinder_bank_is_deterministic_and_obeys_support():
+    config = load_config(MIDPOINT_CYLINDER_CONFIG)
+    first = path_focused_scene_bank(config, 128, seed=29)
+    repeated = path_focused_scene_bank(config, 128, seed=29)
+    assert first == repeated
+
+    rows = np.concatenate([
+        np.asarray(scene.cylinders, np.float64) for scene in first
+    ])
+    longitudinal, transverse = _longitudinal_and_transverse(rows[:, :2])
+    halfwidth = 3.0 * (0.5 - np.abs(longitudinal - 0.5))
+    assert np.all(longitudinal >= 0.15 - 2.0e-6)
+    assert np.all(longitudinal <= 0.85 + 2.0e-6)
+    assert np.all(np.abs(transverse) <= halfwidth + 2.0e-6)
+    np.testing.assert_allclose(rows[:, 2], 0.2, rtol=0.0, atol=2.0e-6)
+
+    near_midpoint = np.abs(longitudinal - 0.5) < 0.08
+    near_ends = np.abs(longitudinal - 0.5) > 0.27
+    assert near_midpoint.sum() > 20
+    assert near_ends.sum() > 20
+    assert np.std(transverse[near_midpoint]) > 2.0 * np.std(
+        transverse[near_ends]
+    )
+
+
+def test_midpoint_uniform_sphere_xy_matches_cylinder_law_and_z_is_truncated():
+    config = load_config(MIDPOINT_SPHERE_CONFIG)
+    scenes = path_focused_scene_bank(config, 256, seed=31)
+    rows = np.concatenate([
+        np.asarray(scene.spheres, np.float64) for scene in scenes
+    ])
+    longitudinal, transverse = _longitudinal_and_transverse(rows[:, :2])
+    halfwidth = 3.0 * (0.5 - np.abs(longitudinal - 0.5))
+    assert np.all(longitudinal >= 0.15 - 2.0e-6)
+    assert np.all(longitudinal <= 0.85 + 2.0e-6)
+    assert np.all(np.abs(transverse) <= halfwidth + 2.0e-6)
+    assert np.all(rows[:, 2] >= 0.754 - 2.0e-6)
+    assert np.all(rows[:, 2] <= 1.646 + 2.0e-6)
+    assert bool((rows[:, 2] < 0.9).any())
+    assert bool((rows[:, 2] > 0.9).any())
+    np.testing.assert_allclose(rows[:, 3], 0.354, rtol=0.0, atol=2.0e-6)
+
+
+def test_seeded_sphere_z_sampler_is_truncated_normal_not_uniform():
+    rng = np.random.default_rng(47)
+    values = np.asarray([
+        _sample_truncated_normal(
+            rng, mean=0.9, std=0.4, lower=0.754, upper=1.646,
+        )
+        for _ in range(20_000)
+    ])
+    assert values.min() >= 0.754
+    assert values.max() <= 1.646
+    central = np.mean((values >= 0.85) & (values <= 0.95)) / 0.10
+    upper = np.mean((values >= 1.45) & (values <= 1.55)) / 0.10
+    assert central > 2.0 * upper
+
+
+def test_midpoint_uniform_configs_pin_requested_geometry_and_costs():
+    for path in (MIDPOINT_CYLINDER_CONFIG, MIDPOINT_SPHERE_CONFIG):
+        config = load_config(path)
+        raw = config.raw["scene_randomization"]
+        assert raw["distribution"] == "path_focused_midpoint_uniform_v2"
+        assert raw["vehicle_inflation_m"] == 0.1
+        assert raw["minimum_obstacle_surface_gap_m"] == 0.0
+        assert raw["minimum_taskspace_wall_surface_clearance_m"] == 0.0
+        assert config.taskspace.reach_radius == 0.2
+        assert config.safemppi.soft_clearance_weight == 0.0
+        assert config.safemppi.soft_clearance_target == 0.3
+        assert config.safemppi.z_bias_weight == 0.0
+        assert config.safemppi.taskspace_exponential_weight == 5.0
+        assert config.safemppi.taskspace_exponential_temperature == 0.05
+
+
+def test_pretrain_audit_routes_midpoint_uniform_cylinders(monkeypatch):
+    config = load_config(MIDPOINT_CYLINDER_CONFIG)
+    real_scene_bank = path_focused_scene_bank
+    calls = []
+
+    def scene_bank(config_arg, count, *, seed):
+        calls.append((config_arg, count, seed))
+        return real_scene_bank(config_arg, count, seed=seed)
+
+    monkeypatch.setattr(pretrain, "path_focused_scene_bank", scene_bank)
+    monkeypatch.setattr(
+        pretrain,
+        "raw_reference_rollout",
+        lambda *args, **kwargs: {
+            "status": "SUCCESS",
+            "mode": None,
+            "window_validity": 1.0,
+            "min_clearance_m": 0.1,
+            "time_to_goal_s": 1.0,
+        },
+    )
+    rows, summaries = pretrain.audit(object(), config, 1, 73)
+    assert len(calls) == 1
+    assert calls[0][1:] == (1, 73)
+    assert len(rows) == len(config.data.gammas)
+    assert all(row["scene_id"] is not None for row in rows)
+    assert all(row["scene_hash"] is not None for row in rows)
+    assert all(summary["SR"] == 1.0 for summary in summaries)
 
 
 def _fake_controller(*args, **kwargs):

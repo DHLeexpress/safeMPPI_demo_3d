@@ -33,6 +33,8 @@ from .lab_reference_flow_task import (
     policy_context,
 )
 from .lab_visual_flow import (
+    LAB_HP100_PACKED_DIM,
+    LAB_HP100_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
     LAB_RADIAL_VISUAL_PACKED_DIM,
@@ -43,7 +45,10 @@ from .lab_visual_flow import (
     LAB_VISUAL_SCHEMA,
     load_lab_reference_policy,
 )
-from .path_focused_clutter import PathFocusedClutterSpec
+from .path_focused_clutter import (
+    PATH_FOCUSED_DISTRIBUTIONS,
+    PathFocusedClutterSpec,
+)
 from .verifier_polytope import certify_window
 
 
@@ -55,6 +60,7 @@ LAB_CLUTTER_VERIFIER_SUFFIX_DIM = (
 )
 LAB_CLUTTER_SCENE_SCHEMA = "lab_random_three_spheres_v1"
 LAB_CLUTTER_VISUAL_CONTEXT_DIMS = {
+    LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_HISTORY_PACKED_DIM,
     LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
@@ -443,9 +449,7 @@ class PathFocusedVariableSphereScene:
 
 def sphere_scene_spec_from_config(config):
     randomization = config.raw.get("scene_randomization", {})
-    if randomization.get("distribution") == (
-        "path_focused_truncated_normal_v1"
-    ):
+    if randomization.get("distribution") in PATH_FOCUSED_DISTRIBUTIONS:
         return PathFocusedVariableSphereScene.from_config(config)
     return RandomThreeSphereScene.from_config(config)
 

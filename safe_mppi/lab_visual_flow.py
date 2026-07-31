@@ -74,6 +74,28 @@ LAB_RADIAL_VISUAL_ENCODER_CHANNELS = (
 LAB_RADIAL_VISUAL_FRAME = (
     "robot_centered_world_spherical_equal_area_nonuniform_radial"
 )
+LAB_HP100_RADIAL_EDGES = tuple(
+    float(value) for value in np.linspace(0.0, 2.0, 101)
+)
+LAB_HP100_GRID_SHAPE = (1, 32, 32, 100)
+LAB_HP100_CHANNELS = ("clipped_hp",)
+LAB_HP100_DYNAMIC_FACE_COUNT = 22
+LAB_HP100_PLANE_ROW_DIM = 5
+LAB_HP100_PLANE_CHANNELS = (
+    "normalized_intercept",
+    "normalized_normal_x",
+    "normalized_normal_y",
+    "normalized_normal_z",
+    "active",
+)
+LAB_HP100_PACKED_DIM = (
+    LAB_VISUAL_LOW_DIM
+    + LAB_HP100_DYNAMIC_FACE_COUNT * LAB_HP100_PLANE_ROW_DIM
+)
+LAB_HP100_SCHEMA = "lab_spherical_hp3d_uniform_radial100_planepack_v1"
+LAB_HP100_FRAME = (
+    "robot_centered_world_spherical_equal_area_uniform_radial_planepack"
+)
 
 
 class _AzimuthCircularPad(nn.Module):
@@ -196,6 +218,111 @@ class LabNonuniformRadialEncoder(nn.Module):
         encoded = encoded.permute(0, 1, 4, 2, 3).reshape(
             len(encoded),
             48 * 13,
+            8,
+            8,
+        )
+        return self.radial_mixer(encoded)
+
+
+class LabUniformHp100Rasterizer(nn.Module):
+    """Reconstruct the clipped 100-bin nominal H_P field from face rows."""
+
+    def __init__(self):
+        super().__init__()
+        offsets, fixed_sensing_hp = _nonuniform_radial_lattice(
+            LAB_HP100_RADIAL_EDGES,
+            LAB_HP100_GRID_SHAPE[1],
+            LAB_HP100_GRID_SHAPE[2],
+        )
+        self.register_buffer(
+            "offsets",
+            torch.from_numpy(
+                np.asarray(offsets, np.float32).reshape(-1, 3).copy()
+            ),
+        )
+        self.register_buffer(
+            "fixed_sensing_hp",
+            torch.from_numpy(
+                np.asarray(fixed_sensing_hp, np.float32).reshape(-1).copy()
+            ),
+        )
+
+    def forward(self, packed_planes: torch.Tensor) -> torch.Tensor:
+        packed_planes = packed_planes.reshape(
+            -1,
+            LAB_HP100_DYNAMIC_FACE_COUNT,
+            LAB_HP100_PLANE_ROW_DIM,
+        ).float()
+        intercept = packed_planes[:, :, 0]
+        normal = packed_planes[:, :, 1:4]
+        active = packed_planes[:, :, 4] > 0.5
+        dynamic_hp = (
+            intercept[:, None, :]
+            - torch.einsum("pc,bfc->bpf", self.offsets, normal)
+        )
+        dynamic_hp = dynamic_hp.masked_fill(~active[:, None, :], torch.inf)
+        hp = torch.minimum(
+            self.fixed_sensing_hp[None],
+            dynamic_hp.amin(dim=2),
+        )
+        return hp.clamp(-1.0, 1.0).reshape(
+            len(packed_planes),
+            *LAB_HP100_GRID_SHAPE,
+        )
+
+
+class LabUniformHp100Encoder(nn.Module):
+    """Encode uniform 2-cm radial H_P bins without radial pooling."""
+
+    def __init__(self, token_dim: int = 64):
+        super().__init__()
+        if int(token_dim) != 64:
+            raise ValueError("uniform H_P encoder requires token_dim=64")
+        self.token_dim = int(token_dim)
+        self.conv3d = nn.Sequential(
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(1, 16, kernel_size=3),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                16,
+                32,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                32,
+                48,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+        )
+        self.radial_mixer = nn.Sequential(
+            nn.Conv2d(48 * 100, 64, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(64 * 4 * 4, self.token_dim),
+            nn.SiLU(),
+        )
+
+    def forward(self, grid: torch.Tensor) -> torch.Tensor:
+        if tuple(grid.shape[1:]) != LAB_HP100_GRID_SHAPE:
+            raise ValueError(
+                "uniform H_P encoder requires a 1x32x32x100 grid"
+            )
+        encoded = self.conv3d(grid.float())
+        if tuple(encoded.shape[1:]) != (48, 8, 8, 100):
+            raise RuntimeError(
+                "uniform H_P encoder violated its 48x8x8x100 contract"
+            )
+        encoded = encoded.permute(0, 1, 4, 2, 3).reshape(
+            len(encoded),
+            48 * 100,
             8,
             8,
         )
@@ -445,6 +572,63 @@ def nonuniform_radial_safety_grid(
     ])
 
 
+def uniform_hp100_grid_points(
+    position: np.ndarray,
+) -> np.ndarray:
+    """Return world-frame centers of the fixed uniform 2-cm H_P cells."""
+    position = np.asarray(position, float).reshape(3)
+    offsets, _ = _nonuniform_radial_lattice(
+        LAB_HP100_RADIAL_EDGES,
+        LAB_HP100_GRID_SHAPE[1],
+        LAB_HP100_GRID_SHAPE[2],
+    )
+    return position[None, None, None, :] + offsets
+
+
+def pack_uniform_hp100_planes(
+    env: TaskEnvironment,
+    position: np.ndarray,
+) -> np.ndarray:
+    """Pack normalized dynamic nominal faces relative to ``position``."""
+    position = np.asarray(position, float).reshape(3)
+    if not np.isclose(
+        float(env.mppi.sensing_range),
+        float(LAB_HP100_RADIAL_EDGES[-1]),
+        rtol=0.0,
+        atol=1.0e-12,
+    ):
+        raise ValueError(
+            "uniform H_P grid outer edge must match the sensing range"
+        )
+    polytope = build_nominal_polytope(
+        position,
+        env.spheres,
+        env.cylinders,
+        env.bounds,
+        sensing_range=env.mppi.sensing_range,
+        obstacle_margin=0.0,
+    )
+    sensing_face_count = len(triangular_geometry()[2])
+    dynamic_count = len(polytope.A) - sensing_face_count
+    if not 0 <= dynamic_count <= LAB_HP100_DYNAMIC_FACE_COUNT:
+        raise RuntimeError(
+            "uniform H_P plane pack exceeds its dynamic-face contract"
+        )
+    rows = np.zeros(
+        (LAB_HP100_DYNAMIC_FACE_COUNT, LAB_HP100_PLANE_ROW_DIM),
+        np.float32,
+    )
+    if dynamic_count:
+        margins = polytope.margins[sensing_face_count:]
+        denominator = np.maximum(margins, 1.0e-3)
+        rows[:dynamic_count, 0] = margins / denominator
+        rows[:dynamic_count, 1:4] = (
+            polytope.A[sensing_face_count:] / denominator[:, None]
+        )
+        rows[:dynamic_count, 4] = 1.0
+    return rows
+
+
 def build_visual_context(
     env: TaskEnvironment,
     state6: np.ndarray,
@@ -478,6 +662,25 @@ def build_nonuniform_radial_visual_context(
         state6[:3],
     ).astype(np.float32)
     return np.concatenate([low, grid.reshape(-1)]).astype(np.float32)
+
+
+def build_uniform_hp100_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+) -> np.ndarray:
+    """Pack low7 and normalized faces for lazy uniform H_P rasterization."""
+    state6 = np.asarray(state6, np.float32).reshape(6)
+    low = np.concatenate([
+        env.goal - state6[:3],
+        state6[3:6],
+        np.asarray([gamma], np.float32),
+    ]).astype(np.float32)
+    planes = pack_uniform_hp100_planes(env, state6[:3])
+    packed = np.concatenate([low, planes.reshape(-1)]).astype(np.float32)
+    if packed.shape != (LAB_HP100_PACKED_DIM,):
+        raise RuntimeError("uniform H_P context violated its packed dimension")
+    return packed
 
 
 def build_nonuniform_radial_visual_history_context(
@@ -876,6 +1079,77 @@ class LabNonuniformRadialFlowPolicy(nn.Module):
         )
 
 
+class LabUniformHp100FlowPolicy(LabNonuniformRadialFlowPolicy):
+    """Depth-3 CFM policy with lazy plane-packed uniform H_P input."""
+
+    context_schema = LAB_HP100_SCHEMA
+    context_dim = LAB_HP100_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        nn.Module.__init__(self)
+        if tuple(plan_shape) != (10, 3):
+            raise ValueError("uniform H_P flow requires plan_shape=(10,3)")
+        if int(grid_token_dim) != 64:
+            raise ValueError("uniform H_P flow requires grid_token_dim=64")
+        if int(trunk_depth) != 3 or time_features != "raw1":
+            raise ValueError(
+                "uniform H_P flow requires trunk_depth=3 and time_features='raw1'"
+            )
+        if tuple(grid_shape) != LAB_HP100_GRID_SHAPE:
+            raise ValueError("uniform H_P flow grid shape contract changed")
+        if tuple(grid_channels) != LAB_HP100_CHANNELS:
+            raise ValueError("uniform H_P flow channel contract changed")
+        if grid_frame != LAB_HP100_FRAME:
+            raise ValueError("uniform H_P flow frame contract changed")
+        if tuple(map(float, radial_edges)) != LAB_HP100_RADIAL_EDGES:
+            raise ValueError("uniform H_P flow radial edges changed")
+        if int(plane_face_count) != LAB_HP100_DYNAMIC_FACE_COUNT:
+            raise ValueError("uniform H_P flow face-count contract changed")
+        if tuple(plane_row_channels) != LAB_HP100_PLANE_CHANNELS:
+            raise ValueError("uniform H_P flow plane-row contract changed")
+        self.plan_shape = tuple(plan_shape)
+        self.plan_dim = math.prod(self.plan_shape)
+        self.control_limit = control_limit
+        self.nfe = int(nfe)
+        self.grid_token_dim = int(grid_token_dim)
+        self.rasterizer = LabUniformHp100Rasterizer()
+        self.grid_encoder = LabUniformHp100Encoder(self.grid_token_dim)
+        self.flow = ConditionalFlowMLP(
+            context_dim=LAB_VISUAL_LOW_DIM + self.grid_token_dim,
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(context[:, LAB_VISUAL_LOW_DIM:])
+        encoded = torch.cat([low, self.grid_encoder(grid)], dim=1)
+        return encoded[0] if single else encoded
+
+
 class LabNonuniformRadialHistoryFlowPolicy(
     LabNonuniformRadialFlowPolicy
 ):
@@ -1151,6 +1425,22 @@ def load_lab_reference_policy(path: str | Path):
                 f"{sorted(missing)}"
             )
         policy = LabNonuniformRadialFlowPolicy(**arch)
+    elif kind == LAB_HP100_SCHEMA:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "grid_frame",
+            "radial_edges",
+            "plane_face_count",
+            "plane_row_channels",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "uniform H_P checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        policy = LabUniformHp100FlowPolicy(**arch)
     elif kind == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
         required = {
             "grid_shape",

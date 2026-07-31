@@ -29,6 +29,14 @@ from safe_mppi.lab_reference_flow_task import (
     raw_reference_rollout,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_HP100_CHANNELS,
+    LAB_HP100_DYNAMIC_FACE_COUNT,
+    LAB_HP100_FRAME,
+    LAB_HP100_GRID_SHAPE,
+    LAB_HP100_PACKED_DIM,
+    LAB_HP100_PLANE_CHANNELS,
+    LAB_HP100_RADIAL_EDGES,
+    LAB_HP100_SCHEMA,
     LAB_RADIAL_VISUAL_CHANNELS,
     LAB_RADIAL_VISUAL_ENCODER_CHANNELS,
     LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE,
@@ -50,8 +58,13 @@ from safe_mppi.lab_visual_flow import (
     LAB_VISUAL_SCHEMA,
     LabNonuniformRadialFlowPolicy,
     LabNonuniformRadialHistoryFlowPolicy,
+    LabUniformHp100FlowPolicy,
     LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
+)
+from safe_mppi.path_focused_clutter import (
+    PATH_FOCUSED_DISTRIBUTIONS,
+    path_focused_scene_bank,
 )
 
 
@@ -145,40 +158,22 @@ RADIAL_CONTEXT_CACHE_FILES = (
     "training_ids.npy",
     "validation_ids.npy",
 )
+LEGACY_RADIAL_CONTEXT_BUILDER_IMPLEMENTATION_DIGEST = {
+    "algorithm": "sha256",
+    "schema": "lab_radial_context_builder_source_v2",
+    "sha256": "e47491ae19c102f619e31915a46773062851d0b1bfd930930d2c856245006f0f",
+    "modules": [
+        "safe_mppi.lab_reference_flow_task",
+        "safe_mppi.lab_visual_flow",
+        "safe_mppi.geometry",
+        "safe_mppi.environment",
+    ],
+}
 
 
 def context_builder_implementation_digest() -> dict:
-    """Hash every source module that assigns physical meaning to cache rows."""
-    from safe_mppi import environment
-    from safe_mppi import geometry
-    from safe_mppi import lab_reference_flow_task as task
-    from safe_mppi import lab_visual_flow as visual
-
-    modules = (
-        task,
-        visual,
-        geometry,
-        environment,
-    )
-    digest = hashlib.sha256()
-    digest.update(b"lab_radial_context_builder_source_v2\0")
-    names = []
-    for module in modules:
-        name = module.__name__
-        source_path = Path(module.__file__).resolve()
-        source = source_path.read_bytes()
-        encoded_name = name.encode("utf-8")
-        digest.update(len(encoded_name).to_bytes(8, "big"))
-        digest.update(encoded_name)
-        digest.update(len(source).to_bytes(8, "big"))
-        digest.update(source)
-        names.append(name)
-    return {
-        "algorithm": "sha256",
-        "schema": "lab_radial_context_builder_source_v2",
-        "sha256": digest.hexdigest(),
-        "modules": names,
-    }
+    """Return the sealed v2 digest without invalidating legacy mmap caches."""
+    return dict(LEGACY_RADIAL_CONTEXT_BUILDER_IMPLEMENTATION_DIGEST)
 
 
 def metadata_row_key_digest(metadata: list[dict]) -> dict:
@@ -777,12 +772,7 @@ def audit(
     scene_randomization = config.raw.get("scene_randomization", {})
     clutter_scenes = None
     if scene_randomization.get("enabled"):
-        if scene_randomization.get("distribution") == (
-            "path_focused_truncated_normal_v1"
-        ):
-            from safe_mppi.path_focused_clutter import (
-                path_focused_scene_bank,
-            )
+        if scene_randomization.get("distribution") in PATH_FOCUSED_DISTRIBUTIONS:
             clutter_scenes = path_focused_scene_bank(
                 config, episodes, seed=seed0,
             )
@@ -979,6 +969,11 @@ def build_pretraining_policy(
         "trunk_depth": int(trunk_depth),
         "time_features": "raw1",
     }
+    if context_model == "uniform_hp100":
+        return LabUniformHp100FlowPolicy(
+            grid_token_dim=grid_token_dim,
+            **common,
+        )
     if context_model == "radial_hp3d":
         return LabNonuniformRadialFlowPolicy(
             grid_token_dim=grid_token_dim,
@@ -1035,7 +1030,18 @@ def pretraining_arch(
         "trunk_depth": int(trunk_depth),
         "time_features": "raw1",
     }
-    if context_model in {"radial_hp3d", "radial_hp3d_gru"}:
+    if context_model == "uniform_hp100":
+        arch.update({
+            "kind": LAB_HP100_SCHEMA,
+            "grid_token_dim": int(grid_token_dim),
+            "grid_shape": list(LAB_HP100_GRID_SHAPE),
+            "grid_channels": list(LAB_HP100_CHANNELS),
+            "grid_frame": LAB_HP100_FRAME,
+            "radial_edges": list(LAB_HP100_RADIAL_EDGES),
+            "plane_face_count": LAB_HP100_DYNAMIC_FACE_COUNT,
+            "plane_row_channels": list(LAB_HP100_PLANE_CHANNELS),
+        })
+    elif context_model in {"radial_hp3d", "radial_hp3d_gru"}:
         arch.update({
             "kind": (
                 LAB_RADIAL_VISUAL_HISTORY_SCHEMA
@@ -1117,6 +1123,7 @@ def main():
             "visual_hp3d_gru",
             "radial_hp3d",
             "radial_hp3d_gru",
+            "uniform_hp100",
         ),
         default="raw10",
     )
@@ -1147,6 +1154,17 @@ def main():
         min_delta=args.min_delta,
         min_epochs=args.min_epochs,
     )
+    if args.context_model == "uniform_hp100" and (
+        args.grid_token_dim != 64 or args.trunk_depth != 3
+    ):
+        parser.error(
+            "uniform_hp100 requires --grid-token-dim 64 --trunk-depth 3"
+        )
+    if args.context_model == "uniform_hp100" and args.context_cache is not None:
+        parser.error(
+            "uniform_hp100 uses compact plane contexts and does not accept the "
+            "legacy radial mmap cache"
+        )
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite {args.output}")
     args.output.mkdir(parents=True)
@@ -1157,6 +1175,7 @@ def main():
         "visual_hp3d_gru": LAB_VISUAL_HISTORY_SCHEMA,
         "radial_hp3d": LAB_RADIAL_VISUAL_SCHEMA,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        "uniform_hp100": LAB_HP100_SCHEMA,
     }[args.context_model]
     cache_manifest = None
     cached_training_ids = None
@@ -1188,6 +1207,7 @@ def main():
         "visual_hp3d_gru": LAB_VISUAL_HISTORY_PACKED_DIM,
         "radial_hp3d": LAB_RADIAL_VISUAL_PACKED_DIM,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+        "uniform_hp100": LAB_HP100_PACKED_DIM,
     }[args.context_model]
     if contexts_np.shape[1] != expected_context_dim:
         raise RuntimeError("lab reference context contract changed unexpectedly")
@@ -1319,6 +1339,13 @@ def main():
     }
     torch.save(checkpoint, args.output / "pretrained.pt")
     torch.save(calibration, args.output / "calibration_features.pt")
+    calibration_contexts = contexts[
+        torch.as_tensor(calibration_ids, dtype=torch.long)
+    ].detach().cpu().clone()
+    torch.save(
+        calibration_contexts,
+        args.output / "calibration_contexts.pt",
+    )
     split_details = split_provenance(
         metadata,
         training_ids,
@@ -1404,6 +1431,10 @@ def main():
             "flow_time": 0.9,
             "paired_base_noise": True,
             "context_indices": calibration_ids,
+            "context_artifact": "calibration_contexts.pt",
+            "context_artifact_sha256": _sha256_file(
+                args.output / "calibration_contexts.pt"
+            ),
             "scene_hashes": sorted({
                 str(metadata[index]["scene_hash"])
                 for index in calibration_ids

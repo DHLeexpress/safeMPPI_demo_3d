@@ -9,6 +9,7 @@ mechanism/representation analyses. The BLUE one-step nominal check is logged onl
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -36,6 +37,8 @@ from safe_mppi.lab_clutter_expansion import (
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 from safe_mppi.lab_visual_flow import (
+    LAB_HP100_PACKED_DIM,
+    LAB_HP100_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
     LAB_RADIAL_VISUAL_PACKED_DIM,
     LAB_RADIAL_VISUAL_SCHEMA,
@@ -43,6 +46,7 @@ from safe_mppi.lab_visual_flow import (
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
 )
+from safe_mppi.path_focused_clutter import PATH_FOCUSED_DISTRIBUTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
@@ -50,11 +54,20 @@ LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
 })
 LAB_CONTEXT_BASE_PACKED_DIMS = {
+    LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_PACKED_DIM,
     LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
 }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _resolved_success_episode_keys(
@@ -185,9 +198,7 @@ def _lab_clutter_profile(task_config) -> bool:
             "--lab-task-config with enabled scene_randomization requires "
             "exactly three spheres or path-focused variable-count spheres"
         )
-    if randomization.get("distribution") == (
-        "path_focused_truncated_normal_v1"
-    ):
+    if randomization.get("distribution") in PATH_FOCUSED_DISTRIBUTIONS:
         sphere_scene_spec_from_config(task_config)
         return True
     if int(randomization.get("count", -1)) != 3:
@@ -326,15 +337,54 @@ def _lab_pretrained_phi_calibration(
     count: int = 50,
 ) -> torch.Tensor:
     """Scale-matched calibration for raw10 or visual lab contexts."""
-    source = _lab_source_demo_dir(pretrain_dir, pretrain_manifest)
-    contexts_np, _, metadata, demo_config = lab_reference_demo_windows(
-        source,
-        context_schema=policy.context_schema,
+    context_artifact = pretrain_manifest.get("rbf_calibration", {}).get(
+        "context_artifact"
     )
+    cached_context_path = (
+        pretrain_dir / str(context_artifact)
+        if context_artifact is not None else None
+    )
+    if cached_context_path is not None and cached_context_path.is_file():
+        expected_sha256 = pretrain_manifest["rbf_calibration"].get(
+            "context_artifact_sha256"
+        )
+        if (
+            expected_sha256 is not None
+            and _sha256_file(cached_context_path) != expected_sha256
+        ):
+            raise ValueError("lab calibration context artifact hash mismatch")
+        cached_contexts = torch.load(
+            cached_context_path,
+            map_location="cpu",
+            weights_only=False,
+        )
+        expected_context_dim = int(
+            getattr(policy, "policy_context_dim", policy.context_dim)
+        )
+        if (
+            cached_contexts.ndim != 2
+            or cached_contexts.shape[1] != expected_context_dim
+            or not bool(torch.isfinite(cached_contexts).all())
+        ):
+            raise ValueError(
+                "lab calibration context artifact violates its policy contract"
+            )
+        contexts_np = cached_contexts.numpy()
+        metadata_gammas = np.asarray(contexts_np[:, 6], dtype=np.float64)
+        demo_gammas = np.unique(metadata_gammas)
+    else:
+        source = _lab_source_demo_dir(pretrain_dir, pretrain_manifest)
+        contexts_np, _, metadata, demo_config = lab_reference_demo_windows(
+            source,
+            context_schema=policy.context_schema,
+        )
+        metadata_gammas = np.asarray(
+            [row["gamma"] for row in metadata], dtype=np.float64,
+        )
+        demo_gammas = np.asarray(demo_config.data.gammas, dtype=np.float64)
     if len(contexts_np) < count:
         raise ValueError("lab calibration requires at least 50 demo contexts")
     task_gammas = np.asarray(task_config.data.gammas, dtype=np.float64)
-    demo_gammas = np.asarray(demo_config.data.gammas, dtype=np.float64)
     if (
         task_gammas.shape != demo_gammas.shape
         or not np.allclose(
@@ -342,9 +392,6 @@ def _lab_pretrained_phi_calibration(
         )
     ):
         raise ValueError("lab calibration demo gammas do not match task config")
-    metadata_gammas = np.asarray(
-        [row["gamma"] for row in metadata], dtype=np.float64,
-    )
     rng = np.random.default_rng(int(seed) + 17001)
     selected: list[int] = []
     base_count, remainder = divmod(count, len(task_gammas))

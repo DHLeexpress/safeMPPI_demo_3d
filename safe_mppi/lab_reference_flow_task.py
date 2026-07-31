@@ -138,12 +138,14 @@ def policy_context(
     if schema == LAB_RAW_CONTEXT_SCHEMA:
         return build_context(env, state6, gamma)
     from .lab_visual_flow import (
+        LAB_HP100_SCHEMA,
         LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
         LAB_RADIAL_VISUAL_SCHEMA,
         LAB_VISUAL_HISTORY_SCHEMA,
         LAB_VISUAL_SCHEMA,
         build_nonuniform_radial_visual_history_context,
         build_nonuniform_radial_visual_context,
+        build_uniform_hp100_context,
         build_visual_context,
         build_visual_history_context,
     )
@@ -151,6 +153,8 @@ def policy_context(
         return build_visual_context(env, state6, gamma)
     if schema == LAB_RADIAL_VISUAL_SCHEMA:
         return build_nonuniform_radial_visual_context(env, state6, gamma)
+    if schema == LAB_HP100_SCHEMA:
+        return build_uniform_hp100_context(env, state6, gamma)
     if schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
         if raw_history is None:
             raise ValueError(
@@ -257,12 +261,14 @@ def lab_reference_demo_windows(
                 context = build_context(env, states[start], gamma)
             else:
                 from .lab_visual_flow import (
+                    LAB_HP100_SCHEMA,
                     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
                     LAB_RADIAL_VISUAL_SCHEMA,
                     LAB_VISUAL_HISTORY_SCHEMA,
                     LAB_VISUAL_SCHEMA,
                     build_nonuniform_radial_visual_history_context,
                     build_nonuniform_radial_visual_context,
+                    build_uniform_hp100_context,
                     build_visual_context,
                     build_visual_history_context,
                 )
@@ -272,6 +278,10 @@ def lab_reference_demo_windows(
                     )
                 elif context_schema == LAB_RADIAL_VISUAL_SCHEMA:
                     context = build_nonuniform_radial_visual_context(
+                        env, states[start], gamma,
+                    )
+                elif context_schema == LAB_HP100_SCHEMA:
+                    context = build_uniform_hp100_context(
                         env, states[start], gamma,
                     )
                 elif context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
@@ -476,6 +486,8 @@ class LabReferenceFlowController:
                 raise ValueError("raw lab deployment requires the 10-D context")
         else:
             from .lab_visual_flow import (
+                LAB_HP100_PACKED_DIM,
+                LAB_HP100_SCHEMA,
                 LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
                 LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
                 LAB_RADIAL_VISUAL_PACKED_DIM,
@@ -487,6 +499,7 @@ class LabReferenceFlowController:
             )
             expected = {
                 LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+                LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
                 LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
                 LAB_RADIAL_VISUAL_HISTORY_SCHEMA: (
                     LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM

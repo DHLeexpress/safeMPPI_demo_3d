@@ -12,7 +12,9 @@ from safe_mppi.lab_clutter_expansion import (
     LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
     LabClutterExpansionPolicyAdapter,
     LabClutterSphereExpansionTask,
+    PathFocusedVariableSphereScene,
     RandomThreeSphereScene,
+    sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_visual_flow import (
     LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
@@ -33,6 +35,9 @@ from safe_mppi.lab_visual_flow import (
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/lab_clutter_spheres_ood.json"
 CYLINDER_CONFIG = ROOT / "configs/lab_clutter_cylinders_pretrain.json"
+MIDPOINT_SPHERE_CONFIG = (
+    ROOT / "configs/lab_clutter_spheres_path_midpoint_uniform_v2.json"
+)
 
 
 def _task_and_policy(scene_spec=None):
@@ -155,6 +160,16 @@ def test_lab_randomization_fails_explicitly_unless_it_is_three_spheres():
     assert expansion_runner._lab_clutter_profile(load_config(CONFIG))
     with pytest.raises(ValueError, match="exactly three spheres"):
         expansion_runner._lab_clutter_profile(load_config(CYLINDER_CONFIG))
+
+
+def test_midpoint_uniform_spheres_route_to_path_focused_expansion():
+    config = load_config(MIDPOINT_SPHERE_CONFIG)
+    assert expansion_runner._lab_clutter_profile(config)
+    spec = sphere_scene_spec_from_config(config)
+    assert isinstance(spec, PathFocusedVariableSphereScene)
+    assert spec.scene_schema == (
+        "lab_path_focused_midpoint_uniform_variable_spheres_v2"
+    )
 
 
 def test_lab_setup_failure_writes_provenance_without_overwriting(tmp_path):
