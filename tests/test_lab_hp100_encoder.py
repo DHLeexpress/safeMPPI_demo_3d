@@ -36,6 +36,7 @@ from safe_mppi.lab_visual_flow import (
     LAB_HP100_PLANE_CHANNELS,
     LAB_HP100_RADIAL_EDGES,
     LAB_HP100_SCHEMA,
+    LAB_VISUAL_LOW_DIM,
     LabUniformHp100Encoder,
     LabUniformHp100ExactMemoryFlowPolicy,
     LabUniformHp100FlowPolicy,
@@ -191,6 +192,43 @@ def test_hp100_policy_checkpoint_pretrain_and_clutter_routing(tmp_path):
     assert run_expansion.LAB_CONTEXT_BASE_PACKED_DIMS[LAB_HP100_SCHEMA] == (
         LAB_HP100_PACKED_DIM
     )
+
+
+def test_hp100_token_width_variants_round_trip_without_changing_default(
+    tmp_path,
+):
+    config = load_config(SPHERE_CONFIG)
+    assert LabUniformHp100FlowPolicy().grid_token_dim == 64
+
+    for token_dim in (64, 128, 256):
+        policy = pretrain.build_pretraining_policy(
+            "uniform_hp100",
+            config,
+            hidden=8,
+            representation_dim=4,
+            grid_token_dim=token_dim,
+            history_token_dim=0,
+            nfe=1,
+            trunk_depth=3,
+        )
+        assert policy.grid_token_dim == token_dim
+        assert policy.grid_encoder.token_dim == token_dim
+        assert policy.flow.context_dim == LAB_VISUAL_LOW_DIM + token_dim
+        arch = pretrain.pretraining_arch(
+            "uniform_hp100",
+            config,
+            hidden=8,
+            representation_dim=4,
+            grid_token_dim=token_dim,
+            history_token_dim=0,
+            nfe=1,
+            trunk_depth=3,
+        )
+        checkpoint = tmp_path / f"hp100_t{token_dim}.pt"
+        torch.save({"model": policy.state_dict(), "arch": arch}, checkpoint)
+        loaded = load_lab_reference_policy(checkpoint)
+        assert loaded.grid_token_dim == token_dim
+        assert loaded.flow.context_dim == LAB_VISUAL_LOW_DIM + token_dim
 
 
 def test_lab_calibration_reuses_compact_context_artifact(tmp_path, monkeypatch):

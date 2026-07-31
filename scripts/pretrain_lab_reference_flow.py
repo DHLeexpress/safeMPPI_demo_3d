@@ -1294,10 +1294,11 @@ def main():
         "uniform_hp100_exact_memory",
         "uniform_hp100_gru",
     } and (
-        args.grid_token_dim != 64 or args.trunk_depth != 3
+        args.grid_token_dim not in {64, 128, 256}
+        or args.trunk_depth != 3
     ):
         parser.error(
-            "uniform_hp100 variants require --grid-token-dim 64 "
+            "uniform_hp100 variants require --grid-token-dim 64, 128, or 256 "
             "--trunk-depth 3"
         )
     if (

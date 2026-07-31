@@ -290,8 +290,10 @@ class LabUniformHp100Encoder(nn.Module):
 
     def __init__(self, token_dim: int = 64):
         super().__init__()
-        if int(token_dim) != 64:
-            raise ValueError("uniform H_P encoder requires token_dim=64")
+        if int(token_dim) not in {64, 128, 256}:
+            raise ValueError(
+                "uniform H_P encoder token_dim must be 64, 128, or 256"
+            )
         self.token_dim = int(token_dim)
         self.conv3d = nn.Sequential(
             _SphericalTopologyPad3d(),
@@ -1182,8 +1184,10 @@ class LabUniformHp100FlowPolicy(LabNonuniformRadialFlowPolicy):
         nn.Module.__init__(self)
         if tuple(plan_shape) != (10, 3):
             raise ValueError("uniform H_P flow requires plan_shape=(10,3)")
-        if int(grid_token_dim) != 64:
-            raise ValueError("uniform H_P flow requires grid_token_dim=64")
+        if int(grid_token_dim) not in {64, 128, 256}:
+            raise ValueError(
+                "uniform H_P flow grid_token_dim must be 64, 128, or 256"
+            )
         if int(trunk_depth) != 3 or time_features != "raw1":
             raise ValueError(
                 "uniform H_P flow requires trunk_depth=3 and time_features='raw1'"
