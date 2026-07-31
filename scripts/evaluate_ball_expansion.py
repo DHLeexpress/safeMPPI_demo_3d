@@ -1279,10 +1279,13 @@ def main():
         else:
             from safe_mppi.lab_flow_evaluation import evaluate_lab_expansion
 
-            source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
-            if not source_demo_dir.is_absolute():
-                source_demo_dir = args.pretrain_dir / source_demo_dir
-            config = load_config(source_demo_dir / "resolved_config.json")
+            if task_config_path.is_file():
+                config = load_config(task_config_path)
+            else:
+                source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
+                if not source_demo_dir.is_absolute():
+                    source_demo_dir = args.pretrain_dir / source_demo_dir
+                config = load_config(source_demo_dir / "resolved_config.json")
             evaluate_lab_expansion(
                 args, config, pretrain_manifest, manifest,
             )

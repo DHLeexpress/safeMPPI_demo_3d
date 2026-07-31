@@ -139,11 +139,6 @@ class ExpansionConfig:
                 raise ValueError(
                     "successful_executed_windows requires negative_alpha=0"
                 )
-            if self.paired_noised_representation:
-                raise ValueError(
-                    "successful_executed_windows has no single paired flow base "
-                    "and requires paired_noised_representation=False"
-                )
             if self.target_gate_start_round is not None:
                 raise ValueError(
                     "successful_executed_windows requires an inactive target gate"
@@ -224,11 +219,10 @@ class ExpansionConfig:
             if (
                 self.archive_rule != "successful_executed_windows"
                 or self.acquisition_feature != "learned_phi"
-                or self.paired_noised_representation
             ):
                 raise ValueError(
                     "successful per-gamma learned-phi GP modes require "
-                    "successful_executed_windows, learned_phi, and endpoint-only phi"
+                    "successful_executed_windows and learned_phi"
                 )
         if self.gp_reference_mode in {
             "sliding_success_per_gamma_frozen_phi",
@@ -430,8 +424,15 @@ def _normalize(values: torch.Tensor, eps: float = 1.0e-9) -> torch.Tensor:
     return values / values.norm(dim=-1, keepdim=True).clamp_min(eps)
 
 
+def _stable_accumulation_dtype(values: torch.Tensor) -> torch.dtype:
+    """Use float64 where supported and float32 on Apple MPS."""
+    return torch.float32 if values.device.type == "mps" else torch.float64
+
+
 def mean_pairwise_lengthscale(features: torch.Tensor) -> float:
-    values = _normalize(features.detach().to(torch.float64))
+    # Calibration uses only 50 rows; keeping this reduction on CPU preserves
+    # float64 numerics and avoids the unsupported MPS pdist operator.
+    values = _normalize(features.detach().cpu().to(torch.float64))
     if values.ndim != 2 or len(values) < 2:
         raise ValueError("RBF calibration needs at least two embedding rows")
     lengthscale = float(torch.pdist(values).mean())
@@ -463,9 +464,16 @@ class RBFPosterior:
         if features is None or len(features) == 0:
             self.X = self.L = None
             return
-        self.X = _normalize(features.detach())
-        kernel = self.kernel(self.X, self.X).to(torch.float64)
-        eye = torch.eye(len(kernel), dtype=torch.float64, device=kernel.device)
+        stored = (
+            features.detach().cpu()
+            if features.device.type == "mps" else features.detach()
+        )
+        self.X = _normalize(stored)
+        factor_dtype = torch.float64
+        kernel = self.kernel(self.X, self.X).to(factor_dtype)
+        eye = torch.eye(
+            len(kernel), dtype=factor_dtype, device=kernel.device,
+        )
         jitter = self.noise
         for _ in range(6):
             factor, info = torch.linalg.cholesky_ex(kernel + jitter * eye)
@@ -477,11 +485,14 @@ class RBFPosterior:
 
     @torch.no_grad()
     def covariance(self, features: torch.Tensor) -> torch.Tensor:
-        query = _normalize(features.detach())
+        query = _normalize(
+            features.detach().cpu()
+            if features.device.type == "mps" else features.detach()
+        )
         covariance = self.kernel(query, query)
         if self.X is not None:
             cross = self.kernel(query, self.X)
-            solved = torch.cholesky_solve(cross.T.to(torch.float64), self.L)
+            solved = torch.cholesky_solve(cross.T.to(self.L.dtype), self.L)
             covariance -= cross @ solved.to(cross.dtype)
         covariance = 0.5 * (covariance + covariance.T)
         covariance += self.noise * torch.eye(
@@ -495,9 +506,9 @@ class RBFPosterior:
 
     @torch.no_grad()
     def acquire(self, features: torch.Tensor, B: int, beta: float,
-                generator: torch.Generator) -> tuple[list[int], list[float], list[float]]:
+        generator: torch.Generator) -> tuple[list[int], list[float], list[float]]:
         covariance = self.covariance(features)
-        remaining = torch.arange(len(features), device=features.device)
+        remaining = torch.arange(len(features), device=covariance.device)
         selected, selected_sigma, ess = [], [], []
         for _ in range(B):
             # The Gibbs tilt is defined on posterior standard deviation, not variance.
@@ -508,10 +519,26 @@ class RBFPosterior:
             ).clamp_min(0.0).sqrt()
             weights = torch.exp(((scores - scores.max()) / beta).clamp(-30.0, 30.0))
             probability = weights / weights.sum()
-            local = int(torch.multinomial(probability, 1, generator=generator))
+            if features.device.type == "mps":
+                uniform = float(torch.rand(
+                    (), device=features.device, generator=generator,
+                ).cpu())
+                local = min(
+                    int(torch.searchsorted(
+                        probability.cumsum(0),
+                        torch.tensor(uniform, dtype=probability.dtype),
+                    )),
+                    len(probability) - 1,
+                )
+            else:
+                local = int(torch.multinomial(
+                    probability, 1, generator=generator,
+                ))
             selected.append(int(remaining[local]))
             selected_sigma.append(float(scores[local]))
-            ess.append(float(1.0 / (probability.to(torch.float64).square().sum()
+            ess.append(float(1.0 / (probability.to(
+                _stable_accumulation_dtype(probability)
+            ).square().sum()
                                     * probability.numel())))
             keep = torch.ones(len(remaining), dtype=torch.bool, device=remaining.device)
             keep[local] = False
@@ -528,7 +555,9 @@ class RBFPosterior:
 def normalized_ess(scores: torch.Tensor, beta: float) -> float:
     weights = torch.exp(((scores - scores.max()) / beta).clamp(-30.0, 30.0))
     probability = weights / weights.sum()
-    return float(1.0 / (probability.to(torch.float64).square().sum()
+    return float(1.0 / (probability.to(
+        _stable_accumulation_dtype(probability)
+    ).square().sum()
                         * probability.numel()))
 
 
@@ -1278,7 +1307,12 @@ def _softmin_choice(costs: Sequence[float], target: float,
         probability = torch.softmax((scores - scores.max()) / temperature, dim=0)
     choice = int(torch.multinomial(probability, 1, generator=generator))
     ess = float(
-        1.0 / (probability.to(torch.float64).square().sum() * len(probability))
+        1.0 / (
+            probability.to(
+                _stable_accumulation_dtype(probability)
+            ).square().sum()
+            * len(probability)
+        )
     )
     return choice, ess
 
@@ -1707,6 +1741,34 @@ def _run_safe_expansion_impl(
                 verification[0],
             )
 
+        def paired_executed_suffix_base(
+            executed_steps: Sequence[dict[str, Any]],
+            start: int,
+            horizon: int,
+        ) -> torch.Tensor | None:
+            """Compose a successful window from its actual action/base pairs."""
+            if not config.paired_noised_representation:
+                return None
+            valid_horizon = min(horizon, len(executed_steps) - start)
+            paired_actions = []
+            for step_record in executed_steps[start:start + valid_horizon]:
+                flow_base_action = step_record.get("flow_base_action")
+                if flow_base_action is None:
+                    raise RuntimeError(
+                        "paired successful-window replay is missing an executed "
+                        "first-action flow base"
+                    )
+                paired_actions.append(flow_base_action.to(device))
+            actual_base = torch.stack(paired_actions)
+            if valid_horizon == horizon:
+                return actual_base
+            padding = torch.zeros(
+                (horizon - valid_horizon, *actual_base.shape[1:]),
+                dtype=actual_base.dtype,
+                device=device,
+            )
+            return torch.cat([actual_base, padding], dim=0)
+
         def has_commit_capable_window(
             episode_record: dict[str, Any],
             gamma_value: float,
@@ -1973,6 +2035,15 @@ def _run_safe_expansion_impl(
                         "action": executed_candidate[0].detach().cpu(),
                         "plan_horizon": int(len(executed_candidate)),
                     }
+                    if config.paired_noised_representation:
+                        if flow_bases is None:
+                            raise RuntimeError(
+                                "paired successful-window replay requires sampled "
+                                "flow bases"
+                            )
+                        staged_executed_step["flow_base_action"] = (
+                            flow_bases[selected[chosen]][0].detach().cpu()
+                        )
                 episode["state"] = task.advance(
                     episode["state"], queried[chosen]
                 )
@@ -2394,6 +2465,9 @@ def _run_safe_expansion_impl(
                                 executed_steps, start, horizon, gamma,
                             )
                             valid_horizon = len(actual_window)
+                            paired_window_base = paired_executed_suffix_base(
+                                executed_steps, start, horizon,
+                            )
                             commit_reverify_queries += 1
                             if result.error:
                                 continue
@@ -2422,6 +2496,11 @@ def _run_safe_expansion_impl(
                                     reconstructed_feature = acquisition_policy.embed(
                                         context_window.unsqueeze(0),
                                         candidate_window.unsqueeze(0),
+                                        base=(
+                                            paired_window_base.unsqueeze(0)
+                                            if paired_window_base is not None
+                                            else None
+                                        ),
                                     )
                                     if (
                                         config.gp_reference_mode in {
@@ -2458,7 +2537,10 @@ def _run_safe_expansion_impl(
                                 candidate_window.detach().cpu(),
                                 result,
                                 acquisition_sigma=acquisition_sigma,
-                                flow_base=None,
+                                flow_base=(
+                                    paired_window_base.detach().cpu()
+                                    if paired_window_base is not None else None
+                                ),
                                 acquisition_feature=(
                                     task_feature[0].detach().cpu()
                                     if task_feature is not None else None
@@ -3006,7 +3088,9 @@ def _run_safe_expansion_impl(
                 for gamma in config.gammas
             },
             "frozen_phi": True,
-            "paired_noised_representation": False,
+            "paired_noised_representation": (
+                config.paired_noised_representation
+            ),
             "exact": True,
             "thinning": "none",
             "hard_max_rows_per_gamma": config.gp_exact_max_rows_per_gamma,
@@ -3068,7 +3152,14 @@ def _run_safe_expansion_impl(
                 == "sliding_success_per_gamma_frozen_phi"
                 else "current_round_phi_reembedded_before_gather"
             ),
-            "paired_noised_representation": False,
+            "paired_noised_representation": (
+                config.paired_noised_representation
+            ),
+            "paired_success_window_base": (
+                "concatenated actual first-action generator latents from "
+                "successive closed-loop decisions; terminal padding is zero"
+                if config.paired_noised_representation else None
+            ),
             "exact": False,
             "active_cap": config.gp_buffer_cap,
             "cap_scope": "equal_per_gamma",

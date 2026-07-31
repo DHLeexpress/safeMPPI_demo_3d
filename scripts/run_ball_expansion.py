@@ -1422,13 +1422,13 @@ def main():
             ),
             "selector_changes_safety_label": False,
         }
+        (args.output / "task_config_resolved.json").write_text(
+            json.dumps(task_config.raw, indent=2) + "\n"
+        )
         if clutter_profile:
             manifest["lab_scene_randomization"] = dict(randomization)
             manifest["lab_scene_schema"] = task.scene_schema
             manifest["lab_scene_ledger"] = list(task.scene_ledger)
-            (args.output / "task_config_resolved.json").write_text(
-                json.dumps(task_config.raw, indent=2) + "\n"
-            )
     manifest["event_log"] = args.event_log
     if args.event_log == "committed_success":
         if pending_events:
