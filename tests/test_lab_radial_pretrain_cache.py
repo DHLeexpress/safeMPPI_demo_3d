@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 from safe_mppi.config import load_config
 from safe_mppi.lab_visual_flow import (
@@ -283,8 +284,6 @@ def test_radial_pretraining_architecture_contract_and_gru32():
 
 
 def test_cfm_training_rng_is_reset_independently_of_model_size():
-    import torch
-
     torch.manual_seed(11)
     _ = torch.randn(3)
     torch.manual_seed(pretrain.cfm_training_rng_seed(5))
@@ -312,3 +311,143 @@ def test_fixed_sweep_contains_only_the_five_requested_arms():
         ("radial_hp3d", 64, 3),
         ("radial_hp3d_gru", 64, 3),
     ]
+
+
+class _SequencedValidationPolicy(torch.nn.Module):
+    def __init__(self, validation_values):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor(0.0))
+        self.validation_values = list(map(float, validation_values))
+        self.validation_calls = 0
+        self.validation_weights = []
+
+    def cfm_loss(self, contexts, candidates, reduction):
+        del candidates
+        if bool((contexts[:, 0] > 0.5).all()):
+            value = self.validation_values[self.validation_calls]
+            self.validation_calls += 1
+            self.validation_weights.append(float(self.weight.detach()))
+            values = torch.full(
+                (len(contexts),),
+                value,
+                device=contexts.device,
+            )
+            return values if reduction == "none" else values.mean()
+        loss = (self.weight - 1.0).square()
+        return loss if reduction == "mean" else loss.expand(len(contexts))
+
+
+def _early_stop_dataset():
+    metadata = [
+        {
+            "gamma": 0.1,
+            "seed": index,
+            "scene_hash": f"scene-{index}",
+        }
+        for index in range(2)
+    ]
+    training_ids, validation_ids = pretrain.trajectory_split(metadata, seed=9)
+    contexts = torch.zeros(2, 1)
+    contexts[validation_ids, 0] = 1.0
+    plans = torch.zeros(2, 10, 3)
+    return contexts, plans, metadata, training_ids, validation_ids
+
+
+def test_early_stopping_restores_absolute_best_checkpoint(tmp_path):
+    (
+        contexts,
+        plans,
+        metadata,
+        training_ids,
+        validation_ids,
+    ) = _early_stop_dataset()
+    policy = _SequencedValidationPolicy(
+        [1.0, 0.95, 0.94, 0.939, 0.938],
+    )
+    result = pretrain.train(
+        policy,
+        contexts,
+        plans,
+        metadata,
+        epochs=10,
+        batch_size=1,
+        learning_rate=0.1,
+        seed=9,
+        device=torch.device("cpu"),
+        recovery_path=tmp_path / "best.pt",
+        training_ids=training_ids,
+        validation_ids=validation_ids,
+        patience=2,
+        min_delta=0.02,
+        min_epochs=3,
+    )
+    history, _, _, best_epoch, best_validation, stopping = result
+    assert len(history) == 4
+    assert best_epoch == 3
+    assert best_validation == pytest.approx(0.939)
+    assert stopping == {
+        "enabled": True,
+        "triggered": True,
+        "patience": 2,
+        "min_delta": 0.02,
+        "min_epochs": 3,
+        "requested_epochs": 10,
+        "actual_epochs": 4,
+        "stopped_after_epoch": 3,
+        "consecutive_without_min_delta_improvement": 2,
+        "significant_reference_validation": pytest.approx(0.95),
+        "checkpoint_selection": "absolute_minimum_validation_loss",
+    }
+    assert float(policy.weight.detach()) == pytest.approx(
+        policy.validation_weights[best_epoch]
+    )
+    recovery = torch.load(
+        tmp_path / "best.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert recovery["epoch"] == best_epoch
+    assert recovery["validation_loss"] == pytest.approx(best_validation)
+    assert torch.equal(recovery["model"]["weight"], policy.weight.detach())
+
+
+def test_early_stopping_disabled_runs_all_requested_epochs():
+    (
+        contexts,
+        plans,
+        metadata,
+        training_ids,
+        validation_ids,
+    ) = _early_stop_dataset()
+    policy = _SequencedValidationPolicy([1.0, 1.0, 1.0])
+    result = pretrain.train(
+        policy,
+        contexts,
+        plans,
+        metadata,
+        epochs=3,
+        batch_size=1,
+        learning_rate=0.1,
+        seed=9,
+        device=torch.device("cpu"),
+        training_ids=training_ids,
+        validation_ids=validation_ids,
+    )
+    assert len(result[0]) == 3
+    assert result[-1]["enabled"] is False
+    assert result[-1]["triggered"] is False
+    assert result[-1]["actual_epochs"] == 3
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"epochs": 0, "patience": 0, "min_delta": 0.0, "min_epochs": 0},
+        {"epochs": 5, "patience": -1, "min_delta": 0.0, "min_epochs": 0},
+        {"epochs": 5, "patience": 1, "min_delta": -0.1, "min_epochs": 0},
+        {"epochs": 5, "patience": 1, "min_delta": 0.0, "min_epochs": 6},
+    ],
+)
+def test_early_stopping_contract_rejects_invalid_values(values):
+    with pytest.raises(ValueError):
+        pretrain.validate_early_stopping_contract(**values)

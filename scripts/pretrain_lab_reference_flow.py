@@ -597,6 +597,23 @@ def trajectory_split(metadata: list[dict], seed: int) -> tuple[torch.Tensor, tor
     return torch.tensor(training), torch.tensor(validation)
 
 
+def validate_early_stopping_contract(
+    *,
+    epochs: int,
+    patience: int,
+    min_delta: float,
+    min_epochs: int,
+) -> None:
+    if int(epochs) <= 0:
+        raise ValueError("epochs must be positive")
+    if int(patience) < 0:
+        raise ValueError("patience must be nonnegative")
+    if not np.isfinite(min_delta) or float(min_delta) < 0.0:
+        raise ValueError("min_delta must be finite and nonnegative")
+    if int(min_epochs) < 0 or int(min_epochs) > int(epochs):
+        raise ValueError("min_epochs must lie in [0, epochs]")
+
+
 def train(
     policy,
     contexts,
@@ -611,7 +628,16 @@ def train(
     recovery_path: Path | None = None,
     training_ids: torch.Tensor | None = None,
     validation_ids: torch.Tensor | None = None,
+    patience: int = 0,
+    min_delta: float = 0.0,
+    min_epochs: int = 0,
 ):
+    validate_early_stopping_contract(
+        epochs=epochs,
+        patience=patience,
+        min_delta=min_delta,
+        min_epochs=min_epochs,
+    )
     if (training_ids is None) != (validation_ids is None):
         raise ValueError(
             "training_ids and validation_ids must be supplied together"
@@ -639,6 +665,9 @@ def train(
     best_epoch = -1
     best_validation = float("inf")
     best_state = None
+    significant_reference = float("inf")
+    consecutive_without_improvement = 0
+    early_stop_triggered = False
     for epoch in range(epochs):
         order = training_ids[
             torch.randperm(len(training_ids), generator=generator)
@@ -671,6 +700,11 @@ def train(
             "train": float(np.mean(losses)),
             "valid": validation,
         })
+        if significant_reference - validation > float(min_delta):
+            significant_reference = validation
+            consecutive_without_improvement = 0
+        else:
+            consecutive_without_improvement += 1
         if validation < best_validation:
             best_epoch = epoch
             best_validation = validation
@@ -688,21 +722,47 @@ def train(
                     "model": best_state,
                 }, temporary)
                 temporary.replace(recovery_path)
-        if epoch % 50 == 0 or epoch == epochs - 1:
+        should_stop = (
+            int(patience) > 0
+            and epoch + 1 >= int(min_epochs)
+            and consecutive_without_improvement >= int(patience)
+        )
+        if epoch % 50 == 0 or epoch == epochs - 1 or should_stop:
             print(
                 f"epoch {epoch:4d} train {history[-1]['train']:.4f} "
                 f"valid {validation:.4f}",
                 flush=True,
             )
+        if should_stop:
+            early_stop_triggered = True
+            break
     if best_state is None:
         raise RuntimeError("training did not produce a validation checkpoint")
     policy.load_state_dict(best_state, strict=True)
+    early_stopping = {
+        "enabled": int(patience) > 0,
+        "triggered": early_stop_triggered,
+        "patience": int(patience),
+        "min_delta": float(min_delta),
+        "min_epochs": int(min_epochs),
+        "requested_epochs": int(epochs),
+        "actual_epochs": len(history),
+        "stopped_after_epoch": (
+            len(history) - 1 if early_stop_triggered else None
+        ),
+        "consecutive_without_min_delta_improvement": (
+            consecutive_without_improvement
+        ),
+        "significant_reference_validation": significant_reference,
+        "checkpoint_selection": "absolute_minimum_validation_loss",
+    }
     return (
         history,
         training_ids,
         validation_ids,
         best_epoch,
         best_validation,
+        early_stopping,
     )
 
 
@@ -1035,6 +1095,14 @@ def main():
         default=ROOT / "outputs/lab_reference_flow",
     )
     parser.add_argument("--epochs", type=int, default=500)
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=0,
+        help="consecutive sub-min-delta epochs; 0 disables early stopping",
+    )
+    parser.add_argument("--min-delta", type=float, default=0.0)
+    parser.add_argument("--min-epochs", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--hidden", type=int, default=48)
@@ -1073,6 +1141,12 @@ def main():
     parser.add_argument("--ood-audit-seed", type=int, default=191000)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    validate_early_stopping_contract(
+        epochs=args.epochs,
+        patience=args.patience,
+        min_delta=args.min_delta,
+        min_epochs=args.min_epochs,
+    )
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite {args.output}")
     args.output.mkdir(parents=True)
@@ -1146,6 +1220,7 @@ def main():
         validation_ids,
         best_epoch,
         best_validation,
+        early_stopping,
     ) = train(
         policy,
         contexts,
@@ -1159,6 +1234,9 @@ def main():
         recovery_path=args.output / ".best_training_state.pt",
         training_ids=cached_training_ids,
         validation_ids=cached_validation_ids,
+        patience=args.patience,
+        min_delta=args.min_delta,
+        min_epochs=args.min_epochs,
     )
 
     policy.cpu()
@@ -1304,6 +1382,9 @@ def main():
         "training_windows": len(training_ids),
         "validation_windows": len(validation_ids),
         "epochs": args.epochs,
+        "requested_epochs": args.epochs,
+        "actual_epochs": len(history),
+        "early_stopping": early_stopping,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
         "policy_initialization_seed": policy_initialization_seed,
