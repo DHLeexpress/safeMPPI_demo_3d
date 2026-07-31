@@ -25,6 +25,7 @@ from .lab_reference_flow_task import (
     policy_context,
 )
 from .lab_visual_flow import (
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     load_lab_reference_policy,
@@ -34,6 +35,7 @@ from .verifier_polytope import certify_single_sphere_affine, certify_window
 
 LAB_VERIFIER_STATE_DIM = 6
 LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
 })

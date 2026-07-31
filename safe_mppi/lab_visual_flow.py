@@ -93,6 +93,13 @@ LAB_HP100_PACKED_DIM = (
     + LAB_HP100_DYNAMIC_FACE_COUNT * LAB_HP100_PLANE_ROW_DIM
 )
 LAB_HP100_SCHEMA = "lab_spherical_hp3d_uniform_radial100_planepack_v1"
+LAB_HP100_HISTORY_PACKED_DIM = (
+    LAB_HP100_PACKED_DIM
+    + LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+)
+LAB_HP100_HISTORY_SCHEMA = (
+    "lab_spherical_hp3d_uniform_radial100_planepack_gru_v1"
+)
 LAB_HP100_FRAME = (
     "robot_centered_world_spherical_equal_area_uniform_radial_planepack"
 )
@@ -683,6 +690,44 @@ def build_uniform_hp100_context(
     return packed
 
 
+def _validated_raw_history(raw_history: np.ndarray) -> np.ndarray:
+    history = np.asarray(raw_history, np.float32)
+    if history.shape != (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    ):
+        raise ValueError(
+            "raw_history must have shape "
+            f"({LAB_VISUAL_HISTORY_LENGTH},{LAB_VISUAL_HISTORY_STEP_DIM})"
+        )
+    if not np.isfinite(history).all():
+        raise ValueError("raw_history must be finite")
+    if not np.isin(history[:, 3], (0.0, 1.0)).all():
+        raise ValueError("raw_history validity bits must be binary")
+    if bool((history[history[:, 3] == 0.0, :3] != 0.0).any()):
+        raise ValueError("padded raw-history actions must be exactly zero")
+    return history
+
+
+def build_uniform_hp100_history_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray,
+) -> np.ndarray:
+    """Append ten past raw commands and validity bits to uniform H_P."""
+    history = _validated_raw_history(raw_history)
+    packed = np.concatenate([
+        build_uniform_hp100_context(env, state6, gamma),
+        history.reshape(-1),
+    ]).astype(np.float32)
+    if packed.shape != (LAB_HP100_HISTORY_PACKED_DIM,):
+        raise RuntimeError(
+            "uniform H_P history context violated its packed dimension"
+        )
+    return packed
+
+
 def build_nonuniform_radial_visual_history_context(
     env: TaskEnvironment,
     state6: np.ndarray,
@@ -1150,6 +1195,130 @@ class LabUniformHp100FlowPolicy(LabNonuniformRadialFlowPolicy):
         return encoded[0] if single else encoded
 
 
+class LabUniformHp100HistoryFlowPolicy(LabUniformHp100FlowPolicy):
+    """Uniform H_P policy with GRU32 over ten prior raw commands."""
+
+    context_schema = LAB_HP100_HISTORY_SCHEMA
+    context_dim = LAB_HP100_HISTORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        history_token_dim: int = 32,
+        history_length: int = LAB_VISUAL_HISTORY_LENGTH,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        if int(history_length) != LAB_VISUAL_HISTORY_LENGTH:
+            raise ValueError(
+                f"uniform H_P history length must be "
+                f"{LAB_VISUAL_HISTORY_LENGTH}"
+            )
+        if int(history_token_dim) != 32:
+            raise ValueError("uniform H_P history encoder requires GRU32")
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+            radial_edges=radial_edges,
+            plane_face_count=plane_face_count,
+            plane_row_channels=plane_row_channels,
+        )
+        self.history_length = int(history_length)
+        self.history_token_dim = int(history_token_dim)
+        self.history_encoder = nn.GRU(
+            input_size=LAB_VISUAL_HISTORY_STEP_DIM,
+            hidden_size=self.history_token_dim,
+            batch_first=True,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + self.history_token_dim
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(
+            context[:, LAB_VISUAL_LOW_DIM:LAB_HP100_PACKED_DIM]
+        )
+        history = context[:, LAB_HP100_PACKED_DIM:].reshape(
+            -1,
+            LAB_VISUAL_HISTORY_LENGTH,
+            LAB_VISUAL_HISTORY_STEP_DIM,
+        )
+        _, hidden = self.history_encoder(history)
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            hidden[-1],
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ) -> list[dict[str, object]]:
+        """Build expansion groups under an explicit GRU freeze contract."""
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        if freeze_history_encoder is None:
+            raise ValueError(
+                "GRU expansion requires an explicit freeze_history_encoder "
+                "contract"
+            )
+        for parameter in self.history_encoder.parameters():
+            parameter.requires_grad_(not freeze_history_encoder)
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+
 class LabNonuniformRadialHistoryFlowPolicy(
     LabNonuniformRadialFlowPolicy
 ):
@@ -1425,7 +1594,7 @@ def load_lab_reference_policy(path: str | Path):
                 f"{sorted(missing)}"
             )
         policy = LabNonuniformRadialFlowPolicy(**arch)
-    elif kind == LAB_HP100_SCHEMA:
+    elif kind in {LAB_HP100_SCHEMA, LAB_HP100_HISTORY_SCHEMA}:
         required = {
             "grid_shape",
             "grid_channels",
@@ -1440,7 +1609,17 @@ def load_lab_reference_policy(path: str | Path):
                 "uniform H_P checkpoint is missing semantic fields "
                 f"{sorted(missing)}"
             )
-        policy = LabUniformHp100FlowPolicy(**arch)
+        if kind == LAB_HP100_HISTORY_SCHEMA:
+            history_required = {"history_length", "history_token_dim"}
+            missing = history_required.difference(arch)
+            if missing:
+                raise ValueError(
+                    "uniform H_P history checkpoint is missing semantic fields "
+                    f"{sorted(missing)}"
+                )
+            policy = LabUniformHp100HistoryFlowPolicy(**arch)
+        else:
+            policy = LabUniformHp100FlowPolicy(**arch)
     elif kind == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
         required = {
             "grid_shape",

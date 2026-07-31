@@ -33,6 +33,8 @@ from safe_mppi.lab_visual_flow import (
     LAB_HP100_DYNAMIC_FACE_COUNT,
     LAB_HP100_FRAME,
     LAB_HP100_GRID_SHAPE,
+    LAB_HP100_HISTORY_PACKED_DIM,
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
     LAB_HP100_PLANE_CHANNELS,
     LAB_HP100_RADIAL_EDGES,
@@ -59,6 +61,7 @@ from safe_mppi.lab_visual_flow import (
     LabNonuniformRadialFlowPolicy,
     LabNonuniformRadialHistoryFlowPolicy,
     LabUniformHp100FlowPolicy,
+    LabUniformHp100HistoryFlowPolicy,
     LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
 )
@@ -1049,6 +1052,17 @@ def build_pretraining_policy(
             grid_token_dim=grid_token_dim,
             **common,
         )
+    if context_model == "uniform_hp100_gru":
+        if int(history_token_dim) != 32:
+            raise ValueError(
+                "uniform_hp100_gru requires history-token-dim=32"
+            )
+        return LabUniformHp100HistoryFlowPolicy(
+            grid_token_dim=grid_token_dim,
+            history_token_dim=history_token_dim,
+            history_length=LAB_VISUAL_HISTORY_LENGTH,
+            **common,
+        )
     if context_model == "radial_hp3d":
         return LabNonuniformRadialFlowPolicy(
             grid_token_dim=grid_token_dim,
@@ -1105,9 +1119,13 @@ def pretraining_arch(
         "trunk_depth": int(trunk_depth),
         "time_features": "raw1",
     }
-    if context_model == "uniform_hp100":
+    if context_model in {"uniform_hp100", "uniform_hp100_gru"}:
         arch.update({
-            "kind": LAB_HP100_SCHEMA,
+            "kind": (
+                LAB_HP100_HISTORY_SCHEMA
+                if context_model == "uniform_hp100_gru"
+                else LAB_HP100_SCHEMA
+            ),
             "grid_token_dim": int(grid_token_dim),
             "grid_shape": list(LAB_HP100_GRID_SHAPE),
             "grid_channels": list(LAB_HP100_CHANNELS),
@@ -1152,7 +1170,11 @@ def pretraining_arch(
             "kind": "conditional_flow_mlp",
             "context_dim": LAB_REFERENCE_CONTEXT_DIM,
         })
-    if context_model in {"radial_hp3d_gru", "visual_hp3d_gru"}:
+    if context_model in {
+        "radial_hp3d_gru",
+        "uniform_hp100_gru",
+        "visual_hp3d_gru",
+    }:
         arch.update({
             "history_token_dim": int(history_token_dim),
             "history_length": LAB_VISUAL_HISTORY_LENGTH,
@@ -1213,6 +1235,7 @@ def main():
             "radial_hp3d",
             "radial_hp3d_gru",
             "uniform_hp100",
+            "uniform_hp100_gru",
         ),
         default="raw10",
     )
@@ -1248,16 +1271,25 @@ def main():
         cuda_amp=args.cuda_amp,
         device=torch.device(args.device),
     )
-    if args.context_model == "uniform_hp100" and (
+    if args.context_model in {"uniform_hp100", "uniform_hp100_gru"} and (
         args.grid_token_dim != 64 or args.trunk_depth != 3
     ):
         parser.error(
-            "uniform_hp100 requires --grid-token-dim 64 --trunk-depth 3"
+            "uniform_hp100 variants require --grid-token-dim 64 "
+            "--trunk-depth 3"
         )
-    if args.context_model == "uniform_hp100" and args.context_cache is not None:
+    if (
+        args.context_model == "uniform_hp100_gru"
+        and args.history_token_dim != 32
+    ):
+        parser.error("uniform_hp100_gru requires --history-token-dim 32")
+    if (
+        args.context_model in {"uniform_hp100", "uniform_hp100_gru"}
+        and args.context_cache is not None
+    ):
         parser.error(
-            "uniform_hp100 uses compact plane contexts and does not accept the "
-            "legacy radial mmap cache"
+            "uniform_hp100 variants use compact plane contexts and do not "
+            "accept the legacy radial mmap cache"
         )
     if (
         args.max_windows_per_trajectory is not None
@@ -1278,6 +1310,7 @@ def main():
         "radial_hp3d": LAB_RADIAL_VISUAL_SCHEMA,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
         "uniform_hp100": LAB_HP100_SCHEMA,
+        "uniform_hp100_gru": LAB_HP100_HISTORY_SCHEMA,
     }[args.context_model]
     cache_manifest = None
     cached_training_ids = None
@@ -1315,6 +1348,7 @@ def main():
         "radial_hp3d": LAB_RADIAL_VISUAL_PACKED_DIM,
         "radial_hp3d_gru": LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
         "uniform_hp100": LAB_HP100_PACKED_DIM,
+        "uniform_hp100_gru": LAB_HP100_HISTORY_PACKED_DIM,
     }[args.context_model]
     if contexts_np.shape[1] != expected_context_dim:
         raise RuntimeError("lab reference context contract changed unexpectedly")
@@ -1366,6 +1400,8 @@ def main():
         min_epochs=args.min_epochs,
         cuda_amp=args.cuda_amp,
     )
+    training_history_path = args.output / "training_history.json"
+    training_history_path.write_text(json.dumps(history, indent=2) + "\n")
 
     policy.cpu()
     calibration, calibration_ids = pretrained_sample_calibration(
@@ -1431,6 +1467,7 @@ def main():
     history_model = args.context_model in {
         "visual_hp3d_gru",
         "radial_hp3d_gru",
+        "uniform_hp100_gru",
     }
     checkpoint = {
         "model": policy.state_dict(),
@@ -1533,6 +1570,11 @@ def main():
         "cfm_rng_reset_after_policy_construction": True,
         "final_train_loss": history[-1]["train"],
         "final_valid_loss": history[-1]["valid"],
+        "training_history_artifact": {
+            "file": training_history_path.name,
+            "records": len(history),
+            "sha256": _sha256_file(training_history_path),
+        },
         "selected_epoch": best_epoch,
         "selected_valid_loss": best_validation,
         "checkpoint_selection": "minimum_trajectory_disjoint_validation_loss",

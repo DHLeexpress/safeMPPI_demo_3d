@@ -37,6 +37,7 @@ from safe_mppi.lab_clutter_expansion import (
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
 from safe_mppi.lab_visual_flow import (
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
     LAB_HP100_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
@@ -50,10 +51,12 @@ from safe_mppi.path_focused_clutter import PATH_FOCUSED_DISTRIBUTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_VISUAL_HISTORY_SCHEMA,
     LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
 })
 LAB_CONTEXT_BASE_PACKED_DIMS = {
+    LAB_HP100_HISTORY_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
     LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_PACKED_DIM,

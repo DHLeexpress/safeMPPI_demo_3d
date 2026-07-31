@@ -10,23 +10,31 @@ from safe_mppi.geometry import build_nominal_polytope
 from safe_mppi.lab_clutter_expansion import (
     LabClutterExpansionPolicyAdapter,
     LabClutterSphereExpansionTask,
+    load_lab_clutter_expansion_policy,
     sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_clutter_evaluation import (
     SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS,
+    _decode_event_scene,
 )
-from safe_mppi.lab_reference_flow_task import policy_context
+from safe_mppi.lab_reference_flow_task import (
+    LabReferenceFlowController,
+    policy_context,
+)
 from safe_mppi.lab_visual_flow import (
     LAB_HP100_CHANNELS,
     LAB_HP100_DYNAMIC_FACE_COUNT,
     LAB_HP100_FRAME,
     LAB_HP100_GRID_SHAPE,
+    LAB_HP100_HISTORY_PACKED_DIM,
+    LAB_HP100_HISTORY_SCHEMA,
     LAB_HP100_PACKED_DIM,
     LAB_HP100_PLANE_CHANNELS,
     LAB_HP100_RADIAL_EDGES,
     LAB_HP100_SCHEMA,
     LabUniformHp100Encoder,
     LabUniformHp100FlowPolicy,
+    LabUniformHp100HistoryFlowPolicy,
     LabUniformHp100Rasterizer,
     load_lab_reference_policy,
     uniform_hp100_grid_points,
@@ -229,3 +237,166 @@ def test_lab_calibration_reuses_compact_context_artifact(tmp_path, monkeypatch):
         paired_noised_representation=True,
     )
     assert features.shape == (50, 4)
+
+
+def _history_arch(config) -> dict:
+    return pretrain.pretraining_arch(
+        "uniform_hp100_gru",
+        config,
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        nfe=1,
+        trunk_depth=3,
+    )
+
+
+def test_hp100_gru32_packing_and_encoder_gradients():
+    config = load_config(SPHERE_CONFIG)
+    env = TaskEnvironment(config)
+    history = np.zeros((10, 4), np.float32)
+    history[-2:, :3] = np.asarray([
+        [0.1, -0.2, 0.3],
+        [-0.4, 0.5, -0.6],
+    ])
+    history[-2:, 3] = 1.0
+    marker = type(
+        "Policy", (), {"context_schema": LAB_HP100_HISTORY_SCHEMA},
+    )()
+    packed = policy_context(
+        marker,
+        env,
+        env.start,
+        0.3,
+        raw_history=history,
+    )
+    base = policy_context(
+        type("Policy", (), {"context_schema": LAB_HP100_SCHEMA})(),
+        env,
+        env.start,
+        0.3,
+    )
+    assert packed.shape == (LAB_HP100_HISTORY_PACKED_DIM,)
+    assert np.array_equal(packed[:LAB_HP100_PACKED_DIM], base)
+    assert np.array_equal(
+        packed[LAB_HP100_PACKED_DIM:].reshape(10, 4), history,
+    )
+
+    policy = LabUniformHp100HistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        nfe=1,
+        trunk_depth=3,
+    )
+    encoded = policy.encode_context(torch.from_numpy(packed).unsqueeze(0))
+    encoded.square().mean().backward()
+    gru_gradient = policy.history_encoder.weight_ih_l0.grad
+    visual_gradient = next(policy.grid_encoder.parameters()).grad
+    assert gru_gradient is not None and float(gru_gradient.abs().sum()) > 0.0
+    assert (
+        visual_gradient is not None
+        and float(visual_gradient.abs().sum()) > 0.0
+    )
+
+
+def test_hp100_gru32_checkpoint_roundtrip_and_expansion_freeze(tmp_path):
+    config = load_config(SPHERE_CONFIG)
+    policy = pretrain.build_pretraining_policy(
+        "uniform_hp100_gru",
+        config,
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        nfe=1,
+        trunk_depth=3,
+    )
+    checkpoint = tmp_path / "hp100_gru32.pt"
+    torch.save({
+        "model": policy.state_dict(),
+        "arch": _history_arch(config),
+    }, checkpoint)
+    loaded = load_lab_reference_policy(checkpoint)
+    assert isinstance(loaded, LabUniformHp100HistoryFlowPolicy)
+    assert loaded.context_schema == LAB_HP100_HISTORY_SCHEMA
+    assert loaded.context_dim == LAB_HP100_HISTORY_PACKED_DIM
+    assert loaded.history_token_dim == 32
+
+    scene_spec = sphere_scene_spec_from_config(config)
+    frozen = load_lab_clutter_expansion_policy(
+        checkpoint,
+        verifier_suffix_dim=6 + scene_spec.packed_dim,
+    )
+    assert not any(
+        parameter.requires_grad
+        for parameter in frozen.policy.history_encoder.parameters()
+    )
+    trainable = load_lab_clutter_expansion_policy(
+        checkpoint,
+        verifier_suffix_dim=6 + scene_spec.packed_dim,
+        train_history_encoder=True,
+    )
+    assert all(
+        parameter.requires_grad
+        for parameter in trainable.policy.history_encoder.parameters()
+    )
+
+
+def test_hp100_gru32_closed_loop_history_and_clutter_event_routing():
+    config = load_config(SPHERE_CONFIG)
+    env = TaskEnvironment(config)
+
+    class RecordingPolicy(torch.nn.Module):
+        context_schema = LAB_HP100_HISTORY_SCHEMA
+        context_dim = LAB_HP100_HISTORY_PACKED_DIM
+        plan_shape = (10, 3)
+
+        def __init__(self):
+            super().__init__()
+            self.anchor = torch.nn.Parameter(torch.zeros(()))
+            self.contexts = []
+
+        def sample(self, context, count, generator, base_std=1.0):
+            del generator, base_std
+            self.contexts.append(context.detach().cpu().clone())
+            plan = torch.zeros(count, 10, 3, device=context.device)
+            plan[:, :, :] = torch.tensor(
+                [0.1, -0.2, 0.05], device=context.device,
+            )
+            return plan
+
+    policy = RecordingPolicy()
+    controller = LabReferenceFlowController(policy, env)
+    controller.plan(env.start, env.goal, 0.3, seed=1)
+    controller.plan(env.start, env.goal, 0.3, seed=2)
+    first = policy.contexts[0][LAB_HP100_PACKED_DIM:].reshape(10, 4)
+    second = policy.contexts[1][LAB_HP100_PACKED_DIM:].reshape(10, 4)
+    assert torch.count_nonzero(first) == 0
+    assert torch.allclose(second[-1, :3], torch.tensor([0.1, -0.2, 0.05]))
+    assert second[-1, 3] == 1.0
+
+    scene_spec = sphere_scene_spec_from_config(config)
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_HP100_HISTORY_SCHEMA,
+        scene_spec=scene_spec,
+    )
+    state = task.reset(0.3, 0, 17)
+    context = task.context(state, 0.3)
+    compact_context = torch.cat([
+        context[:7],
+        context[LAB_HP100_PACKED_DIM:LAB_HP100_HISTORY_PACKED_DIM],
+        context[-task.verifier_suffix_dim:],
+    ])
+    decoded = _decode_event_scene(
+        {"context": compact_context, "gamma": 0.3, "robot": state["x"]},
+        task,
+    )
+    assert np.array_equal(decoded["spheres"], state["spheres"])
+    assert LAB_HP100_HISTORY_SCHEMA in SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS
+    assert run_expansion.LAB_CONTEXT_BASE_PACKED_DIMS[
+        LAB_HP100_HISTORY_SCHEMA
+    ] == LAB_HP100_PACKED_DIM
