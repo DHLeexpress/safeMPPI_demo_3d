@@ -1933,7 +1933,8 @@ def evaluate_lab_clutter_expansion(
             f"got {display_rounds}"
         )
     rounds = sorted(set(rounds) | set(display_rounds))
-    artifact_binding = _evaluation_artifact_binding(args, rounds)
+    binding_rounds = sorted({0, *rounds})
+    artifact_binding = _evaluation_artifact_binding(args, binding_rounds)
 
     per_round_rows = {}
     fixed_per_round_rows = {}
