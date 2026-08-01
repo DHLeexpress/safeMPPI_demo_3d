@@ -9,6 +9,7 @@ mechanism/representation analyses. The BLUE one-step nominal check is logged onl
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -28,12 +29,51 @@ from safe_mppi.lab_flow_expansion import (
     load_lab_expansion_policy,
 )
 from safe_mppi.lab_clutter_expansion import (
+    LAB_CLUTTER_GOVERNOR_DIM,
+    LAB_CLUTTER_SCENE_SCHEMA,
     LabClutterSphereExpansionTask,
     load_lab_clutter_expansion_policy,
+    sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_reference_flow_task import lab_reference_demo_windows
+from safe_mppi.lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_HP100_PACKED_DIM,
+    LAB_HP100_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_SCHEMA,
+)
+from safe_mppi.path_focused_clutter import PATH_FOCUSED_DISTRIBUTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
+LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+LAB_CONTEXT_BASE_PACKED_DIMS = {
+    LAB_HP100_EXACT_MEMORY_SCHEMA: LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_HISTORY_SCHEMA: LAB_HP100_PACKED_DIM,
+    LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
+    LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _resolved_success_episode_keys(
@@ -159,13 +199,18 @@ def _lab_clutter_profile(task_config) -> bool:
     randomization = task_config.raw.get("scene_randomization", {})
     if not randomization.get("enabled", False):
         return False
-    if (
-        randomization.get("obstacle_family") != "spheres"
-        or int(randomization.get("count", -1)) != 3
-    ):
+    if randomization.get("obstacle_family") != "spheres":
         raise ValueError(
             "--lab-task-config with enabled scene_randomization requires "
-            "exactly three spheres"
+            "exactly three spheres or path-focused variable-count spheres"
+        )
+    if randomization.get("distribution") in PATH_FOCUSED_DISTRIBUTIONS:
+        sphere_scene_spec_from_config(task_config)
+        return True
+    if int(randomization.get("count", -1)) != 3:
+        raise ValueError(
+            "--lab-task-config with enabled scene_randomization requires "
+            "exactly three spheres or path-focused variable-count spheres"
         )
     return True
 
@@ -298,15 +343,54 @@ def _lab_pretrained_phi_calibration(
     count: int = 50,
 ) -> torch.Tensor:
     """Scale-matched calibration for raw10 or visual lab contexts."""
-    source = _lab_source_demo_dir(pretrain_dir, pretrain_manifest)
-    contexts_np, _, metadata, demo_config = lab_reference_demo_windows(
-        source,
-        context_schema=policy.context_schema,
+    context_artifact = pretrain_manifest.get("rbf_calibration", {}).get(
+        "context_artifact"
     )
+    cached_context_path = (
+        pretrain_dir / str(context_artifact)
+        if context_artifact is not None else None
+    )
+    if cached_context_path is not None and cached_context_path.is_file():
+        expected_sha256 = pretrain_manifest["rbf_calibration"].get(
+            "context_artifact_sha256"
+        )
+        if (
+            expected_sha256 is not None
+            and _sha256_file(cached_context_path) != expected_sha256
+        ):
+            raise ValueError("lab calibration context artifact hash mismatch")
+        cached_contexts = torch.load(
+            cached_context_path,
+            map_location="cpu",
+            weights_only=False,
+        )
+        expected_context_dim = int(
+            getattr(policy, "policy_context_dim", policy.context_dim)
+        )
+        if (
+            cached_contexts.ndim != 2
+            or cached_contexts.shape[1] != expected_context_dim
+            or not bool(torch.isfinite(cached_contexts).all())
+        ):
+            raise ValueError(
+                "lab calibration context artifact violates its policy contract"
+            )
+        contexts_np = cached_contexts.numpy()
+        metadata_gammas = np.asarray(contexts_np[:, 6], dtype=np.float64)
+        demo_gammas = np.unique(metadata_gammas)
+    else:
+        source = _lab_source_demo_dir(pretrain_dir, pretrain_manifest)
+        contexts_np, _, metadata, demo_config = lab_reference_demo_windows(
+            source,
+            context_schema=policy.context_schema,
+        )
+        metadata_gammas = np.asarray(
+            [row["gamma"] for row in metadata], dtype=np.float64,
+        )
+        demo_gammas = np.asarray(demo_config.data.gammas, dtype=np.float64)
     if len(contexts_np) < count:
         raise ValueError("lab calibration requires at least 50 demo contexts")
     task_gammas = np.asarray(task_config.data.gammas, dtype=np.float64)
-    demo_gammas = np.asarray(demo_config.data.gammas, dtype=np.float64)
     if (
         task_gammas.shape != demo_gammas.shape
         or not np.allclose(
@@ -314,9 +398,6 @@ def _lab_pretrained_phi_calibration(
         )
     ):
         raise ValueError("lab calibration demo gammas do not match task config")
-    metadata_gammas = np.asarray(
-        [row["gamma"] for row in metadata], dtype=np.float64,
-    )
     rng = np.random.default_rng(int(seed) + 17001)
     selected: list[int] = []
     base_count, remainder = divmod(count, len(task_gammas))
@@ -460,6 +541,11 @@ def main():
             "config to transfer a cylinder-pretrained visual policy OOD"
         ),
     )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="policy/CFM device, e.g. cpu, cuda, or cuda:0",
+    )
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4)
     parser.add_argument(
@@ -468,6 +554,15 @@ def main():
             "expansion-only multiplier for the first flow Linear layer and, "
             "for lab visual policies, the visual encoder; the representation "
             "layer and head retain --learning-rate"
+        ),
+    )
+    parser.add_argument(
+        "--train-gru-during-expansion",
+        action="store_true",
+        help=(
+            "explicitly update a visual-history GRU during expansion; by "
+            "default a GRU checkpoint freezes only its history encoder, and "
+            "this flag is rejected for checkpoints without a GRU"
         ),
     )
     parser.add_argument("--beta", type=float, default=None,
@@ -630,6 +725,28 @@ def main():
                                  "softmin_cost", "max_uncertainty",
                                  "uncertainty_cost", "max_step_margin"),
                         default="max_margin")
+    parser.add_argument(
+        "--execution-clearance-exp-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "lab-clutter min_cost-only weight on mean_h "
+            "exp((target-clearance_h)/temperature); 0 exactly restores the "
+            "existing native execution score"
+        ),
+    )
+    parser.add_argument(
+        "--execution-clearance-exp-temperature",
+        type=float,
+        default=0.10,
+        help="positive temperature for --execution-clearance-exp-weight",
+    )
+    parser.add_argument(
+        "--execution-clearance-target-m",
+        type=float,
+        default=0.20,
+        help="clearance target in meters for the optional exponential score",
+    )
     parser.add_argument("--execution-ess-target", type=float, default=0.25)
     parser.add_argument("--execution-uncertainty-weight", type=float, default=1.0)
     parser.add_argument("--acquisition-feature",
@@ -692,6 +809,30 @@ def main():
             "--event-log committed_success requires "
             "--archive-rule successful_executed_windows"
         )
+    if (
+        not np.isfinite(args.execution_clearance_exp_weight)
+        or args.execution_clearance_exp_weight < 0.0
+    ):
+        parser.error(
+            "--execution-clearance-exp-weight must be finite and nonnegative"
+        )
+    if (
+        not np.isfinite(args.execution_clearance_exp_temperature)
+        or args.execution_clearance_exp_temperature <= 0.0
+    ):
+        parser.error(
+            "--execution-clearance-exp-temperature must be finite and positive"
+        )
+    if (
+        not np.isfinite(args.execution_clearance_target_m)
+        or args.execution_clearance_target_m < 0.0
+    ):
+        parser.error(
+            "--execution-clearance-target-m must be finite and nonnegative"
+        )
+    device = torch.device(args.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        parser.error(f"--device {args.device!r} requires CUDA")
     output_was_unsafe = (
         args.output.exists()
         and (
@@ -712,24 +853,50 @@ def main():
             randomization = task_config.raw.get("scene_randomization", {})
             clutter_profile = _lab_clutter_profile(task_config)
             if clutter_profile:
+                scene_spec = sphere_scene_spec_from_config(task_config)
                 policy = load_lab_clutter_expansion_policy(
-                    args.pretrain_dir / "pretrained.pt"
+                    args.pretrain_dir / "pretrained.pt",
+                    verifier_suffix_dim=(
+                        LAB_CLUTTER_GOVERNOR_DIM + scene_spec.packed_dim
+                    ),
+                    train_history_encoder=(
+                        args.train_gru_during_expansion
+                    ),
+                ).to(device)
+                effective_clearance_weight = (
+                    args.execution_clearance_exp_weight
+                    if args.execution_rule == "min_cost" else 0.0
                 )
                 task = LabClutterSphereExpansionTask(
                     task_config,
                     context_schema=policy.context_schema,
+                    device=device,
                     execution_z_bias_mode=args.execution_z_bias_mode,
                     tight_corridor=args.tight_corridor,
                     verifier_mode=args.verifier_mode,
                     verifier_solver=args.verifier_solver,
+                    execution_clearance_exp_weight=(
+                        effective_clearance_weight
+                    ),
+                    execution_clearance_exp_temperature=(
+                        args.execution_clearance_exp_temperature
+                    ),
+                    execution_clearance_target_m=(
+                        args.execution_clearance_target_m
+                    ),
+                    scene_spec=scene_spec,
                 )
             else:
                 policy = load_lab_expansion_policy(
-                    args.pretrain_dir / "pretrained.pt"
-                )
+                    args.pretrain_dir / "pretrained.pt",
+                    train_history_encoder=(
+                        args.train_gru_during_expansion
+                    ),
+                ).to(device)
                 task = LabFlowExpansionTask(
                     task_config,
                     context_schema=policy.context_schema,
+                    device=device,
                     execution_z_bias_mode=args.execution_z_bias_mode,
                     tight_corridor=args.tight_corridor,
                     verifier_mode=args.verifier_mode,
@@ -745,8 +912,13 @@ def main():
             raise
         context_contract = policy.context_schema
     else:
+        if args.train_gru_during_expansion:
+            parser.error(
+                "--train-gru-during-expansion requires a lab visual-history "
+                "checkpoint"
+            )
         clutter_profile = False
-        policy = load_policy(args.pretrain_dir / "pretrained.pt")
+        policy = load_policy(args.pretrain_dir / "pretrained.pt").to(device)
         task_config = load_config(args.pretrain_dir / "demo_config.json")
         context_contract = pretrain.get("context_contract", "legacy10")
         task_type = (
@@ -755,11 +927,20 @@ def main():
         )
         task = task_type(
             task_config,
+            device=device,
             execution_z_bias_mode=args.execution_z_bias_mode,
             tight_corridor=args.tight_corridor,
             target_region=args.target_region,
             verifier_mode=args.verifier_mode,
             verifier_solver=args.verifier_solver,
+        )
+    if (
+        args.execution_clearance_exp_weight > 0.0
+        and not (lab_profile and clutter_profile)
+    ):
+        parser.error(
+            "--execution-clearance-exp-weight is supported only by the "
+            "randomized lab-sphere task"
         )
     if args.acquisition_feature == "task_angular":
         if lab_profile:
@@ -858,16 +1039,25 @@ def main():
         nonlocal source_event_count
         event_context = event["context"].numpy()
         if lab_profile:
-            # The 6,919-D visual volume is reproducible from robot state and
+            # The visual grid volume is reproducible from robot state and
             # scene geometry; storing it at every event would add many GB to a
-            # 50-round log without helping the mechanism visualization.
+            # 50-round log.  GRU history is not reconstructible and is kept.
+            suffix_dim = (
+                task.verifier_suffix_dim if clutter_profile else 6
+            )
+            base_packed_dim = LAB_CONTEXT_BASE_PACKED_DIMS.get(
+                context_contract,
+                int(policy.policy_context_dim),
+            )
+            history = (
+                event_context[base_packed_dim:policy.policy_context_dim]
+                if context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
+                else np.empty(0, np.float32)
+            )
             event_context = np.concatenate([
                 event_context[:7],
-                event_context[
-                    -(
-                        18 if clutter_profile else 6
-                    ):
-                ],
+                history,
+                event_context[-suffix_dim:],
             ]).astype(np.float32)
         compact_event = {
             "round": event["round"], "step": event["step"], "gamma": event["gamma"],
@@ -1077,35 +1267,92 @@ def main():
             )
         ),
     }
+    manifest["runtime_device"] = str(device)
     if lab_profile:
         for key in tuple(manifest):
             if key.startswith("ball_"):
                 del manifest[key]
+        history_present = (
+            context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
+        )
+        history_frozen = (
+            not any(
+                parameter.requires_grad
+                for parameter in policy.policy.history_encoder.parameters()
+            )
+            if history_present
+            else None
+        )
+        if (
+            history_present
+            and history_frozen == args.train_gru_during_expansion
+        ):
+            raise RuntimeError(
+                "actual GRU freeze state disagrees with the explicit "
+                "expansion contract"
+            )
         manifest["task_profile"] = (
-            "minhyuk_lab_random_three_sphere_visual_expansion"
-            if clutter_profile else "minhyuk_lab_ball_visual_expansion"
+            (
+                "minhyuk_lab_random_three_sphere_visual_expansion"
+                if task.scene_schema == LAB_CLUTTER_SCENE_SCHEMA
+                else (
+                    "minhyuk_lab_path_focused_variable_sphere_"
+                    "visual_expansion"
+                )
+            )
+            if clutter_profile
+            else "minhyuk_lab_ball_visual_expansion"
         )
         manifest["lab_conditioning"] = {
             "context_schema": context_contract,
             "policy_context_dim": int(policy.policy_context_dim),
+            "exact_previous_raw_and_applied_in_policy": (
+                context_contract == LAB_HP100_EXACT_MEMORY_SCHEMA
+            ),
+            "history_encoder": {
+                "present": history_present,
+                "frozen_during_expansion": history_frozen,
+                "explicit_unfreeze_flag": bool(
+                    args.train_gru_during_expansion
+                ),
+                "history_source": (
+                    "prior_10_executed_pre_smoothing_raw_commands_with_"
+                    "left_padding_validity_bits"
+                    if context_contract in LAB_HISTORY_CONTEXT_SCHEMAS
+                    else None
+                ),
+            },
             "verifier_only_context_suffix": (
-                [
-                    "previous_applied_acceleration_3d",
-                    "previous_raw_acceleration_3d",
-                    "three_spheres_flattened_12d",
-                ]
+                (
+                    [
+                        "previous_applied_acceleration_3d",
+                        "previous_raw_acceleration_3d",
+                        "three_spheres_flattened_12d",
+                    ]
+                    if task.scene_schema == LAB_CLUTTER_SCENE_SCHEMA
+                    else [
+                        "previous_applied_acceleration_3d",
+                        "previous_raw_acceleration_3d",
+                        "sphere_count_scalar_1d",
+                        (
+                            "sphere_rows_zero_padded_to_"
+                            f"{task.scene_spec.max_count}x4"
+                        ),
+                    ]
+                )
                 if clutter_profile else [
                     "previous_applied_acceleration_3d",
                     "previous_raw_acceleration_3d",
                 ]
             ),
+            "device": str(device),
             "visual_encoder_and_first_flow_layer_lr_scale": float(
                 args.first_layer_lr_scale
             ),
             "event_context": (
-                "7-D low state plus verifier-only dynamics/scene suffix; "
-                "visual grid omitted because it is reproducible from robot "
-                "state and scene"
+                "7-D low state plus prior raw-command history when present "
+                "plus verifier-only dynamics/scene suffix; visual grid "
+                "omitted because it is reproducible from robot state and scene"
             ),
         }
         manifest["lab_reference_dynamics"] = {
@@ -1126,6 +1373,25 @@ def main():
             ),
             "excluded_term": "demonstration-only below-plane z bias",
             "execution_rule": args.execution_rule,
+            "execution_clearance_exponential": {
+                "configured_weight": float(
+                    args.execution_clearance_exp_weight
+                ),
+                "effective_weight": float(
+                    args.execution_clearance_exp_weight
+                    if clutter_profile and args.execution_rule == "min_cost"
+                    else 0.0
+                ),
+                "temperature": float(
+                    args.execution_clearance_exp_temperature
+                ),
+                "target_m": float(args.execution_clearance_target_m),
+                "formula": (
+                    "weight * mean_h exp((target_m-clearance_h)/temperature)"
+                ),
+                "predicted_states": "H post-action plan knots",
+                "applies_only_to": "min_cost",
+            },
         }
         manifest["lab_verifier"] = {
             "variant": args.verifier_mode,
@@ -1156,12 +1422,13 @@ def main():
             ),
             "selector_changes_safety_label": False,
         }
+        (args.output / "task_config_resolved.json").write_text(
+            json.dumps(task_config.raw, indent=2) + "\n"
+        )
         if clutter_profile:
             manifest["lab_scene_randomization"] = dict(randomization)
+            manifest["lab_scene_schema"] = task.scene_schema
             manifest["lab_scene_ledger"] = list(task.scene_ledger)
-            (args.output / "task_config_resolved.json").write_text(
-                json.dumps(task_config.raw, indent=2) + "\n"
-            )
     manifest["event_log"] = args.event_log
     if args.event_log == "committed_success":
         if pending_events:

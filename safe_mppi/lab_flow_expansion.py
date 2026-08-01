@@ -19,12 +19,30 @@ from torch import nn
 from .ball_flow_task import PLAN_H, nominal_hp_chain_margins
 from .environment import ReferenceGovernor, TaskEnvironment
 from .expansion import Verification
-from .lab_reference_flow_task import policy_context
-from .lab_visual_flow import load_lab_reference_policy
+from .lab_reference_flow_task import (
+    _append_raw_history,
+    _raw_history_before,
+    policy_context,
+)
+from .lab_visual_flow import (
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    load_lab_reference_policy,
+)
 from .verifier_polytope import certify_single_sphere_affine, certify_window
 
 
 LAB_VERIFIER_STATE_DIM = 6
+LAB_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+
+
+def _is_history_context_schema(context_schema: str) -> bool:
+    return str(context_schema) in LAB_HISTORY_CONTEXT_SCHEMAS
 
 
 class LabExpansionPolicyAdapter(nn.Module):
@@ -36,7 +54,12 @@ class LabExpansionPolicyAdapter(nn.Module):
     pretrained policy context.
     """
 
-    def __init__(self, policy: nn.Module):
+    def __init__(
+        self,
+        policy: nn.Module,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ):
         super().__init__()
         self.policy = policy
         self.policy_context_dim = int(policy.context_dim)
@@ -45,6 +68,20 @@ class LabExpansionPolicyAdapter(nn.Module):
         self.control_limit = policy.control_limit
         self.nfe = int(policy.nfe)
         self.context_schema = getattr(policy, "context_schema", "lab_raw10_v1")
+        self.freeze_history_encoder = freeze_history_encoder
+        if (
+            not _is_history_context_schema(self.context_schema)
+            and freeze_history_encoder is not None
+        ):
+            raise ValueError(
+                "history freeze contract applies only to a GRU policy"
+            )
+        if (
+            _is_history_context_schema(self.context_schema)
+            and freeze_history_encoder is not None
+        ):
+            for parameter in self.policy.history_encoder.parameters():
+                parameter.requires_grad_(not freeze_history_encoder)
 
     def _policy_context(self, context: torch.Tensor) -> torch.Tensor:
         if context.shape[-1] == self.policy_context_dim:
@@ -89,6 +126,17 @@ class LabExpansionPolicyAdapter(nn.Module):
         )
 
     def expansion_parameter_groups(self, base_lr, first_layer_lr_scale=1.0):
+        if _is_history_context_schema(self.context_schema):
+            if self.freeze_history_encoder is None:
+                raise ValueError(
+                    "GRU expansion requires an explicit history freeze "
+                    "contract"
+                )
+            return self.policy.expansion_parameter_groups(
+                base_lr,
+                first_layer_lr_scale,
+                freeze_history_encoder=self.freeze_history_encoder,
+            )
         return self.policy.expansion_parameter_groups(
             base_lr, first_layer_lr_scale,
         )
@@ -110,8 +158,25 @@ class LabExpansionPolicyAdapter(nn.Module):
         )
 
 
-def load_lab_expansion_policy(path: str | Path) -> LabExpansionPolicyAdapter:
-    return LabExpansionPolicyAdapter(load_lab_reference_policy(path))
+def load_lab_expansion_policy(
+    path: str | Path,
+    *,
+    train_history_encoder: bool = False,
+) -> LabExpansionPolicyAdapter:
+    policy = load_lab_reference_policy(path)
+    is_history = _is_history_context_schema(
+        getattr(policy, "context_schema", ""),
+    )
+    if train_history_encoder and not is_history:
+        raise ValueError(
+            "train_history_encoder applies only to a GRU checkpoint"
+        )
+    return LabExpansionPolicyAdapter(
+        policy,
+        freeze_history_encoder=(
+            not train_history_encoder if is_history else None
+        ),
+    )
 
 
 class LabFlowExpansionTask:
@@ -149,7 +214,7 @@ class LabFlowExpansionTask:
 
     def reset(self, gamma: float, episode: int, seed: int) -> dict[str, Any]:
         del gamma, episode, seed
-        return {
+        state = {
             "x": self.env.start.copy(),
             "previous_applied": np.zeros(3, np.float32),
             "previous_raw": np.zeros(3, np.float32),
@@ -157,6 +222,11 @@ class LabFlowExpansionTask:
             "collided": False,
             "oob": False,
         }
+        if _is_history_context_schema(self.context_schema):
+            state["raw_history"] = _raw_history_before(
+                np.empty((0, 3), np.float32), 0,
+            )
+        return state
 
     def context(self, state, gamma: float) -> torch.Tensor:
         learned = policy_context(
@@ -164,6 +234,9 @@ class LabFlowExpansionTask:
             self.env,
             state["x"],
             float(gamma),
+            raw_history=state.get("raw_history"),
+            previous_raw=state["previous_raw"],
+            previous_applied=state["previous_applied"],
         )
         packed = np.concatenate([
             learned,
@@ -325,16 +398,21 @@ class LabFlowExpansionTask:
 
     def advance(self, state, candidate: torch.Tensor):
         command = candidate.detach().cpu().numpy().reshape(-1, 3)[0]
+        limited_command = np.clip(
+            command,
+            -float(self.config.safemppi.demo_u_max),
+            float(self.config.safemppi.demo_u_max),
+        ).astype(np.float32)
         governor = ReferenceGovernor(self.config.safemppi)
         governor.previous_applied = np.asarray(
             state["previous_applied"], np.float32,
         ).copy()
         after, applied, dense = governor.step(state["x"], command)
         clearance = self.env.obstacle_clearance(dense)
-        return {
+        updated = {
             "x": after,
             "previous_applied": applied,
-            "previous_raw": np.asarray(command, np.float32).copy(),
+            "previous_raw": limited_command,
             "steps": int(state["steps"]) + 1,
             "collided": bool(
                 state["collided"]
@@ -348,6 +426,11 @@ class LabFlowExpansionTask:
                 or not self.env.inside_taskspace(dense).all()
             ),
         }
+        if _is_history_context_schema(self.context_schema):
+            updated["raw_history"] = _append_raw_history(
+                state["raw_history"], command,
+            )
+        return updated
 
     def terminal(self, state):
         if state["collided"]:

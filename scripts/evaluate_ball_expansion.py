@@ -1179,6 +1179,19 @@ def main():
     parser.add_argument("--pretrain-dir", type=Path, default=ROOT / "outputs" / "ball_flow")
     parser.add_argument("--expansion", type=Path,
                         default=ROOT / "outputs" / "ball_flow" / "expansion")
+    parser.add_argument(
+        "--evaluation-output",
+        type=Path,
+        help=(
+            "optional isolated output directory; explicit nonempty paths are "
+            "never overwritten by clutter evaluation"
+        ),
+    )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="lab-clutter policy sampling device, e.g. cpu, cuda, or cuda:0",
+    )
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--probe-samples", type=int, default=16)
     parser.add_argument("--stride", type=int, default=1)
@@ -1220,6 +1233,18 @@ def main():
         ),
     )
     args = parser.parse_args()
+    if (
+        args.evaluation_output is not None
+        and args.evaluation_output.exists()
+        and (
+            not args.evaluation_output.is_dir()
+            or any(args.evaluation_output.iterdir())
+        )
+    ):
+        raise FileExistsError(
+            "refusing to overwrite explicit evaluation output "
+            f"{args.evaluation_output}"
+        )
 
     pretrain_manifest = json.loads(
         (args.pretrain_dir / "pretrain_manifest.json").read_text()
@@ -1254,10 +1279,13 @@ def main():
         else:
             from safe_mppi.lab_flow_evaluation import evaluate_lab_expansion
 
-            source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
-            if not source_demo_dir.is_absolute():
-                source_demo_dir = args.pretrain_dir / source_demo_dir
-            config = load_config(source_demo_dir / "resolved_config.json")
+            if task_config_path.is_file():
+                config = load_config(task_config_path)
+            else:
+                source_demo_dir = Path(pretrain_manifest["source_demo_dir"])
+                if not source_demo_dir.is_absolute():
+                    source_demo_dir = args.pretrain_dir / source_demo_dir
+                config = load_config(source_demo_dir / "resolved_config.json")
             evaluate_lab_expansion(
                 args, config, pretrain_manifest, manifest,
             )
@@ -1314,8 +1342,23 @@ def main():
               + (f" | above-start probe {summary[str(round_i)]['above_start_probe']}"
                  if "above_start_probe" in summary[str(round_i)] else ""), flush=True)
 
-    eval_dir = args.expansion / "eval"
-    eval_dir.mkdir(exist_ok=True)
+    eval_dir = (
+        args.evaluation_output
+        if args.evaluation_output is not None
+        else args.expansion / "eval"
+    )
+    if (
+        args.evaluation_output is not None
+        and eval_dir.exists()
+        and (
+            not eval_dir.is_dir()
+            or any(eval_dir.iterdir())
+        )
+    ):
+        raise FileExistsError(
+            f"refusing to overwrite explicit evaluation output {eval_dir}"
+        )
+    eval_dir.mkdir(parents=True, exist_ok=True)
     slim = {round_i: [{k: v for k, v in row.items() if k != "states"} for row in rows]
             for round_i, rows in per_round_rows.items()}
     (eval_dir / "raw_eval.json").write_text(json.dumps(

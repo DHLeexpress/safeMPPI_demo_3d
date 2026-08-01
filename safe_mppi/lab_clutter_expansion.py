@@ -18,6 +18,7 @@ from .ball_flow_task import PLAN_H, nominal_hp_chain_margins
 from .environment import ReferenceGovernor, TaskEnvironment
 from .expansion import Verification
 from .lab_flow_expansion import LabExpansionPolicyAdapter
+from .lab_flow_expansion import _is_history_context_schema
 from .lab_clutter import (
     ClutterScene,
     LAB_BOUNDS,
@@ -26,11 +27,31 @@ from .lab_clutter import (
     obstacle_scene_hash,
     start_goal_path_diagnostics,
 )
-from .lab_reference_flow_task import policy_context
+from .lab_reference_flow_task import (
+    _append_raw_history,
+    _raw_history_before,
+    policy_context,
+)
 from .lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
+    LAB_HP100_HISTORY_PACKED_DIM,
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_HP100_PACKED_DIM,
+    LAB_HP100_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
     load_lab_reference_policy,
+)
+from .path_focused_clutter import (
+    PATH_FOCUSED_DISTRIBUTIONS,
+    PathFocusedClutterSpec,
 )
 from .verifier_polytope import certify_window
 
@@ -42,13 +63,32 @@ LAB_CLUTTER_VERIFIER_SUFFIX_DIM = (
     LAB_CLUTTER_GOVERNOR_DIM + LAB_CLUTTER_SCENE_DIM
 )
 LAB_CLUTTER_SCENE_SCHEMA = "lab_random_three_spheres_v1"
+LAB_CLUTTER_VISUAL_CONTEXT_DIMS = {
+    LAB_HP100_EXACT_MEMORY_SCHEMA: LAB_HP100_EXACT_MEMORY_PACKED_DIM,
+    LAB_HP100_HISTORY_SCHEMA: LAB_HP100_HISTORY_PACKED_DIM,
+    LAB_HP100_SCHEMA: LAB_HP100_PACKED_DIM,
+    LAB_VISUAL_SCHEMA: LAB_VISUAL_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA: LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_SCHEMA: LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA: (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+    ),
+}
 
 
-def canonical_spheres(values: np.ndarray) -> np.ndarray:
-    """Return three finite spheres in deterministic lexicographic order."""
+def canonical_sphere_rows(
+    values: np.ndarray,
+    *,
+    expected_count: int | None = None,
+) -> np.ndarray:
+    """Return finite spheres in deterministic lexicographic order."""
     spheres = np.asarray(values, np.float32).reshape(-1, 4)
-    if spheres.shape != (LAB_CLUTTER_SPHERE_COUNT, 4):
-        raise ValueError("lab clutter scenes require exactly three spheres")
+    if expected_count is not None and len(spheres) != int(expected_count):
+        raise ValueError(
+            f"lab clutter scene requires exactly {expected_count} spheres"
+        )
+    if len(spheres) < 1:
+        raise ValueError("lab clutter scene requires at least one sphere")
     if not np.isfinite(spheres).all() or bool((spheres[:, 3] <= 0.0).any()):
         raise ValueError("sphere centers/radii must be finite and radii positive")
     order = np.lexsort((
@@ -60,10 +100,17 @@ def canonical_spheres(values: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(spheres[order], dtype=np.float32)
 
 
+def canonical_spheres(values: np.ndarray) -> np.ndarray:
+    """Backward-compatible exact-three canonicalization."""
+    return canonical_sphere_rows(
+        values, expected_count=LAB_CLUTTER_SPHERE_COUNT,
+    )
+
+
 def scene_sha256(env: TaskEnvironment, spheres: np.ndarray) -> str:
     """Hash exact obstacle geometry using the shared clutter-archive contract."""
     del env
-    return obstacle_scene_hash(spheres=canonical_spheres(spheres))
+    return obstacle_scene_hash(spheres=canonical_sphere_rows(spheres))
 
 
 @dataclass(frozen=True)
@@ -76,6 +123,18 @@ class RandomThreeSphereScene:
     boundary_surface_margin: float = 0.10
     domain_seed: int = 0
     max_attempts: int = 10_000
+
+    @property
+    def max_count(self) -> int:
+        return LAB_CLUTTER_SPHERE_COUNT
+
+    @property
+    def packed_dim(self) -> int:
+        return LAB_CLUTTER_SCENE_DIM
+
+    @property
+    def scene_schema(self) -> str:
+        return LAB_CLUTTER_SCENE_SCHEMA
 
     def __post_init__(self) -> None:
         if (
@@ -245,25 +304,210 @@ class RandomThreeSphereScene:
             raise ValueError("packed sphere intersects the fixed goal region")
         return spheres
 
+    def pack(self, env: TaskEnvironment, values: np.ndarray) -> np.ndarray:
+        return self.validate(env, values).reshape(-1)
+
+    def unpack(self, env: TaskEnvironment, values: np.ndarray) -> np.ndarray:
+        packed = np.asarray(values, np.float32).reshape(-1)
+        if len(packed) != self.packed_dim:
+            raise ValueError("three-sphere packed context has wrong length")
+        return self.validate(
+            env, packed.reshape(LAB_CLUTTER_SPHERE_COUNT, 4),
+        )
+
+
+@dataclass(frozen=True)
+class PathFocusedVariableSphereScene:
+    """Variable-count path-focused sphere sampler with fixed-size packing."""
+
+    spec: PathFocusedClutterSpec
+
+    def __post_init__(self) -> None:
+        if self.spec.obstacle_family != "spheres":
+            raise ValueError("variable sphere task requires a sphere spec")
+
+    @classmethod
+    def from_config(cls, config) -> "PathFocusedVariableSphereScene":
+        return cls(PathFocusedClutterSpec.from_config(
+            config, expected_family="spheres",
+        ))
+
+    @property
+    def max_count(self) -> int:
+        return self.spec.count_max
+
+    @property
+    def packed_dim(self) -> int:
+        return 1 + 4 * self.max_count
+
+    @property
+    def scene_schema(self) -> str:
+        return self.spec.scene_schema
+
+    @property
+    def radius(self) -> float:
+        return self.spec.modeled_radius_m
+
+    @property
+    def minimum_surface_margin(self) -> float:
+        return self.spec.minimum_surface_gap_m
+
+    @property
+    def endpoint_margin(self) -> float:
+        return self.spec.endpoint_surface_gap_m
+
+    @property
+    def boundary_surface_margin(self) -> float:
+        return self.spec.boundary_surface_gap_m
+
+    @property
+    def domain_seed(self) -> int:
+        return self.spec.domain_seed
+
+    @property
+    def max_attempts(self) -> int:
+        return self.spec.max_layout_attempts
+
+    def sample(self, env: TaskEnvironment, seed: int) -> np.ndarray:
+        scene = self.spec.sample_scene(
+            scene_index=int(seed),
+            scene_seed=int(seed),
+            bounds=env.bounds,
+            start=env.start,
+            goal=env.goal,
+        )
+        return self.validate(
+            env, np.asarray(scene.spheres, np.float32),
+        )
+
+    def validate(self, env: TaskEnvironment, values: np.ndarray) -> np.ndarray:
+        spheres = canonical_sphere_rows(values)
+        if not self.spec.count_min <= len(spheres) <= self.spec.count_max:
+            raise ValueError("sphere count lies outside the configured range")
+        tolerance = 2.0e-6
+        if not np.allclose(
+            spheres[:, 3],
+            self.spec.modeled_radius_m,
+            atol=tolerance,
+            rtol=0.0,
+        ):
+            raise ValueError("sphere radii do not match the path-focused contract")
+        wall_clearance = np.minimum(
+            spheres[:, :3] - spheres[:, 3, None]
+            - env.bounds[:, 0][None],
+            env.bounds[:, 1][None]
+            - spheres[:, :3] - spheres[:, 3, None],
+        )
+        if bool((
+            wall_clearance
+            < self.spec.boundary_surface_gap_m - tolerance
+        ).any()):
+            raise ValueError("sphere violates body containment or wall margin")
+        for first in range(len(spheres)):
+            for second in range(first + 1, len(spheres)):
+                required = (
+                    float(spheres[first, 3])
+                    + float(spheres[second, 3])
+                    + self.spec.minimum_surface_gap_m
+                )
+                if (
+                    float(np.linalg.norm(
+                        spheres[first, :3] - spheres[second, :3]
+                    ))
+                    < required - tolerance
+                ):
+                    raise ValueError("spheres violate the modeled surface gap")
+        for endpoint, label in ((env.start[:3], "start"), (env.goal, "goal")):
+            clearance = np.linalg.norm(
+                spheres[:, :3] - endpoint[None], axis=1,
+            ) - spheres[:, 3]
+            if bool((
+                clearance
+                < self.spec.endpoint_surface_gap_m - tolerance
+            ).any()):
+                raise ValueError(f"sphere intersects the fixed {label}")
+        return spheres
+
+    def pack(self, env: TaskEnvironment, values: np.ndarray) -> np.ndarray:
+        spheres = self.validate(env, values)
+        padded = np.zeros((self.max_count, 4), np.float32)
+        padded[:len(spheres)] = spheres
+        return np.concatenate([
+            np.asarray([len(spheres)], np.float32),
+            padded.reshape(-1),
+        ])
+
+    def unpack(self, env: TaskEnvironment, values: np.ndarray) -> np.ndarray:
+        packed = np.asarray(values, np.float32).reshape(-1)
+        if len(packed) != self.packed_dim:
+            raise ValueError("variable-sphere packed context has wrong length")
+        count_value = float(packed[0])
+        count = int(round(count_value))
+        if not np.isclose(count_value, count, rtol=0.0, atol=1.0e-6):
+            raise ValueError("packed sphere count is not integral")
+        if not self.spec.count_min <= count <= self.spec.count_max:
+            raise ValueError("packed sphere count lies outside the configured range")
+        padded = packed[1:].reshape(self.max_count, 4)
+        if bool(np.any(padded[count:] != 0.0)):
+            raise ValueError("unused packed sphere rows must be exactly zero")
+        return self.validate(env, padded[:count])
+
+
+def sphere_scene_spec_from_config(config):
+    randomization = config.raw.get("scene_randomization", {})
+    if randomization.get("distribution") in PATH_FOCUSED_DISTRIBUTIONS:
+        return PathFocusedVariableSphereScene.from_config(config)
+    return RandomThreeSphereScene.from_config(config)
+
 
 class LabClutterExpansionPolicyAdapter(LabExpansionPolicyAdapter):
     """Strip governor memory and exact scene geometry from learned inputs."""
 
-    def __init__(self, policy: torch.nn.Module):
-        if getattr(policy, "context_schema", None) != LAB_VISUAL_SCHEMA:
+    def __init__(
+        self,
+        policy: torch.nn.Module,
+        verifier_suffix_dim: int = LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ):
+        if (
+            getattr(policy, "context_schema", None)
+            not in LAB_CLUTTER_VISUAL_CONTEXT_DIMS
+        ):
             raise ValueError(
                 "dynamic clutter expansion requires the visual lab policy"
             )
-        super().__init__(policy)
-        self.context_dim = (
-            self.policy_context_dim + LAB_CLUTTER_VERIFIER_SUFFIX_DIM
+        super().__init__(
+            policy,
+            freeze_history_encoder=freeze_history_encoder,
         )
+        if int(verifier_suffix_dim) < LAB_CLUTTER_GOVERNOR_DIM:
+            raise ValueError("clutter verifier suffix is too short")
+        self.verifier_suffix_dim = int(verifier_suffix_dim)
+        self.context_dim = self.policy_context_dim + self.verifier_suffix_dim
 
 
 def load_lab_clutter_expansion_policy(
     path: str | Path,
+    *,
+    verifier_suffix_dim: int = LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    train_history_encoder: bool = False,
 ) -> LabClutterExpansionPolicyAdapter:
-    return LabClutterExpansionPolicyAdapter(load_lab_reference_policy(path))
+    policy = load_lab_reference_policy(path)
+    is_history = _is_history_context_schema(
+        getattr(policy, "context_schema", ""),
+    )
+    if train_history_encoder and not is_history:
+        raise ValueError(
+            "train_history_encoder applies only to a GRU checkpoint"
+        )
+    return LabClutterExpansionPolicyAdapter(
+        policy,
+        verifier_suffix_dim=verifier_suffix_dim,
+        freeze_history_encoder=(
+            not train_history_encoder if is_history else None
+        ),
+    )
 
 
 class LabClutterSphereExpansionTask:
@@ -279,9 +523,12 @@ class LabClutterSphereExpansionTask:
         execution_z_bias_mode: str = "none",
         verifier_mode: str = "full_polytope",
         verifier_solver: str = "analytic",
-        scene_spec: RandomThreeSphereScene | None = None,
+        execution_clearance_exp_weight: float = 0.0,
+        execution_clearance_exp_temperature: float = 0.10,
+        execution_clearance_target_m: float = 0.20,
+        scene_spec=None,
     ):
-        if context_schema != LAB_VISUAL_SCHEMA:
+        if context_schema not in LAB_CLUTTER_VISUAL_CONTEXT_DIMS:
             raise ValueError(
                 "dynamic clutter expansion requires lab visual conditioning"
             )
@@ -293,6 +540,27 @@ class LabClutterSphereExpansionTask:
             )
         if verifier_solver not in {"analytic", "cvxpy"}:
             raise ValueError(f"unknown verifier_solver: {verifier_solver}")
+        if (
+            not np.isfinite(execution_clearance_exp_weight)
+            or execution_clearance_exp_weight < 0.0
+        ):
+            raise ValueError(
+                "execution_clearance_exp_weight must be finite and nonnegative"
+            )
+        if (
+            not np.isfinite(execution_clearance_exp_temperature)
+            or execution_clearance_exp_temperature <= 0.0
+        ):
+            raise ValueError(
+                "execution_clearance_exp_temperature must be finite and positive"
+            )
+        if (
+            not np.isfinite(execution_clearance_target_m)
+            or execution_clearance_target_m < 0.0
+        ):
+            raise ValueError(
+                "execution_clearance_target_m must be finite and nonnegative"
+            )
         self.config = config
         self.env = TaskEnvironment(config)
         if not np.allclose(
@@ -323,16 +591,31 @@ class LabClutterSphereExpansionTask:
                 "dynamic sphere expansion requires an empty static obstacle list"
             )
         self.context_schema = context_schema
-        self.policy_context_dim = LAB_VISUAL_PACKED_DIM
+        self.policy_context_dim = LAB_CLUTTER_VISUAL_CONTEXT_DIMS[
+            context_schema
+        ]
         self.device = torch.device(device)
         self.tight_corridor = bool(tight_corridor)
         self.verifier_mode = verifier_mode
         self.verifier_solver = verifier_solver
+        self.execution_clearance_exp_weight = float(
+            execution_clearance_exp_weight
+        )
+        self.execution_clearance_exp_temperature = float(
+            execution_clearance_exp_temperature
+        )
+        self.execution_clearance_target_m = float(
+            execution_clearance_target_m
+        )
         self.scene_spec = (
             scene_spec
             if scene_spec is not None
-            else RandomThreeSphereScene.from_config(config)
+            else sphere_scene_spec_from_config(config)
         )
+        self.verifier_suffix_dim = (
+            LAB_CLUTTER_GOVERNOR_DIM + self.scene_spec.packed_dim
+        )
+        self.scene_schema = self.scene_spec.scene_schema
         self.scene_ledger: list[dict[str, Any]] = []
         delta = self.env.goal - self.env.start[:3]
         length = float(np.linalg.norm(delta))
@@ -366,6 +649,10 @@ class LabClutterSphereExpansionTask:
             "collided": False,
             "oob": False,
         }
+        if _is_history_context_schema(self.context_schema):
+            state["raw_history"] = _raw_history_before(
+                np.empty((0, 3), np.float32), 0,
+            )
         self.scene_ledger.append({
             "reset_index": len(self.scene_ledger),
             "gamma": float(gamma),
@@ -387,10 +674,11 @@ class LabClutterSphereExpansionTask:
             scene_hash=scene_hash,
         )
         return {
-            "schema": LAB_CLUTTER_SCENE_SCHEMA,
+            "schema": self.scene_schema,
             "domain_seed": int(self.scene_spec.domain_seed),
             "scene_seed": int(state["scene_seed"]),
             "scene_hash": scene_hash,
+            "obstacle_count": len(spheres),
             "spheres": spheres.tolist(),
             "start_goal_path_diagnostics": start_goal_path_diagnostics(
                 scene,
@@ -410,12 +698,15 @@ class LabClutterSphereExpansionTask:
             scene_env,
             state["x"],
             float(gamma),
+            raw_history=state.get("raw_history"),
+            previous_raw=state["previous_raw"],
+            previous_applied=state["previous_applied"],
         )
         packed = np.concatenate([
             learned,
             np.asarray(state["previous_applied"], np.float32),
             np.asarray(state["previous_raw"], np.float32),
-            spheres.reshape(-1),
+            self.scene_spec.pack(scene_env, spheres),
         ]).astype(np.float32, copy=False)
         return torch.from_numpy(packed).to(self.device)
 
@@ -426,7 +717,7 @@ class LabClutterSphereExpansionTask:
             context.detach().cpu().numpy().astype(np.float32, copy=False)
         )
         expected = (
-            self.policy_context_dim + LAB_CLUTTER_VERIFIER_SUFFIX_DIM
+            self.policy_context_dim + self.verifier_suffix_dim
         )
         if values.shape != (expected,):
             raise ValueError(
@@ -437,9 +728,10 @@ class LabClutterSphereExpansionTask:
         suffix = self.policy_context_dim
         previous_applied = values[suffix:suffix + 3].copy()
         previous_raw = values[suffix + 3:suffix + 6].copy()
-        spheres = values[
-            suffix + LAB_CLUTTER_GOVERNOR_DIM:
-        ].reshape(LAB_CLUTTER_SPHERE_COUNT, 4)
+        spheres = self.scene_spec.unpack(
+            self.env,
+            values[suffix + LAB_CLUTTER_GOVERNOR_DIM:],
+        )
         scene_env = self._environment(spheres)
         return (
             np.concatenate([position, velocity]).astype(np.float32),
@@ -447,6 +739,16 @@ class LabClutterSphereExpansionTask:
             previous_raw,
             scene_env,
         )
+
+    def scene_from_context(self, context: torch.Tensor) -> np.ndarray:
+        values = (
+            context.detach().cpu().numpy().astype(np.float32, copy=False)
+        ).reshape(-1)
+        expected = self.policy_context_dim + self.verifier_suffix_dim
+        if len(values) != expected:
+            raise ValueError("clutter context has the wrong packed length")
+        start = self.policy_context_dim + LAB_CLUTTER_GOVERNOR_DIM
+        return self.scene_spec.unpack(self.env, values[start:])
 
     def _rollout_plan(
         self,
@@ -487,6 +789,7 @@ class LabClutterSphereExpansionTask:
         )
         previous = np.asarray(previous_raw, np.float32)
         cost = 0.0
+        predicted_clearances = []
         for index, command in enumerate(plan):
             point = states[index + 1, :3]
             distance = float(np.linalg.norm(point - env.goal))
@@ -496,6 +799,7 @@ class LabClutterSphereExpansionTask:
             cost += cfg.smooth_weight * float(difference @ difference)
             cost -= cfg.progress_weight * (initial_distance - distance)
             clearance = float(env.obstacle_clearance(point[None])[0])
+            predicted_clearances.append(clearance)
             cost += cfg.soft_clearance_weight * max(
                 cfg.soft_clearance_target - clearance, 0.0,
             ) ** 2
@@ -514,6 +818,14 @@ class LabClutterSphereExpansionTask:
             np.linalg.norm(states[-1, :3] - env.goal)
         )
         cost += cfg.terminal_goal_weight * terminal_distance ** 2
+        if self.execution_clearance_exp_weight > 0.0:
+            exponent = (
+                self.execution_clearance_target_m
+                - np.asarray(predicted_clearances, np.float64)
+            ) / self.execution_clearance_exp_temperature
+            cost += self.execution_clearance_exp_weight * float(
+                np.exp(exponent).mean()
+            )
         return float(cost)
 
     def _verify_plan(
@@ -588,16 +900,21 @@ class LabClutterSphereExpansionTask:
         spheres = self.scene_spec.validate(self.env, state["spheres"])
         env = self._environment(spheres)
         command = candidate.detach().cpu().numpy().reshape(-1, 3)[0]
+        limited_command = np.clip(
+            command,
+            -float(self.config.safemppi.demo_u_max),
+            float(self.config.safemppi.demo_u_max),
+        ).astype(np.float32)
         governor = ReferenceGovernor(self.config.safemppi)
         governor.previous_applied = np.asarray(
             state["previous_applied"], np.float32,
         ).copy()
         after, applied, dense = governor.step(state["x"], command)
         clearance = env.obstacle_clearance(dense)
-        return {
+        updated = {
             "x": after,
             "previous_applied": applied,
-            "previous_raw": np.asarray(command, np.float32).copy(),
+            "previous_raw": limited_command,
             "spheres": spheres,
             "scene_seed": int(state["scene_seed"]),
             "scene_hash": str(state["scene_hash"]),
@@ -614,6 +931,11 @@ class LabClutterSphereExpansionTask:
                 or not env.inside_taskspace(dense).all()
             ),
         }
+        if _is_history_context_schema(self.context_schema):
+            updated["raw_history"] = _append_raw_history(
+                state["raw_history"], command,
+            )
+        return updated
 
     def terminal(self, state):
         if state["collided"]:

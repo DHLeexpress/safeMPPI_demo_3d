@@ -13,6 +13,8 @@ from safe_mppi.lab_clutter_evaluation import (
     EVALUATION_SCENE_SEED_STRIDE,
     FIXED_SCENE_ROLLOUT_SEED_OFFSET,
     LAB_CLUTTER_TASK_PROFILE,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA,
+    PATH_FOCUSED_SPHERE_TASK_PROFILE,
     START_PROBE_SCENE_SEED_OFFSET,
     _event_scene_index,
     _evaluation_scene_provenance,
@@ -28,7 +30,14 @@ from safe_mppi.lab_clutter_expansion import (
     LAB_CLUTTER_SCENE_SCHEMA,
     LabClutterSphereExpansionTask,
 )
-from safe_mppi.lab_visual_flow import LAB_VISUAL_SCHEMA
+from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_SCHEMA,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +59,37 @@ def _manifest(scene_hash: str = "expansion-scene-hash") -> dict:
 def test_clutter_dispatch_requires_task_profile_and_schemas():
     manifest = _manifest()
     assert is_lab_clutter_evaluation_manifest(manifest)
+    history = copy.deepcopy(manifest)
+    history["lab_conditioning"][
+        "context_schema"
+    ] = LAB_VISUAL_HISTORY_SCHEMA
+    history["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    assert is_lab_clutter_evaluation_manifest(history)
+
+    radial = copy.deepcopy(manifest)
+    radial["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_SCHEMA
+    )
+    assert is_lab_clutter_evaluation_manifest(radial)
+
+    radial_history = copy.deepcopy(manifest)
+    radial_history["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    )
+    radial_history["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    assert is_lab_clutter_evaluation_manifest(radial_history)
+
+    del history["lab_conditioning"]["history_encoder"]
+    with pytest.raises(ValueError, match="freeze contract"):
+        is_lab_clutter_evaluation_manifest(history)
 
     legacy = copy.deepcopy(manifest)
     legacy["task_profile"] = "minhyuk_lab_ball_visual_expansion"
@@ -64,6 +104,16 @@ def test_clutter_dispatch_requires_task_profile_and_schemas():
     wrong_scene["lab_scene_ledger"][0]["schema"] = "other_scene_v1"
     with pytest.raises(ValueError, match="scene ledger schema mismatch"):
         is_lab_clutter_evaluation_manifest(wrong_scene)
+
+
+def test_midpoint_uniform_path_focused_scene_schema_is_supported():
+    manifest = _manifest()
+    manifest["task_profile"] = PATH_FOCUSED_SPHERE_TASK_PROFILE
+    manifest["lab_scene_ledger"][0]["schema"] = (
+        PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA
+    )
+
+    assert is_lab_clutter_evaluation_manifest(manifest)
 
 
 def test_round_zero_must_equal_pretrained_model_bitwise(tmp_path):
@@ -190,6 +240,7 @@ def test_fixed_scene_rows_reuse_exact_independent_seeds(monkeypatch):
     )
     second = _fixed_scene_rows(
         object(), config, [0.1, 0.3], bank["scenes"][0], 3, 17,
+        sampling_temperature=0.4,
     )
 
     first_seeds = [row["rollout_seed"] for row in first]
@@ -197,7 +248,12 @@ def test_fixed_scene_rows_reuse_exact_independent_seeds(monkeypatch):
     assert len(first_seeds) == len(set(first_seeds))
     assert first_seeds[0] == 17 + FIXED_SCENE_ROLLOUT_SEED_OFFSET
     assert all(row["scene_hash"] == first[0]["scene_hash"] for row in first)
-    assert all(temperature == 1.0 for _, _, temperature in calls)
+    assert all(
+        temperature == 1.0 for _, _, temperature in calls[:len(first)]
+    )
+    assert all(
+        temperature == 0.4 for _, _, temperature in calls[len(first):]
+    )
 
 
 def test_successful_path_spread_uses_arc_length_not_time_index():
@@ -262,6 +318,51 @@ def test_event_scene_index_decodes_compact_context_and_rejects_mixing():
         _event_scene_index([event, mixed], task, manifest)
 
 
+def test_event_scene_index_decodes_radial_gru_compact_context():
+    config = load_config(CONFIG)
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 321)
+    state["previous_applied"][:] = [0.03, -0.02, 0.01]
+    context = task.context(state, 0.3).detach().cpu().numpy()
+    event = {
+        "round": 1,
+        "gamma": 0.3,
+        "episode": 0,
+        "step": 0,
+        "robot": np.asarray(state["x"], np.float32),
+        "context": np.concatenate([
+            context[:7],
+            context[
+                LAB_RADIAL_VISUAL_PACKED_DIM:
+                LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+            ],
+            context[-18:],
+        ]),
+    }
+    manifest = _manifest()
+    manifest["lab_conditioning"]["context_schema"] = (
+        LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    )
+    manifest["lab_conditioning"]["history_encoder"] = {
+        "present": True,
+        "frozen_during_expansion": True,
+        "explicit_unfreeze_flag": False,
+    }
+    manifest["lab_scene_ledger"] = copy.deepcopy(task.scene_ledger)
+
+    index = _event_scene_index([event], task, manifest)
+    decoded = index[(1, 0.3, 0)]
+    assert decoded["scene_hash"] == state["scene_hash"]
+    assert np.allclose(
+        decoded["previous_applied"],
+        [0.03, -0.02, 0.01],
+    )
+
+
 def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
     import safe_mppi.lab_clutter_evaluation as evaluation
 
@@ -304,8 +405,17 @@ def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
         lambda *args: SimpleNamespace(context_schema=LAB_VISUAL_SCHEMA),
     )
 
-    def fake_raw_rows(policy, task_config, gammas, scene_bank, domain_seed):
+    def fake_raw_rows(
+        policy,
+        task_config,
+        gammas,
+        scene_bank,
+        domain_seed,
+        *,
+        sampling_temperature=1.0,
+    ):
         del policy, task_config, domain_seed
+        assert sampling_temperature == 1.0
         return [{
             "gamma": float(gamma),
             "episode": int(scene["episode"]),

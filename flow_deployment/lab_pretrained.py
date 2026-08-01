@@ -4,11 +4,11 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-import torch
-
 from safe_mppi.environment import TaskEnvironment
-from safe_mppi.flow_model import ConditionalFlowMLP
 from safe_mppi.lab_reference_flow_task import LabReferenceFlowController
+from safe_mppi.lab_visual_flow import (
+    load_lab_reference_policy as _load_lab_reference_policy,
+)
 
 
 DEFAULT_CHECKPOINT_SHA256 = (
@@ -28,23 +28,8 @@ def sha256_file(path: str | Path) -> str:
 
 
 def load_lab_reference_policy(path: str | Path):
-    """Load a completed raw10 or qualified visual lab checkpoint."""
-    payload = torch.load(path, map_location="cpu", weights_only=False)
-    arch = dict(payload["arch"])
-    kind = arch.pop("kind", "conditional_flow_mlp")
-    arch["plan_shape"] = tuple(arch["plan_shape"])
-    if kind == "conditional_flow_mlp":
-        policy = ConditionalFlowMLP(**arch)
-    else:
-        from safe_mppi.lab_visual_flow import (
-            LAB_VISUAL_SCHEMA,
-            LabVisualFlowPolicy,
-        )
-        if kind != LAB_VISUAL_SCHEMA:
-            raise ValueError(f"unknown lab policy architecture {kind!r}")
-        policy = LabVisualFlowPolicy(**arch)
-    policy.load_state_dict(payload["model"], strict=True)
-    return policy
+    """Load any lab policy supported by the canonical checkpoint loader."""
+    return _load_lab_reference_policy(path)
 
 
 def load_lab_deployment_controller(

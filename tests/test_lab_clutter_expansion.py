@@ -12,11 +12,21 @@ from safe_mppi.lab_clutter_expansion import (
     LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
     LabClutterExpansionPolicyAdapter,
     LabClutterSphereExpansionTask,
+    PathFocusedVariableSphereScene,
     RandomThreeSphereScene,
+    sphere_scene_spec_from_config,
 )
 from safe_mppi.lab_visual_flow import (
+    LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_PACKED_DIM,
+    LAB_VISUAL_HISTORY_LENGTH,
+    LAB_VISUAL_HISTORY_PACKED_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
     LAB_VISUAL_PACKED_DIM,
     LAB_VISUAL_SCHEMA,
+    LabNonuniformRadialHistoryFlowPolicy,
+    LabVisualHistoryFlowPolicy,
     LabVisualFlowPolicy,
     build_visual_context,
 )
@@ -25,6 +35,9 @@ from safe_mppi.lab_visual_flow import (
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/lab_clutter_spheres_ood.json"
 CYLINDER_CONFIG = ROOT / "configs/lab_clutter_cylinders_pretrain.json"
+MIDPOINT_SPHERE_CONFIG = (
+    ROOT / "configs/lab_clutter_spheres_path_midpoint_uniform_v2.json"
+)
 
 
 def _task_and_policy(scene_spec=None):
@@ -147,6 +160,16 @@ def test_lab_randomization_fails_explicitly_unless_it_is_three_spheres():
     assert expansion_runner._lab_clutter_profile(load_config(CONFIG))
     with pytest.raises(ValueError, match="exactly three spheres"):
         expansion_runner._lab_clutter_profile(load_config(CYLINDER_CONFIG))
+
+
+def test_midpoint_uniform_spheres_route_to_path_focused_expansion():
+    config = load_config(MIDPOINT_SPHERE_CONFIG)
+    assert expansion_runner._lab_clutter_profile(config)
+    spec = sphere_scene_spec_from_config(config)
+    assert isinstance(spec, PathFocusedVariableSphereScene)
+    assert spec.scene_schema == (
+        "lab_path_focused_midpoint_uniform_variable_spheres_v2"
+    )
 
 
 def test_lab_setup_failure_writes_provenance_without_overwriting(tmp_path):
@@ -286,6 +309,100 @@ def test_context_packs_exact_scene_after_governor_and_adapter_strips_it():
         state["spheres"].reshape(LAB_CLUTTER_SCENE_DIM),
     )
     assert policy.context_dim == len(context)
+
+
+def test_gru_clutter_context_preserves_history_and_dynamic_suffix():
+    config = load_config(CONFIG)
+    base = LabVisualHistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=4,
+        history_token_dim=3,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=2,
+    )
+    policy = LabClutterExpansionPolicyAdapter(
+        base,
+        freeze_history_encoder=True,
+    )
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 17)
+    context = task.context(state, 0.3)
+    assert context.shape == (
+        LAB_VISUAL_HISTORY_PACKED_DIM
+        + LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    )
+    assert policy._policy_context(context).shape == (
+        LAB_VISUAL_HISTORY_PACKED_DIM,
+    )
+    history = context.numpy()[
+        LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
+    ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4)
+    assert not bool(history[:, 3].any())
+    np.testing.assert_array_equal(
+        task.scene_from_context(context), state["spheres"],
+    )
+
+    candidate = torch.zeros(10, 3)
+    candidate[0] = torch.tensor([0.1, 0.05, -0.02])
+    updated = task.advance(state, candidate)
+    np.testing.assert_array_equal(
+        updated["raw_history"][-1],
+        np.asarray([0.1, 0.05, -0.02, 1.0], np.float32),
+    )
+    updated_context = task.context(updated, 0.3)
+    np.testing.assert_array_equal(
+        updated_context.numpy()[
+            LAB_VISUAL_PACKED_DIM:LAB_VISUAL_HISTORY_PACKED_DIM
+        ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4),
+        updated["raw_history"],
+    )
+
+
+def test_radial_gru_clutter_context_preserves_history_and_scene_suffix():
+    config = load_config(CONFIG)
+    base = LabNonuniformRadialHistoryFlowPolicy(
+        hidden=8,
+        representation_dim=4,
+        grid_token_dim=64,
+        history_token_dim=32,
+        control_limit=config.safemppi.demo_u_max,
+        nfe=1,
+        trunk_depth=3,
+    )
+    policy = LabClutterExpansionPolicyAdapter(
+        base,
+        freeze_history_encoder=True,
+    )
+    task = LabClutterSphereExpansionTask(
+        config,
+        context_schema=LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+        tight_corridor=True,
+    )
+    state = task.reset(0.3, 0, 23)
+    context = task.context(state, 0.3)
+    assert context.shape == (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+        + LAB_CLUTTER_VERIFIER_SUFFIX_DIM,
+    )
+    assert policy._policy_context(context).shape == (
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM,
+    )
+    history = context.numpy()[
+        LAB_RADIAL_VISUAL_PACKED_DIM:
+        LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+    ].reshape(LAB_VISUAL_HISTORY_LENGTH, 4)
+    assert not bool(history[:, 3].any())
+    np.testing.assert_array_equal(
+        task.scene_from_context(context),
+        state["spheres"],
+    )
+    assert task.context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    assert base.context_schema == LAB_RADIAL_VISUAL_HISTORY_SCHEMA
 
 
 def test_verifier_receives_all_three_spheres_from_packed_context(monkeypatch):

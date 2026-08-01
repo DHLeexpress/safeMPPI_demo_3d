@@ -1,0 +1,36 @@
+{
+  "status": "PRETRAINED_ONLY_HANDOFF",
+  "checkpoint": "checkpoints/hp100_t128_d3.pt",
+  "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+  "architecture": {
+    "schema": "lab_spherical_hp3d_uniform_radial100_planepack_v1",
+    "context": "[goal-position, velocity, gamma] plus robot-centered visual token",
+    "external_context_dim": 117,
+    "encoded_context_dim": 71,
+    "visual_input_shape": [1, 32, 32, 100],
+    "visual_channel": "clipped_hp",
+    "visual_token_dim": 128,
+    "trunk_hidden_dim": 48,
+    "penultimate_dim": 32,
+    "trunk_depth": 3,
+    "plan_shape": [10, 3],
+    "nfe": 16,
+    "control_limit_m_per_s2": 0.3
+  },
+  "policy_contract": {
+    "output": "pre-smoothing raw acceleration command",
+    "stateful_governor_in_policy": false,
+    "past_action_history_in_policy": false,
+    "deployment_smoothing_and_tracking": "external deploy_sim-native responsibility",
+    "sampling_temperature_definition": "x0 ~ Normal(0, tau^2 I)"
+  },
+  "training": {
+    "source_archive_sha256": "c9e593896678f1a083af27cd56b50c509bcc5b4670ed1393cd1e3d5679d58602",
+    "accepted_trajectories": 8000,
+    "randomized_scenes": 3262,
+    "selected_windows": 256000,
+    "selected_epoch": 52,
+    "selected_validation_loss": 0.3372768461704254
+  },
+  "scope": "pretrained cylinder-ID policy only; no expanded checkpoint and no flight-safety guarantee"
+}

@@ -1520,7 +1520,6 @@ def test_successful_executed_windows_are_reverified_for_progress(tmp_path):
     "updates,match",
     [
         ({"negative_alpha": 0.01}, "negative_alpha=0"),
-        ({"paired_noised_representation": True}, "no single paired flow base"),
         ({"target_gate_start_round": 2}, "inactive target gate"),
         ({"successful_trajectory_selector": "unknown"},
          "successful_trajectory_selector"),
@@ -1534,6 +1533,54 @@ def test_successful_executed_windows_validate_incompatible_options(
         updates, match):
     with pytest.raises(ValueError, match=match):
         _successful_window_config(**updates).validate()
+
+
+def test_successful_executed_windows_preserve_composed_paired_flow_base(
+        tmp_path):
+    torch.manual_seed(0)
+    policy = ConditionalFlowMLP(
+        3, (3, 1), hidden=16, representation_dim=8,
+    )
+    events = []
+    result = run_safe_expansion(
+        policy, _SuccessfulTrajectoryCommitTask(), tmp_path,
+        config=_successful_window_config(
+            rounds=2, gammas=(0.1,), paired_noised_representation=True,
+            gp_reference_mode="sliding_success_per_gamma_current_phi",
+        ),
+        calibration_features=torch.randn(12, 8),
+        event_callback=events.append,
+    )
+    archive = torch.load(tmp_path / "query_archive.pt", weights_only=False)
+    executed = [
+        event for event in events
+        if event["episode"] == 0 and event["chosen_local"] is not None
+    ]
+    base_actions = [
+        event["flow_bases"][
+            event["selected"][event["chosen_local"]]
+        ][0].detach().cpu()
+        for event in executed
+    ]
+    expected = [
+        torch.stack(base_actions[:3]),
+        torch.stack(base_actions[1:4]),
+        torch.cat([
+            torch.stack(base_actions[2:4]),
+            torch.zeros_like(base_actions[0])[None],
+        ]),
+        torch.cat([
+            torch.stack(base_actions[3:4]),
+            torch.zeros_like(base_actions[0])[None].repeat(2, 1),
+        ]),
+    ]
+    assert result["D_plus"] == 8
+    assert all(
+        torch.equal(row.flow_base, value)
+        for row, value in zip(archive[:4], expected)
+    )
+    assert all(row.flow_base is not None for row in archive)
+    assert result["rounds"][1]["gp_buffer_by_gamma"] == {"0.1": 4}
 
 
 def test_adaptive_ess_target_respects_finite_candidate_lower_bound():

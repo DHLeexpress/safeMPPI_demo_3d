@@ -1,5 +1,46 @@
 # safeMPPI demo in 3D
 
+## 2026-08-01 handoff — HP100 cylinder pretraining, sphere OOD, and Stage 1
+
+This is the current handoff for Minhyuk's unchanged native `deploy_sim`
+workflow. It is built on the independently pushed trajectory-following commit
+`5bcd05d197eb46ef9282c12b83291ae19a2ea928`; this integration does not alter
+any file under [`deploy_sim/`](deploy_sim/). The complete handoff, checkpoint,
+hashes, reproducible trajectory archives, and exact commands are in
+[`flow_deployment/minhyuk_stage1_handoff/`](flow_deployment/minhyuk_stage1_handoff/).
+
+| deliverable | authoritative location |
+|---|---|
+| cylinder-ID distribution, 4–8 vertical cylinders | [`lab_clutter_cylinders_path_midpoint_uniform_v2.json`](configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json) |
+| sphere-OOD distribution, 3–6 spheres | [`lab_clutter_spheres_path_midpoint_uniform_v2.json`](configs/lab_clutter_spheres_path_midpoint_uniform_v2.json) |
+| fixed three-sphere OOD screen | [`lab_clutter_spheres_stage2_three_v2.json`](configs/lab_clutter_spheres_stage2_three_v2.json) |
+| today's fixed midpoint-sphere expansion task | [`lab_ball_stage1_t128.json`](configs/lab_ball_stage1_t128.json) |
+| pretrained cylinder-ID policy | [`hp100_t128_d3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt), SHA-256 `cc87b65f...e28ff` |
+
+The first figure is one deliberately high-spread cylinder-ID SafeMPPI scene:
+all four gamma trajectories are genuine successful controller archives and the
+figure is qualitative, not a rate estimate.
+
+![SafeMPPI cylinder-ID trajectories with visible gamma-dependent variation](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_gamma_overlay.png)
+
+The second figure is the honest fixed single-sphere round-zero screen of the
+pretrained policy: raw temperature-one sampling on the same
+(M=20/\gamma) seed bank. Red crosses mark failures. Its pooled baseline is SR
+`13.75%`, CR `80.00%`, and OOB `6.25%`;
+the mostly in-plane, low-coverage behavior is the declared starting point for
+Stage 1 expansion, not a successful deployment claim. This evaluation uses no
+uncertainty tilt, no verifier controller, and no fallback.
+
+![HP100 T128 D3 pretrained policy on the fixed midpoint sphere](flow_deployment/minhyuk_stage1_handoff/assets/single_sphere_pretrained_r0_overlay.png)
+
+Today Stage 1 uses that fixed sphere with
+[`run_ball_expansion.py`](scripts/run_ball_expansion.py) and
+[`evaluate_ball_expansion.py`](scripts/evaluate_ball_expansion.py). An expanded
+checkpoint will be handed over only after raw metrics and route coverage are
+qualified. The randomized three-sphere failure screen is already packaged as
+an additional handoff asset, while full randomized-sphere expansion remains
+Stage 2.
+
 A small, standalone reference for collecting 3D SafeMPPI rollouts from a point-mass double
 integrator. The package exposes the taskspace and controller recipe in one JSON file, runs the full
 gamma grid, records every actual rollout, reports safety/performance metrics, and renders the BLUE
@@ -254,6 +295,75 @@ are never overlaid as if they were modes of one conditional distribution.
 it keeps every terminal-success trace (including the authoritative committed
 subset) and prunes failed/NVP traces after each round. Checkpoints, query/GP
 archives, replay, and optimization are unchanged.
+
+#### Path-focused variable-clutter v2
+
+> Historical predecessor: this subsection records the earlier Gaussian-v2
+> study. For the current HP100 handoff, use only the midpoint-uniform-v2
+> configurations linked at the top of this README.
+
+The additive v2 contract leaves the fixed-three experiment above reproducible,
+but removes its expert-conditioned scene admission and concentrates geometry
+near the fixed start-goal segment:
+
+| stage | count | physical + vehicle radius | modeled radius |
+|---|---:|---:|---:|
+| cylinder demonstrations | \(N\sim\mathrm{Unif}\{4,\ldots,8\}\) | `.10 + .10 m` | `.20 m` |
+| sphere OOD expansion/evaluation | \(N\sim\mathrm{Unif}\{3,\ldots,6\}\) | `.254 + .10 m` | `.354 m` |
+
+Centers use
+\[
+c_i=s+\lambda_i(g-s)+E_\perp\delta_i,\qquad
+\lambda_i\sim\mathcal U(.15,.85),\quad
+\delta_i\sim\mathcal N(0,.20^2I),
+\]
+followed only by body containment, endpoint non-intersection, and modeled-body
+non-overlap. Extra pairwise and wall gaps are both zero. The `.20 m`
+transverse scale was selected in a same-seed, unconditioned 16-scene sanity
+screen and confirmed on 32 scenes: it retained `109/128` SafeMPPI successes,
+whereas `.40 m` retained `83/128`. Larger scales produced more lateral
+side-changes but made the expert substantially less reliable; `.20 m` still
+interacted with roughly three obstacles per successful rollout. This is a
+configuration screen, not final inference.
+
+The scene bank is materialized before any controller call. Expert failures
+remain declared scene/gamma cells and are never replaced; only successful
+trajectories enter behavior cloning. The variable sphere verifier suffix is
+fixed-width:
+\[
+[\text{previous applied}_3,\text{previous raw}_3,N,
+  \text{zero-padded spheres}_{6\times4}].
+\]
+The learned visual policy never receives these exact sphere coordinates.
+
+```bash
+python scripts/collect_path_focused_clutter_demos.py \
+  --config configs/lab_clutter_cylinders_path_v2.json \
+  --output results/path_v2/cylinder_demos_s0 \
+  --scenes 100 --domain-seed 0 --rollout-seed-start 0
+
+python scripts/pretrain_lab_reference_flow.py \
+  --demo-dir results/path_v2/cylinder_demos_s0 \
+  --output results/path_v2/pretrain_visual_s0 \
+  --context-model visual_hp3d --device cuda \
+  --epochs 500 --batch-size 32 --learning-rate 3e-4 \
+  --audit-episodes 100 --audit-seed 91000 \
+  --ood-config configs/lab_clutter_spheres_path_v2.json \
+  --ood-audit-episodes 100 --ood-audit-seed 191000
+```
+
+Expansion accepts both `--execution-rule max_step_margin` and `min_cost`. For
+the latter only, `--execution-clearance-exp-weight` adds
+\[
+w\,H^{-1}\sum_h
+\exp\!\left((d_{\rm target}-d_h)/T\right)
+\]
+to the native execution-ranking cost; its default weight is zero, which
+exactly restores the prior scorer. `--device cuda` is supported by pretraining,
+expansion, and clutter evaluation. Evaluation reports temperature-one
+randomized-domain metrics pooled, per gamma, per obstacle count, and per
+\((\gamma,N)\), with deterministic one-standard-deviation Wilson/bootstrap
+bands. `deploy_sim/` remains untouched.
 
 #### Canonical 50-round clutter result
 

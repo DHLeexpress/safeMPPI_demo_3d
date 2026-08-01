@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -11,19 +12,104 @@ from torch.nn import functional as F
 
 from .environment import TaskEnvironment
 from .flow_model import ConditionalFlowMLP
-from .geometry import build_nominal_polytope
+from .geometry import build_nominal_polytope, triangular_geometry
 
 
 LAB_VISUAL_GRID_SHAPE = (3, 16, 12, 12)
 LAB_VISUAL_LOW_DIM = 7
 LAB_VISUAL_PACKED_DIM = LAB_VISUAL_LOW_DIM + math.prod(LAB_VISUAL_GRID_SHAPE)
 LAB_VISUAL_SCHEMA = "lab_spherical_hp3d_v1"
+LAB_VISUAL_HISTORY_LENGTH = 10
+LAB_VISUAL_HISTORY_STEP_DIM = 4
+LAB_VISUAL_HISTORY_PACKED_DIM = (
+    LAB_VISUAL_PACKED_DIM
+    + LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+)
+LAB_VISUAL_HISTORY_SCHEMA = "lab_spherical_hp3d_gru_v1"
 LAB_VISUAL_CHANNELS = (
     "occupancy",
     "nominal_polytope_mask",
     "clipped_hp",
 )
 LAB_VISUAL_FRAME = "robot_centered_world_spherical_equal_area"
+LAB_RADIAL_VISUAL_RADIAL_EDGES = (
+    0.0,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.10,
+    0.20,
+    0.30,
+    0.40,
+    0.60,
+    0.80,
+    1.00,
+    1.50,
+    2.00,
+)
+LAB_RADIAL_VISUAL_GRID_SHAPE = (3, 32, 32, 13)
+LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE = (5, 32, 32, 13)
+LAB_RADIAL_VISUAL_PACKED_DIM = (
+    LAB_VISUAL_LOW_DIM + math.prod(LAB_RADIAL_VISUAL_GRID_SHAPE)
+)
+LAB_RADIAL_VISUAL_SCHEMA = "lab_spherical_hp3d_nonuniform_radial_v2"
+LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM = (
+    LAB_RADIAL_VISUAL_PACKED_DIM
+    + LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+)
+LAB_RADIAL_VISUAL_HISTORY_SCHEMA = (
+    "lab_spherical_hp3d_nonuniform_radial_gru_v2"
+)
+LAB_RADIAL_VISUAL_CHANNELS = (
+    "occupancy",
+    "nominal_polytope_mask",
+    "clipped_hp",
+)
+LAB_RADIAL_VISUAL_ENCODER_CHANNELS = (
+    *LAB_RADIAL_VISUAL_CHANNELS,
+    "radius_center_m",
+    "radius_bin_width_m",
+)
+LAB_RADIAL_VISUAL_FRAME = (
+    "robot_centered_world_spherical_equal_area_nonuniform_radial"
+)
+LAB_HP100_RADIAL_EDGES = tuple(
+    float(value) for value in np.linspace(0.0, 2.0, 101)
+)
+LAB_HP100_GRID_SHAPE = (1, 32, 32, 100)
+LAB_HP100_CHANNELS = ("clipped_hp",)
+LAB_HP100_DYNAMIC_FACE_COUNT = 22
+LAB_HP100_PLANE_ROW_DIM = 5
+LAB_HP100_PLANE_CHANNELS = (
+    "normalized_intercept",
+    "normalized_normal_x",
+    "normalized_normal_y",
+    "normalized_normal_z",
+    "active",
+)
+LAB_HP100_PACKED_DIM = (
+    LAB_VISUAL_LOW_DIM
+    + LAB_HP100_DYNAMIC_FACE_COUNT * LAB_HP100_PLANE_ROW_DIM
+)
+LAB_HP100_SCHEMA = "lab_spherical_hp3d_uniform_radial100_planepack_v1"
+LAB_HP100_HISTORY_PACKED_DIM = (
+    LAB_HP100_PACKED_DIM
+    + LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+)
+LAB_HP100_HISTORY_SCHEMA = (
+    "lab_spherical_hp3d_uniform_radial100_planepack_gru_v1"
+)
+LAB_HP100_EXACT_MEMORY_DIM = 6
+LAB_HP100_EXACT_MEMORY_PACKED_DIM = (
+    LAB_HP100_PACKED_DIM + LAB_HP100_EXACT_MEMORY_DIM
+)
+LAB_HP100_EXACT_MEMORY_SCHEMA = (
+    "lab_spherical_hp3d_uniform_radial100_planepack_exact_memory_v1"
+)
+LAB_HP100_FRAME = (
+    "robot_centered_world_spherical_equal_area_uniform_radial_planepack"
+)
 
 
 class _AzimuthCircularPad(nn.Module):
@@ -34,6 +120,229 @@ class _AzimuthCircularPad(nn.Module):
             values[:, :, :1],
         ], dim=2)
         return F.pad(values, (1, 1, 1, 1, 0, 0))
+
+
+class _SphericalTopologyPad3d(nn.Module):
+    """One-cell spherical padding without mixing radial bins."""
+
+    def forward(self, values: torch.Tensor) -> torch.Tensor:
+        if values.ndim != 5 or values.shape[2] % 2:
+            raise ValueError(
+                "spherical padding requires N,C,even-azimuth,elevation,radius"
+            )
+        # Radius has a physical boundary, so extend its nearest measured bin.
+        values = F.pad(values, (1, 1, 0, 0, 0, 0), mode="replicate")
+        half_turn = values.shape[2] // 2
+        south = torch.roll(
+            values[:, :, :, :1, :],
+            shifts=half_turn,
+            dims=2,
+        )
+        north = torch.roll(
+            values[:, :, :, -1:, :],
+            shifts=half_turn,
+            dims=2,
+        )
+        values = torch.cat([south, values, north], dim=3)
+        return torch.cat([
+            values[:, :, -1:, :, :],
+            values,
+            values[:, :, :1, :, :],
+        ], dim=2)
+
+
+class LabNonuniformRadialEncoder(nn.Module):
+    """Preserve all 13 physical radial bins until learned 1x1 mixing."""
+
+    def __init__(
+        self,
+        token_dim: int = 64,
+        radial_edges: tuple[float, ...] = LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    ):
+        super().__init__()
+        if int(token_dim) not in {64, 128, 256}:
+            raise ValueError("radial visual token_dim must be 64, 128, or 256")
+        edges = np.asarray(radial_edges, np.float32)
+        if tuple(map(float, radial_edges)) != LAB_RADIAL_VISUAL_RADIAL_EDGES:
+            raise ValueError("lab radial visual encoder radial edges changed")
+        self.token_dim = int(token_dim)
+        radial_shape = (1, 32, 32, 13)
+        self.register_buffer(
+            "radius_center_m",
+            torch.from_numpy(np.broadcast_to(
+                (0.5 * (edges[:-1] + edges[1:]))[None, None, None, :],
+                radial_shape,
+            ).copy()),
+        )
+        self.register_buffer(
+            "radius_bin_width_m",
+            torch.from_numpy(np.broadcast_to(
+                np.diff(edges)[None, None, None, :],
+                radial_shape,
+            ).copy()),
+        )
+        self.conv3d = nn.Sequential(
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(5, 16, kernel_size=3),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                16,
+                32,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                32,
+                48,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+        )
+        self.radial_mixer = nn.Sequential(
+            nn.Conv2d(48 * 13, 64, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(64 * 4 * 4, self.token_dim),
+            nn.SiLU(),
+        )
+
+    def encoder_grid(self, grid: torch.Tensor) -> torch.Tensor:
+        if tuple(grid.shape[1:]) != LAB_RADIAL_VISUAL_GRID_SHAPE:
+            raise ValueError(
+                "radial encoder requires the packed 3x32x32x13 dynamic grid"
+            )
+        return torch.cat([
+            grid,
+            self.radius_center_m.expand(len(grid), -1, -1, -1, -1),
+            self.radius_bin_width_m.expand(len(grid), -1, -1, -1, -1),
+        ], dim=1)
+
+    def forward(self, grid: torch.Tensor) -> torch.Tensor:
+        encoded = self.conv3d(self.encoder_grid(grid))
+        if tuple(encoded.shape[1:]) != (48, 8, 8, 13):
+            raise RuntimeError(
+                "nonuniform radial encoder violated its 48x8x8x13 contract"
+            )
+        encoded = encoded.permute(0, 1, 4, 2, 3).reshape(
+            len(encoded),
+            48 * 13,
+            8,
+            8,
+        )
+        return self.radial_mixer(encoded)
+
+
+class LabUniformHp100Rasterizer(nn.Module):
+    """Reconstruct the clipped 100-bin nominal H_P field from face rows."""
+
+    def __init__(self):
+        super().__init__()
+        offsets, fixed_sensing_hp = _nonuniform_radial_lattice(
+            LAB_HP100_RADIAL_EDGES,
+            LAB_HP100_GRID_SHAPE[1],
+            LAB_HP100_GRID_SHAPE[2],
+        )
+        self.register_buffer(
+            "offsets",
+            torch.from_numpy(
+                np.asarray(offsets, np.float32).reshape(-1, 3).copy()
+            ),
+        )
+        self.register_buffer(
+            "fixed_sensing_hp",
+            torch.from_numpy(
+                np.asarray(fixed_sensing_hp, np.float32).reshape(-1).copy()
+            ),
+        )
+
+    def forward(self, packed_planes: torch.Tensor) -> torch.Tensor:
+        packed_planes = packed_planes.reshape(
+            -1,
+            LAB_HP100_DYNAMIC_FACE_COUNT,
+            LAB_HP100_PLANE_ROW_DIM,
+        ).float()
+        intercept = packed_planes[:, :, 0]
+        normal = packed_planes[:, :, 1:4]
+        active = packed_planes[:, :, 4] > 0.5
+        dynamic_hp = (
+            intercept[:, None, :]
+            - torch.einsum("pc,bfc->bpf", self.offsets, normal)
+        )
+        dynamic_hp = dynamic_hp.masked_fill(~active[:, None, :], torch.inf)
+        hp = torch.minimum(
+            self.fixed_sensing_hp[None],
+            dynamic_hp.amin(dim=2),
+        )
+        return hp.clamp(-1.0, 1.0).reshape(
+            len(packed_planes),
+            *LAB_HP100_GRID_SHAPE,
+        )
+
+
+class LabUniformHp100Encoder(nn.Module):
+    """Encode uniform 2-cm radial H_P bins without radial pooling."""
+
+    def __init__(self, token_dim: int = 64):
+        super().__init__()
+        if int(token_dim) not in {64, 128, 256}:
+            raise ValueError(
+                "uniform H_P encoder token_dim must be 64, 128, or 256"
+            )
+        self.token_dim = int(token_dim)
+        self.conv3d = nn.Sequential(
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(1, 16, kernel_size=3),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                16,
+                32,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+            _SphericalTopologyPad3d(),
+            nn.Conv3d(
+                32,
+                48,
+                kernel_size=3,
+                stride=(2, 2, 1),
+            ),
+            nn.SiLU(),
+        )
+        self.radial_mixer = nn.Sequential(
+            nn.Conv2d(48 * 100, 64, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(64 * 4 * 4, self.token_dim),
+            nn.SiLU(),
+        )
+
+    def forward(self, grid: torch.Tensor) -> torch.Tensor:
+        if tuple(grid.shape[1:]) != LAB_HP100_GRID_SHAPE:
+            raise ValueError(
+                "uniform H_P encoder requires a 1x32x32x100 grid"
+            )
+        encoded = self.conv3d(grid.float())
+        if tuple(encoded.shape[1:]) != (48, 8, 8, 100):
+            raise RuntimeError(
+                "uniform H_P encoder violated its 48x8x8x100 contract"
+            )
+        encoded = encoded.permute(0, 1, 4, 2, 3).reshape(
+            len(encoded),
+            48 * 100,
+            8,
+            8,
+        )
+        return self.radial_mixer(encoded)
 
 
 def spherical_grid_points(
@@ -125,6 +434,217 @@ def spherical_safety_grid(
     ]).reshape(3, n_azimuth, n_elevation, n_radius)
 
 
+def nonuniform_radial_grid_points(
+    position: np.ndarray,
+    *,
+    radial_edges: tuple[float, ...] = LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    n_azimuth: int = 32,
+    n_elevation: int = 32,
+) -> np.ndarray:
+    """Return cell centers for the declared nonuniform radial lattice."""
+    position = np.asarray(position, float).reshape(3)
+    offsets, _ = _nonuniform_radial_lattice(
+        tuple(map(float, radial_edges)),
+        int(n_azimuth),
+        int(n_elevation),
+    )
+    return position[None, None, None, :] + offsets
+
+
+@lru_cache(maxsize=4)
+def _nonuniform_radial_lattice(
+    radial_edges: tuple[float, ...],
+    n_azimuth: int,
+    n_elevation: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Cache robot-centered offsets and the fixed 80-face sensing H_P."""
+    edges = np.asarray(radial_edges, float)
+    if (
+        edges.ndim != 1
+        or len(edges) < 2
+        or not np.isfinite(edges).all()
+        or edges[0] != 0.0
+        or bool((np.diff(edges) <= 0.0).any())
+    ):
+        raise ValueError(
+            "radial_edges must be finite, start at zero, and strictly increase"
+        )
+    if n_azimuth <= 0 or n_elevation <= 0:
+        raise ValueError("angular grid sizes must be positive")
+    azimuth = (
+        -np.pi
+        + (np.arange(n_azimuth, dtype=float) + 0.5)
+        * (2.0 * np.pi / n_azimuth)
+    )
+    elevation = np.arcsin(
+        -1.0
+        + (np.arange(n_elevation, dtype=float) + 0.5)
+        * (2.0 / n_elevation)
+    )
+    radius = 0.5 * (edges[:-1] + edges[1:])
+    cos_elevation = np.cos(elevation)[None, :, None]
+    directions = np.concatenate([
+        cos_elevation * np.cos(azimuth)[:, None, None],
+        cos_elevation * np.sin(azimuth)[:, None, None],
+        np.broadcast_to(
+            np.sin(elevation)[None, :, None],
+            (n_azimuth, n_elevation, 1),
+        ),
+    ], axis=2)
+    offsets = (
+        directions[:, :, None, :] * radius[None, None, :, None]
+    )
+    _, _, normals, unit_offsets = triangular_geometry()
+    sensing_margins = float(edges[-1]) * unit_offsets
+    fixed_hp = (
+        sensing_margins[None]
+        - offsets.reshape(-1, 3) @ normals.T
+    ) / sensing_margins[None]
+    fixed_hp = fixed_hp.min(axis=1).reshape(offsets.shape[:-1])
+    offsets.setflags(write=False)
+    fixed_hp.setflags(write=False)
+    return offsets, fixed_hp
+
+
+def nonuniform_radial_safety_grid(
+    env: TaskEnvironment,
+    position: np.ndarray,
+    *,
+    radial_edges: tuple[float, ...] = LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    n_azimuth: int = 32,
+    n_elevation: int = 32,
+) -> np.ndarray:
+    """Return the three dynamic geometry channels on the v2 lattice."""
+    edges = np.asarray(radial_edges, float)
+    if not np.isclose(
+        float(env.mppi.sensing_range),
+        float(edges[-1]),
+        rtol=0.0,
+        atol=1.0e-12,
+    ):
+        raise ValueError(
+            "nonuniform radial grid outer edge must match the sensing range"
+        )
+    radial_edges = tuple(map(float, edges))
+    offsets, fixed_sensing_hp = _nonuniform_radial_lattice(
+        radial_edges,
+        int(n_azimuth),
+        int(n_elevation),
+    )
+    points = np.asarray(position, float).reshape(3) + offsets
+    flat_points = points.reshape(-1, 3)
+    occupancy = (
+        env.obstacle_clearance(flat_points) < 0.0
+    ).astype(np.float32)
+
+    polytope = build_nominal_polytope(
+        np.asarray(position, float).reshape(3),
+        env.spheres,
+        env.cylinders,
+        env.bounds,
+        sensing_range=env.mppi.sensing_range,
+        obstacle_margin=0.0,
+    )
+    _, _, sensing_normals, sensing_offsets = triangular_geometry()
+    sensing_face_count = len(sensing_normals)
+    sensing_margins = float(edges[-1]) * sensing_offsets
+    if (
+        not np.allclose(
+            polytope.A[:sensing_face_count],
+            sensing_normals,
+            rtol=0.0,
+            atol=1.0e-12,
+        )
+        or not np.allclose(
+            polytope.margins[:sensing_face_count],
+            sensing_margins,
+            rtol=0.0,
+            atol=1.0e-12,
+        )
+    ):
+        raise RuntimeError(
+            "nominal polytope sensing faces changed; cached H_P is invalid"
+        )
+    hp = fixed_sensing_hp.reshape(-1).copy()
+    if len(polytope.A) > sensing_face_count:
+        dynamic_A = polytope.A[sensing_face_count:]
+        dynamic_b = polytope.b[sensing_face_count:]
+        dynamic_margins = np.maximum(
+            polytope.margins[sensing_face_count:],
+            1.0e-3,
+        )
+        dynamic_hp = (
+            dynamic_b[None] - flat_points @ dynamic_A.T
+        ) / dynamic_margins[None]
+        hp = np.minimum(hp, dynamic_hp.min(axis=1))
+    mask = (hp >= 0.0).astype(np.float32)
+    clipped_hp = np.clip(hp, -1.0, 1.0).astype(np.float32)
+
+    grid_shape = (n_azimuth, n_elevation, len(edges) - 1)
+    return np.stack([
+        occupancy.reshape(grid_shape),
+        mask.reshape(grid_shape),
+        clipped_hp.reshape(grid_shape),
+    ])
+
+
+def uniform_hp100_grid_points(
+    position: np.ndarray,
+) -> np.ndarray:
+    """Return world-frame centers of the fixed uniform 2-cm H_P cells."""
+    position = np.asarray(position, float).reshape(3)
+    offsets, _ = _nonuniform_radial_lattice(
+        LAB_HP100_RADIAL_EDGES,
+        LAB_HP100_GRID_SHAPE[1],
+        LAB_HP100_GRID_SHAPE[2],
+    )
+    return position[None, None, None, :] + offsets
+
+
+def pack_uniform_hp100_planes(
+    env: TaskEnvironment,
+    position: np.ndarray,
+) -> np.ndarray:
+    """Pack normalized dynamic nominal faces relative to ``position``."""
+    position = np.asarray(position, float).reshape(3)
+    if not np.isclose(
+        float(env.mppi.sensing_range),
+        float(LAB_HP100_RADIAL_EDGES[-1]),
+        rtol=0.0,
+        atol=1.0e-12,
+    ):
+        raise ValueError(
+            "uniform H_P grid outer edge must match the sensing range"
+        )
+    polytope = build_nominal_polytope(
+        position,
+        env.spheres,
+        env.cylinders,
+        env.bounds,
+        sensing_range=env.mppi.sensing_range,
+        obstacle_margin=0.0,
+    )
+    sensing_face_count = len(triangular_geometry()[2])
+    dynamic_count = len(polytope.A) - sensing_face_count
+    if not 0 <= dynamic_count <= LAB_HP100_DYNAMIC_FACE_COUNT:
+        raise RuntimeError(
+            "uniform H_P plane pack exceeds its dynamic-face contract"
+        )
+    rows = np.zeros(
+        (LAB_HP100_DYNAMIC_FACE_COUNT, LAB_HP100_PLANE_ROW_DIM),
+        np.float32,
+    )
+    if dynamic_count:
+        margins = polytope.margins[sensing_face_count:]
+        denominator = np.maximum(margins, 1.0e-3)
+        rows[:dynamic_count, 0] = margins / denominator
+        rows[:dynamic_count, 1:4] = (
+            polytope.A[sensing_face_count:] / denominator[:, None]
+        )
+        rows[:dynamic_count, 4] = 1.0
+    return rows
+
+
 def build_visual_context(
     env: TaskEnvironment,
     state6: np.ndarray,
@@ -139,6 +659,163 @@ def build_visual_context(
     ]).astype(np.float32)
     grid = spherical_safety_grid(env, state6[:3]).astype(np.float32)
     return np.concatenate([low, grid.reshape(-1)]).astype(np.float32)
+
+
+def build_nonuniform_radial_visual_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+) -> np.ndarray:
+    """Pack low-dimensional state with the v2 nonuniform radial volume."""
+    state6 = np.asarray(state6, np.float32).reshape(6)
+    low = np.concatenate([
+        env.goal - state6[:3],
+        state6[3:6],
+        np.asarray([gamma], np.float32),
+    ]).astype(np.float32)
+    grid = nonuniform_radial_safety_grid(
+        env,
+        state6[:3],
+    ).astype(np.float32)
+    return np.concatenate([low, grid.reshape(-1)]).astype(np.float32)
+
+
+def build_uniform_hp100_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+) -> np.ndarray:
+    """Pack low7 and normalized faces for lazy uniform H_P rasterization."""
+    state6 = np.asarray(state6, np.float32).reshape(6)
+    low = np.concatenate([
+        env.goal - state6[:3],
+        state6[3:6],
+        np.asarray([gamma], np.float32),
+    ]).astype(np.float32)
+    planes = pack_uniform_hp100_planes(env, state6[:3])
+    packed = np.concatenate([low, planes.reshape(-1)]).astype(np.float32)
+    if packed.shape != (LAB_HP100_PACKED_DIM,):
+        raise RuntimeError("uniform H_P context violated its packed dimension")
+    return packed
+
+
+def _validated_raw_history(raw_history: np.ndarray) -> np.ndarray:
+    history = np.asarray(raw_history, np.float32)
+    if history.shape != (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    ):
+        raise ValueError(
+            "raw_history must have shape "
+            f"({LAB_VISUAL_HISTORY_LENGTH},{LAB_VISUAL_HISTORY_STEP_DIM})"
+        )
+    if not np.isfinite(history).all():
+        raise ValueError("raw_history must be finite")
+    if not np.isin(history[:, 3], (0.0, 1.0)).all():
+        raise ValueError("raw_history validity bits must be binary")
+    if bool((history[history[:, 3] == 0.0, :3] != 0.0).any()):
+        raise ValueError("padded raw-history actions must be exactly zero")
+    return history
+
+
+def build_uniform_hp100_history_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray,
+) -> np.ndarray:
+    """Append ten past raw commands and validity bits to uniform H_P."""
+    history = _validated_raw_history(raw_history)
+    packed = np.concatenate([
+        build_uniform_hp100_context(env, state6, gamma),
+        history.reshape(-1),
+    ]).astype(np.float32)
+    if packed.shape != (LAB_HP100_HISTORY_PACKED_DIM,):
+        raise RuntimeError(
+            "uniform H_P history context violated its packed dimension"
+        )
+    return packed
+
+
+def build_uniform_hp100_exact_memory_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    previous_raw: np.ndarray,
+    previous_applied: np.ndarray,
+) -> np.ndarray:
+    """Append the exact raw/applied controller memory to uniform H_P."""
+    memory = np.concatenate([
+        np.asarray(previous_raw, np.float32).reshape(3),
+        np.asarray(previous_applied, np.float32).reshape(3),
+    ]).astype(np.float32)
+    if not np.isfinite(memory).all():
+        raise ValueError("exact controller memory must be finite")
+    packed = np.concatenate([
+        build_uniform_hp100_context(env, state6, gamma),
+        memory,
+    ]).astype(np.float32)
+    if packed.shape != (LAB_HP100_EXACT_MEMORY_PACKED_DIM,):
+        raise RuntimeError(
+            "uniform H_P exact-memory context violated its packed dimension"
+        )
+    return packed
+
+
+def build_nonuniform_radial_visual_history_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray,
+) -> np.ndarray:
+    """Append raw-command history to the v2 nonuniform radial context."""
+    history = np.asarray(raw_history, np.float32)
+    if history.shape != (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    ):
+        raise ValueError(
+            "raw_history must have shape "
+            f"({LAB_VISUAL_HISTORY_LENGTH},{LAB_VISUAL_HISTORY_STEP_DIM})"
+        )
+    if not np.isfinite(history).all():
+        raise ValueError("raw_history must be finite")
+    if not np.isin(history[:, 3], (0.0, 1.0)).all():
+        raise ValueError("raw_history validity bits must be binary")
+    if bool((history[history[:, 3] == 0.0, :3] != 0.0).any()):
+        raise ValueError("padded raw-history actions must be exactly zero")
+    return np.concatenate([
+        build_nonuniform_radial_visual_context(env, state6, gamma),
+        history.reshape(-1),
+    ]).astype(np.float32)
+
+
+def build_visual_history_context(
+    env: TaskEnvironment,
+    state6: np.ndarray,
+    gamma: float,
+    raw_history: np.ndarray,
+) -> np.ndarray:
+    """Append ten past raw commands and their left-padding validity bits."""
+    history = np.asarray(raw_history, np.float32)
+    if history.shape != (
+        LAB_VISUAL_HISTORY_LENGTH,
+        LAB_VISUAL_HISTORY_STEP_DIM,
+    ):
+        raise ValueError(
+            "raw_history must have shape "
+            f"({LAB_VISUAL_HISTORY_LENGTH},{LAB_VISUAL_HISTORY_STEP_DIM})"
+        )
+    if not np.isfinite(history).all():
+        raise ValueError("raw_history must be finite")
+    if not np.isin(history[:, 3], (0.0, 1.0)).all():
+        raise ValueError("raw_history validity bits must be binary")
+    if bool((history[history[:, 3] == 0.0, :3] != 0.0).any()):
+        raise ValueError("padded raw-history actions must be exactly zero")
+    return np.concatenate([
+        build_visual_context(env, state6, gamma),
+        history.reshape(-1),
+    ]).astype(np.float32)
 
 
 class LabVisualFlowPolicy(nn.Module):
@@ -303,6 +980,695 @@ class LabVisualFlowPolicy(nn.Module):
         )
 
 
+class LabNonuniformRadialFlowPolicy(nn.Module):
+    """CFM policy using the high-resolution nonuniform radial encoder."""
+
+    context_schema = LAB_RADIAL_VISUAL_SCHEMA
+    context_dim = LAB_RADIAL_VISUAL_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 2,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_RADIAL_VISUAL_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_RADIAL_VISUAL_CHANNELS,
+        encoder_grid_shape: tuple[
+            int, ...
+        ] = LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE,
+        encoder_grid_channels: tuple[
+            str, ...
+        ] = LAB_RADIAL_VISUAL_ENCODER_CHANNELS,
+        grid_frame: str = LAB_RADIAL_VISUAL_FRAME,
+        radial_edges: tuple[float, ...] = LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    ):
+        super().__init__()
+        if tuple(plan_shape) != (10, 3):
+            raise ValueError("lab radial visual flow requires plan_shape=(10,3)")
+        if trunk_depth not in {2, 3} or time_features != "raw1":
+            raise ValueError(
+                "lab radial visual flow requires trunk_depth in {2,3} "
+                "and time_features='raw1'"
+            )
+        if tuple(grid_shape) != LAB_RADIAL_VISUAL_GRID_SHAPE:
+            raise ValueError("lab radial visual flow grid shape contract changed")
+        if tuple(grid_channels) != LAB_RADIAL_VISUAL_CHANNELS:
+            raise ValueError(
+                "lab radial visual flow channel contract changed"
+            )
+        if tuple(encoder_grid_shape) != LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE:
+            raise ValueError(
+                "lab radial visual flow encoder grid shape contract changed"
+            )
+        if (
+            tuple(encoder_grid_channels)
+            != LAB_RADIAL_VISUAL_ENCODER_CHANNELS
+        ):
+            raise ValueError(
+                "lab radial visual flow encoder channel contract changed"
+            )
+        if grid_frame != LAB_RADIAL_VISUAL_FRAME:
+            raise ValueError("lab radial visual flow frame contract changed")
+        if tuple(map(float, radial_edges)) != LAB_RADIAL_VISUAL_RADIAL_EDGES:
+            raise ValueError("lab radial visual flow radial edges changed")
+        self.plan_shape = tuple(plan_shape)
+        self.plan_dim = math.prod(self.plan_shape)
+        self.control_limit = control_limit
+        self.nfe = int(nfe)
+        self.grid_token_dim = int(grid_token_dim)
+        self.grid_encoder = LabNonuniformRadialEncoder(
+            self.grid_token_dim,
+            radial_edges=radial_edges,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=LAB_VISUAL_LOW_DIM + self.grid_token_dim,
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+    ) -> list[dict[str, object]]:
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+    @property
+    def trunk(self):
+        return self.flow.trunk
+
+    @property
+    def head(self):
+        return self.flow.head
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = context[:, LAB_VISUAL_LOW_DIM:].reshape(
+            -1,
+            *LAB_RADIAL_VISUAL_GRID_SHAPE,
+        )
+        encoded = torch.cat([low, self.grid_encoder(grid)], dim=1)
+        return encoded[0] if single else encoded
+
+    def cfm_loss(
+        self,
+        contexts: torch.Tensor,
+        candidates: torch.Tensor,
+        reduction: str = "none",
+        loss_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        return self.flow.cfm_loss(
+            self.encode_context(contexts),
+            candidates,
+            reduction=reduction,
+            loss_mask=loss_mask,
+        )
+
+    @torch.no_grad()
+    def sample(
+        self,
+        context: torch.Tensor,
+        count: int,
+        generator: torch.Generator,
+        base_std: float = 1.0,
+    ) -> torch.Tensor:
+        return self.flow.sample(
+            self.encode_context(context),
+            count,
+            generator,
+            base_std=base_std,
+        )
+
+    @torch.no_grad()
+    def sample_with_base(
+        self,
+        context: torch.Tensor,
+        count: int,
+        generator: torch.Generator,
+        base_std: float = 1.0,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return self.flow.sample_with_base(
+            self.encode_context(context),
+            count,
+            generator,
+            base_std=base_std,
+        )
+
+    @torch.no_grad()
+    def embed(
+        self,
+        context: torch.Tensor,
+        candidates: torch.Tensor,
+        flow_time: float = 0.9,
+        base: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        return self.flow.embed(
+            self.encode_context(context),
+            candidates,
+            flow_time=flow_time,
+            base=base,
+        )
+
+
+class LabUniformHp100FlowPolicy(LabNonuniformRadialFlowPolicy):
+    """Depth-3 CFM policy with lazy plane-packed uniform H_P input."""
+
+    context_schema = LAB_HP100_SCHEMA
+    context_dim = LAB_HP100_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        nn.Module.__init__(self)
+        if tuple(plan_shape) != (10, 3):
+            raise ValueError("uniform H_P flow requires plan_shape=(10,3)")
+        if int(grid_token_dim) not in {64, 128, 256}:
+            raise ValueError(
+                "uniform H_P flow grid_token_dim must be 64, 128, or 256"
+            )
+        if int(trunk_depth) != 3 or time_features != "raw1":
+            raise ValueError(
+                "uniform H_P flow requires trunk_depth=3 and time_features='raw1'"
+            )
+        if tuple(grid_shape) != LAB_HP100_GRID_SHAPE:
+            raise ValueError("uniform H_P flow grid shape contract changed")
+        if tuple(grid_channels) != LAB_HP100_CHANNELS:
+            raise ValueError("uniform H_P flow channel contract changed")
+        if grid_frame != LAB_HP100_FRAME:
+            raise ValueError("uniform H_P flow frame contract changed")
+        if tuple(map(float, radial_edges)) != LAB_HP100_RADIAL_EDGES:
+            raise ValueError("uniform H_P flow radial edges changed")
+        if int(plane_face_count) != LAB_HP100_DYNAMIC_FACE_COUNT:
+            raise ValueError("uniform H_P flow face-count contract changed")
+        if tuple(plane_row_channels) != LAB_HP100_PLANE_CHANNELS:
+            raise ValueError("uniform H_P flow plane-row contract changed")
+        self.plan_shape = tuple(plan_shape)
+        self.plan_dim = math.prod(self.plan_shape)
+        self.control_limit = control_limit
+        self.nfe = int(nfe)
+        self.grid_token_dim = int(grid_token_dim)
+        self.rasterizer = LabUniformHp100Rasterizer()
+        self.grid_encoder = LabUniformHp100Encoder(self.grid_token_dim)
+        self.flow = ConditionalFlowMLP(
+            context_dim=LAB_VISUAL_LOW_DIM + self.grid_token_dim,
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(context[:, LAB_VISUAL_LOW_DIM:])
+        encoded = torch.cat([low, self.grid_encoder(grid)], dim=1)
+        return encoded[0] if single else encoded
+
+
+class LabUniformHp100ExactMemoryFlowPolicy(LabUniformHp100FlowPolicy):
+    """Uniform H_P policy with exact previous raw/applied accelerations."""
+
+    context_schema = LAB_HP100_EXACT_MEMORY_SCHEMA
+    context_dim = LAB_HP100_EXACT_MEMORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+            radial_edges=radial_edges,
+            plane_face_count=plane_face_count,
+            plane_row_channels=plane_row_channels,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + LAB_HP100_EXACT_MEMORY_DIM
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(
+            context[:, LAB_VISUAL_LOW_DIM:LAB_HP100_PACKED_DIM]
+        )
+        memory = context[:, LAB_HP100_PACKED_DIM:]
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            memory,
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+
+class LabUniformHp100HistoryFlowPolicy(LabUniformHp100FlowPolicy):
+    """Uniform H_P policy with GRU32 over ten prior raw commands."""
+
+    context_schema = LAB_HP100_HISTORY_SCHEMA
+    context_dim = LAB_HP100_HISTORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        history_token_dim: int = 32,
+        history_length: int = LAB_VISUAL_HISTORY_LENGTH,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_HP100_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_HP100_CHANNELS,
+        grid_frame: str = LAB_HP100_FRAME,
+        radial_edges: tuple[float, ...] = LAB_HP100_RADIAL_EDGES,
+        plane_face_count: int = LAB_HP100_DYNAMIC_FACE_COUNT,
+        plane_row_channels: tuple[str, ...] = LAB_HP100_PLANE_CHANNELS,
+    ):
+        if int(history_length) != LAB_VISUAL_HISTORY_LENGTH:
+            raise ValueError(
+                f"uniform H_P history length must be "
+                f"{LAB_VISUAL_HISTORY_LENGTH}"
+            )
+        if int(history_token_dim) != 32:
+            raise ValueError("uniform H_P history encoder requires GRU32")
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+            radial_edges=radial_edges,
+            plane_face_count=plane_face_count,
+            plane_row_channels=plane_row_channels,
+        )
+        self.history_length = int(history_length)
+        self.history_token_dim = int(history_token_dim)
+        self.history_encoder = nn.GRU(
+            input_size=LAB_VISUAL_HISTORY_STEP_DIM,
+            hidden_size=self.history_token_dim,
+            batch_first=True,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + self.history_token_dim
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = self.rasterizer(
+            context[:, LAB_VISUAL_LOW_DIM:LAB_HP100_PACKED_DIM]
+        )
+        history = context[:, LAB_HP100_PACKED_DIM:].reshape(
+            -1,
+            LAB_VISUAL_HISTORY_LENGTH,
+            LAB_VISUAL_HISTORY_STEP_DIM,
+        )
+        _, hidden = self.history_encoder(history)
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            hidden[-1],
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ) -> list[dict[str, object]]:
+        """Build expansion groups under an explicit GRU freeze contract."""
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        if freeze_history_encoder is None:
+            raise ValueError(
+                "GRU expansion requires an explicit freeze_history_encoder "
+                "contract"
+            )
+        for parameter in self.history_encoder.parameters():
+            parameter.requires_grad_(not freeze_history_encoder)
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+
+class LabNonuniformRadialHistoryFlowPolicy(
+    LabNonuniformRadialFlowPolicy
+):
+    """Nonuniform radial policy with a compact raw-command GRU."""
+
+    context_schema = LAB_RADIAL_VISUAL_HISTORY_SCHEMA
+    context_dim = LAB_RADIAL_VISUAL_HISTORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 64,
+        history_token_dim: int = 32,
+        history_length: int = LAB_VISUAL_HISTORY_LENGTH,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 3,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_RADIAL_VISUAL_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_RADIAL_VISUAL_CHANNELS,
+        encoder_grid_shape: tuple[
+            int, ...
+        ] = LAB_RADIAL_VISUAL_ENCODER_GRID_SHAPE,
+        encoder_grid_channels: tuple[
+            str, ...
+        ] = LAB_RADIAL_VISUAL_ENCODER_CHANNELS,
+        grid_frame: str = LAB_RADIAL_VISUAL_FRAME,
+        radial_edges: tuple[float, ...] = LAB_RADIAL_VISUAL_RADIAL_EDGES,
+    ):
+        if int(history_length) != LAB_VISUAL_HISTORY_LENGTH:
+            raise ValueError(
+                f"lab radial history length must be "
+                f"{LAB_VISUAL_HISTORY_LENGTH}"
+            )
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            encoder_grid_shape=encoder_grid_shape,
+            encoder_grid_channels=encoder_grid_channels,
+            grid_frame=grid_frame,
+            radial_edges=radial_edges,
+        )
+        self.history_length = int(history_length)
+        self.history_token_dim = int(history_token_dim)
+        self.history_encoder = nn.GRU(
+            input_size=LAB_VISUAL_HISTORY_STEP_DIM,
+            hidden_size=self.history_token_dim,
+            batch_first=True,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + self.history_token_dim
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid = context[
+            :,
+            LAB_VISUAL_LOW_DIM:LAB_RADIAL_VISUAL_PACKED_DIM,
+        ].reshape(-1, *LAB_RADIAL_VISUAL_GRID_SHAPE)
+        history = context[:, LAB_RADIAL_VISUAL_PACKED_DIM:].reshape(
+            -1,
+            LAB_VISUAL_HISTORY_LENGTH,
+            LAB_VISUAL_HISTORY_STEP_DIM,
+        )
+        _, hidden = self.history_encoder(history)
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            hidden[-1],
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ) -> list[dict[str, object]]:
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        if freeze_history_encoder is None:
+            raise ValueError(
+                "GRU expansion requires an explicit freeze_history_encoder "
+                "contract"
+            )
+        for parameter in self.history_encoder.parameters():
+            parameter.requires_grad_(not freeze_history_encoder)
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+
+class LabVisualHistoryFlowPolicy(LabVisualFlowPolicy):
+    """Visual CFM policy with a compact GRU over past raw commands."""
+
+    context_schema = LAB_VISUAL_HISTORY_SCHEMA
+    context_dim = LAB_VISUAL_HISTORY_PACKED_DIM
+
+    def __init__(
+        self,
+        plan_shape: tuple[int, ...] = (10, 3),
+        hidden: int = 48,
+        representation_dim: int = 32,
+        grid_token_dim: int = 32,
+        history_token_dim: int = 16,
+        history_length: int = LAB_VISUAL_HISTORY_LENGTH,
+        control_limit: float | None = None,
+        nfe: int = 16,
+        trunk_depth: int = 2,
+        time_features: str = "raw1",
+        grid_shape: tuple[int, ...] = LAB_VISUAL_GRID_SHAPE,
+        grid_channels: tuple[str, ...] = LAB_VISUAL_CHANNELS,
+        grid_frame: str = LAB_VISUAL_FRAME,
+    ):
+        if int(history_length) != LAB_VISUAL_HISTORY_LENGTH:
+            raise ValueError(
+                f"lab visual history length must be {LAB_VISUAL_HISTORY_LENGTH}"
+            )
+        super().__init__(
+            plan_shape=plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            grid_token_dim=grid_token_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+            grid_shape=grid_shape,
+            grid_channels=grid_channels,
+            grid_frame=grid_frame,
+        )
+        self.history_length = int(history_length)
+        self.history_token_dim = int(history_token_dim)
+        self.history_encoder = nn.GRU(
+            input_size=LAB_VISUAL_HISTORY_STEP_DIM,
+            hidden_size=self.history_token_dim,
+            batch_first=True,
+        )
+        self.flow = ConditionalFlowMLP(
+            context_dim=(
+                LAB_VISUAL_LOW_DIM
+                + self.grid_token_dim
+                + self.history_token_dim
+            ),
+            plan_shape=self.plan_shape,
+            hidden=hidden,
+            representation_dim=representation_dim,
+            control_limit=control_limit,
+            nfe=nfe,
+            trunk_depth=trunk_depth,
+            time_features=time_features,
+        )
+
+    def encode_context(self, context: torch.Tensor) -> torch.Tensor:
+        single = context.ndim == 1
+        context = context.reshape(-1, self.context_dim).float()
+        low = context[:, :LAB_VISUAL_LOW_DIM]
+        grid_stop = LAB_VISUAL_PACKED_DIM
+        grid = context[:, LAB_VISUAL_LOW_DIM:grid_stop].reshape(
+            -1, *LAB_VISUAL_GRID_SHAPE
+        )
+        history = context[:, grid_stop:].reshape(
+            -1,
+            LAB_VISUAL_HISTORY_LENGTH,
+            LAB_VISUAL_HISTORY_STEP_DIM,
+        )
+        _, hidden = self.history_encoder(history)
+        encoded = torch.cat([
+            low,
+            self.grid_encoder(grid),
+            hidden[-1],
+        ], dim=1)
+        return encoded[0] if single else encoded
+
+    def expansion_parameter_groups(
+        self,
+        base_lr: float,
+        first_layer_lr_scale: float = 1.0,
+        *,
+        freeze_history_encoder: bool | None = None,
+    ) -> list[dict[str, object]]:
+        """Build expansion groups under an explicit GRU freeze contract."""
+        if base_lr <= 0.0 or not 0.0 < first_layer_lr_scale <= 1.0:
+            raise ValueError(
+                "require base_lr>0 and first_layer_lr_scale in (0,1]"
+            )
+        if freeze_history_encoder is None:
+            raise ValueError(
+                "GRU expansion requires an explicit freeze_history_encoder "
+                "contract"
+            )
+        for parameter in self.history_encoder.parameters():
+            parameter.requires_grad_(not freeze_history_encoder)
+        slow = (
+            list(self.grid_encoder.parameters())
+            + list(self.flow.trunk[0].parameters())
+        )
+        slow_ids = {id(parameter) for parameter in slow}
+        remaining = [
+            parameter for parameter in self.parameters()
+            if parameter.requires_grad and id(parameter) not in slow_ids
+        ]
+        return [
+            {"params": slow, "lr": base_lr * first_layer_lr_scale},
+            {"params": remaining, "lr": base_lr},
+        ]
+
+
 def load_lab_reference_policy(path: str | Path):
     """Load either the legacy raw10 lab policy or the visual lab policy."""
     path = Path(path)
@@ -318,6 +1684,87 @@ def load_lab_reference_policy(path: str | Path):
                 f"visual checkpoint is missing semantic fields {sorted(missing)}"
             )
         policy = LabVisualFlowPolicy(**arch)
+    elif kind == LAB_RADIAL_VISUAL_SCHEMA:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "encoder_grid_shape",
+            "encoder_grid_channels",
+            "grid_frame",
+            "radial_edges",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "radial visual checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        policy = LabNonuniformRadialFlowPolicy(**arch)
+    elif kind in {
+        LAB_HP100_SCHEMA,
+        LAB_HP100_EXACT_MEMORY_SCHEMA,
+        LAB_HP100_HISTORY_SCHEMA,
+    }:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "grid_frame",
+            "radial_edges",
+            "plane_face_count",
+            "plane_row_channels",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "uniform H_P checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        if kind == LAB_HP100_HISTORY_SCHEMA:
+            history_required = {"history_length", "history_token_dim"}
+            missing = history_required.difference(arch)
+            if missing:
+                raise ValueError(
+                    "uniform H_P history checkpoint is missing semantic fields "
+                    f"{sorted(missing)}"
+                )
+            policy = LabUniformHp100HistoryFlowPolicy(**arch)
+        elif kind == LAB_HP100_EXACT_MEMORY_SCHEMA:
+            policy = LabUniformHp100ExactMemoryFlowPolicy(**arch)
+        else:
+            policy = LabUniformHp100FlowPolicy(**arch)
+    elif kind == LAB_RADIAL_VISUAL_HISTORY_SCHEMA:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "encoder_grid_shape",
+            "encoder_grid_channels",
+            "grid_frame",
+            "radial_edges",
+            "history_length",
+            "history_token_dim",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "radial visual-history checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        policy = LabNonuniformRadialHistoryFlowPolicy(**arch)
+    elif kind == LAB_VISUAL_HISTORY_SCHEMA:
+        required = {
+            "grid_shape",
+            "grid_channels",
+            "grid_frame",
+            "history_length",
+            "history_token_dim",
+        }
+        missing = required.difference(arch)
+        if missing:
+            raise ValueError(
+                "visual-history checkpoint is missing semantic fields "
+                f"{sorted(missing)}"
+            )
+        policy = LabVisualHistoryFlowPolicy(**arch)
     elif kind == "conditional_flow_mlp":
         policy = ConditionalFlowMLP(**arch)
     else:

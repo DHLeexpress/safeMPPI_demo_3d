@@ -1,4 +1,4 @@
-"""Fixed-seed raw evaluation for randomized three-sphere lab expansion."""
+"""Fixed-seed raw evaluation for fixed- or variable-count sphere expansion."""
 from __future__ import annotations
 
 import copy
@@ -36,23 +36,68 @@ from .lab_clutter_expansion import (
     LAB_CLUTTER_SCENE_SCHEMA,
     LabClutterExpansionPolicyAdapter,
     LabClutterSphereExpansionTask,
-    RandomThreeSphereScene,
-    canonical_spheres,
+    canonical_sphere_rows,
     scene_sha256,
+    sphere_scene_spec_from_config,
 )
 from .lab_flow_evaluation import _validate_replay_provenance
 from .lab_reference_flow_task import raw_reference_rollout
-from .lab_visual_flow import LAB_VISUAL_SCHEMA, load_lab_reference_policy
+from .lab_visual_flow import (
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_HP100_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_LENGTH,
+    LAB_VISUAL_HISTORY_STEP_DIM,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_VISUAL_SCHEMA,
+    load_lab_reference_policy,
+)
 
 
 LAB_CLUTTER_TASK_PROFILE = (
     "minhyuk_lab_random_three_sphere_visual_expansion"
+)
+PATH_FOCUSED_SPHERE_TASK_PROFILE = (
+    "minhyuk_lab_path_focused_variable_sphere_visual_expansion"
 )
 EVALUATION_SCENE_SEED_STRIDE = 1009
 START_PROBE_SCENE_SEED_OFFSET = 17
 FIXED_SCENE_SEED_OFFSET = 104_729
 FIXED_SCENE_ROLLOUT_SEED_OFFSET = 1_000_003
 PATH_SPREAD_RESAMPLE_POINTS = 64
+ONE_SIGMA_COVERAGE = 0.6826894921370859
+ONE_SIGMA_Z = 1.0
+BOOTSTRAP_REPLICATES = 1_000
+PATH_FOCUSED_SPHERE_SCENE_SCHEMA = (
+    "lab_path_focused_variable_spheres_v2"
+)
+PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA = (
+    "lab_path_focused_midpoint_uniform_variable_spheres_v2"
+)
+PATH_FOCUSED_SPHERE_SCENE_SCHEMAS = frozenset({
+    PATH_FOCUSED_SPHERE_SCENE_SCHEMA,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA,
+})
+SUPPORTED_SPHERE_SCENE_SCHEMAS = frozenset({
+    LAB_CLUTTER_SCENE_SCHEMA,
+    *PATH_FOCUSED_SPHERE_SCENE_SCHEMAS,
+})
+SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_EXACT_MEMORY_SCHEMA,
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_HP100_SCHEMA,
+    LAB_VISUAL_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
+LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS = frozenset({
+    LAB_HP100_HISTORY_SCHEMA,
+    LAB_VISUAL_HISTORY_SCHEMA,
+    LAB_RADIAL_VISUAL_HISTORY_SCHEMA,
+})
 
 
 def _sha256_file(path: str | Path) -> str:
@@ -154,34 +199,71 @@ def _evaluation_artifact_binding(args, rounds: list[int]) -> dict:
 
 def is_lab_clutter_evaluation_manifest(manifest: dict) -> bool:
     """Return whether a completed lab manifest has the clutter eval contract."""
-    if manifest.get("task_profile") != LAB_CLUTTER_TASK_PROFILE:
+    profile = manifest.get("task_profile")
+    if profile not in {
+        LAB_CLUTTER_TASK_PROFILE,
+        PATH_FOCUSED_SPHERE_TASK_PROFILE,
+    }:
         return False
     conditioning = manifest.get("lab_conditioning")
     if (
         not isinstance(conditioning, dict)
-        or conditioning.get("context_schema") != LAB_VISUAL_SCHEMA
+        or conditioning.get("context_schema")
+        not in SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS
     ):
         raise ValueError(
-            "random-three-sphere expansion requires the visual lab context schema"
+            "sphere-clutter expansion requires the visual lab context schema"
         )
+    if (
+        conditioning["context_schema"]
+        in LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS
+    ):
+        history = conditioning.get("history_encoder")
+        if (
+            not isinstance(history, dict)
+            or history.get("present") is not True
+            or not isinstance(
+                history.get("frozen_during_expansion"), bool,
+            )
+            or not isinstance(
+                history.get("explicit_unfreeze_flag"), bool,
+            )
+            or history["explicit_unfreeze_flag"]
+            == history["frozen_during_expansion"]
+        ):
+            raise ValueError(
+                "visual-history expansion requires an explicit, consistent "
+                "GRU freeze contract"
+            )
     ledger = manifest.get("lab_scene_ledger")
     if not isinstance(ledger, list) or not ledger:
         raise ValueError(
-            "random-three-sphere expansion manifest requires a nonempty scene ledger"
+            "sphere-clutter expansion manifest requires a nonempty scene ledger"
         )
-    if any(
-        not isinstance(row, dict)
-        or row.get("schema") != LAB_CLUTTER_SCENE_SCHEMA
+    schemas = {
+        row.get("schema")
         for row in ledger
+        if isinstance(row, dict)
+    }
+    expected_schemas = (
+        frozenset({LAB_CLUTTER_SCENE_SCHEMA})
+        if profile == LAB_CLUTTER_TASK_PROFILE
+        else PATH_FOCUSED_SPHERE_SCENE_SCHEMAS
+    )
+    if (
+        len(schemas) != 1
+        or not schemas.issubset(expected_schemas)
+        or not schemas.issubset(SUPPORTED_SPHERE_SCENE_SCHEMAS)
+        or any(not isinstance(row, dict) for row in ledger)
     ):
         raise ValueError(
-            "random-three-sphere expansion scene ledger schema mismatch"
+            "sphere-clutter expansion scene ledger schema mismatch"
         )
     return True
 
 
 def _scene_record(
-    scene_spec: RandomThreeSphereScene,
+    scene_spec,
     env: TaskEnvironment,
     *,
     scene_seed: int,
@@ -199,6 +281,7 @@ def _scene_record(
     row = {
         "scene_seed": int(scene_seed),
         "scene_hash": scene_hash,
+        "obstacle_count": int(len(spheres)),
         "spheres": spheres.tolist(),
         "start_goal_path_diagnostics": start_goal_path_diagnostics(
             scene,
@@ -220,7 +303,7 @@ def _fixed_evaluation_scene_bank(
     """Materialize every randomized evaluation scene before loading a policy."""
     if int(episodes) < 1:
         raise ValueError("evaluation episodes must be positive")
-    scene_spec = RandomThreeSphereScene.from_config(config)
+    scene_spec = sphere_scene_spec_from_config(config)
     env = TaskEnvironment(config)
     scenes = [
         _scene_record(
@@ -240,17 +323,26 @@ def _fixed_evaluation_scene_bank(
         scene_seed=int(domain_seed) + START_PROBE_SCENE_SEED_OFFSET,
     )
     return {
-        "schema": LAB_CLUTTER_SCENE_SCHEMA,
+        "schema": scene_spec.scene_schema,
         "evaluation_seed": int(domain_seed),
         "configured_sampler_domain_seed": int(scene_spec.domain_seed),
         "sampler": {
-            "implementation": "RandomThreeSphereScene.sample",
+            "implementation": f"{type(scene_spec).__name__}.sample",
             "rng": (
                 "numpy.random.default_rng("
                 "SeedSequence([configured_sampler_domain_seed, scene_seed]))"
             ),
             "obstacle_family": "spheres",
-            "count": 3,
+            "count": (
+                int(scene_spec.max_count)
+                if scene_spec.scene_schema == LAB_CLUTTER_SCENE_SCHEMA
+                else None
+            ),
+            "count_min": int(
+                getattr(getattr(scene_spec, "spec", None), "count_min",
+                        scene_spec.max_count)
+            ),
+            "count_max": int(scene_spec.max_count),
             "radius_m": float(scene_spec.radius),
             "minimum_obstacle_surface_gap_m": float(
                 scene_spec.minimum_surface_margin
@@ -381,6 +473,140 @@ def successful_path_spread(
     return float(np.mean(pairwise))
 
 
+def _resampling_row_token(row: dict) -> str:
+    return "|".join([
+        str(row.get("scene_hash", "")),
+        str(row.get("rollout_seed", row.get("episode", ""))),
+        f"{float(row.get('gamma', 0.0)):.9g}",
+        str(row.get("status", "")),
+    ])
+
+
+def _stable_resampling_seed(rows: list[dict], label: str) -> int:
+    """Derive an order-independent deterministic seed from the evaluation cell."""
+    tokens = sorted(_resampling_row_token(row) for row in rows)
+    digest = hashlib.sha256(
+        (str(label) + "\n" + "\n".join(tokens)).encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "little", signed=False)
+
+
+def _wilson_one_sigma(successes: int, count: int) -> dict:
+    if int(count) < 1:
+        return {
+            "lower": None,
+            "upper": None,
+            "n": 0,
+            "method": "wilson_z1",
+        }
+    count = int(count)
+    successes = int(successes)
+    proportion = successes / count
+    denominator = 1.0 + ONE_SIGMA_Z * ONE_SIGMA_Z / count
+    center = (
+        proportion + ONE_SIGMA_Z * ONE_SIGMA_Z / (2.0 * count)
+    ) / denominator
+    radius = (
+        ONE_SIGMA_Z
+        * np.sqrt(
+            proportion * (1.0 - proportion) / count
+            + ONE_SIGMA_Z * ONE_SIGMA_Z / (4.0 * count * count)
+        )
+        / denominator
+    )
+    return {
+        "lower": float(max(0.0, center - radius)),
+        "upper": float(min(1.0, center + radius)),
+        "n": count,
+        "method": "wilson_z1",
+    }
+
+
+def _bootstrap_mean_one_sigma(
+    values,
+    *,
+    rows: list[dict],
+    label: str,
+) -> dict:
+    values = np.asarray(values, dtype=float).reshape(-1)
+    if len(values) != len(rows):
+        raise ValueError("bootstrap values and trajectory rows must align")
+    ordered = sorted(
+        zip(rows, values),
+        key=lambda pair: (_resampling_row_token(pair[0]), float(pair[1])),
+    )
+    rows = [pair[0] for pair in ordered if np.isfinite(pair[1])]
+    values = np.asarray([
+        pair[1] for pair in ordered if np.isfinite(pair[1])
+    ], dtype=float)
+    count = len(values)
+    if count < 1:
+        return {
+            "lower": None,
+            "upper": None,
+            "n": 0,
+            "method": "trajectory_bootstrap_central_68.27pct",
+            "replicates": BOOTSTRAP_REPLICATES,
+        }
+    rng = np.random.default_rng(_stable_resampling_seed(rows, label))
+    indices = rng.integers(
+        0, count, size=(BOOTSTRAP_REPLICATES, count),
+    )
+    samples = values[indices].mean(axis=1)
+    tail = 0.5 * (1.0 - ONE_SIGMA_COVERAGE)
+    lower, upper = np.quantile(samples, [tail, 1.0 - tail])
+    return {
+        "lower": float(lower),
+        "upper": float(upper),
+        "n": int(count),
+        "method": "trajectory_bootstrap_central_68.27pct",
+        "replicates": BOOTSTRAP_REPLICATES,
+    }
+
+
+def _bootstrap_path_spread_one_sigma(rows: list[dict]) -> dict:
+    success_rows = [
+        row for row in rows
+        if row.get("status") == "SUCCESS" and row.get("states") is not None
+    ]
+    success_rows.sort(key=_resampling_row_token)
+    count = len(success_rows)
+    empty = {
+        "lower": None,
+        "upper": None,
+        "n": int(count),
+        "method": "trajectory_bootstrap_central_68.27pct",
+        "replicates": BOOTSTRAP_REPLICATES,
+    }
+    if count < 2:
+        return empty
+    paths = np.asarray([
+        _arc_length_resample(row["states"], PATH_SPREAD_RESAMPLE_POINTS)
+        for row in success_rows
+    ])
+    differences = paths[:, None] - paths[None]
+    distances = np.sqrt(np.mean(np.sum(
+        differences * differences, axis=-1,
+    ), axis=-1))
+    triangle = np.triu_indices(count, 1)
+    rng = np.random.default_rng(
+        _stable_resampling_seed(success_rows, "successful_path_spread_m")
+    )
+    samples = np.empty(BOOTSTRAP_REPLICATES, float)
+    for replicate in range(BOOTSTRAP_REPLICATES):
+        selected = rng.integers(0, count, size=count)
+        samples[replicate] = float(
+            distances[np.ix_(selected, selected)][triangle].mean()
+        )
+    tail = 0.5 * (1.0 - ONE_SIGMA_COVERAGE)
+    lower, upper = np.quantile(samples, [tail, 1.0 - tail])
+    return {
+        **empty,
+        "lower": float(lower),
+        "upper": float(upper),
+    }
+
+
 def _fixed_scene_provenance(
     config,
     scene_seed: int,
@@ -388,7 +614,7 @@ def _fixed_scene_provenance(
     randomized_scene_bank: dict,
 ) -> dict:
     """Preregister one scene disjoint from gathering and randomized evaluation."""
-    scene_spec = RandomThreeSphereScene.from_config(config)
+    scene_spec = sphere_scene_spec_from_config(config)
     scene = _scene_record(
         scene_spec,
         TaskEnvironment(config),
@@ -410,7 +636,7 @@ def _fixed_scene_provenance(
             "fixed visualization scene overlaps randomized evaluation bank"
         )
     return {
-        "schema": LAB_CLUTTER_SCENE_SCHEMA,
+        "schema": scene_spec.scene_schema,
         "preregistered_before_checkpoint_evaluation": True,
         "shared_across_rounds": True,
         "shared_across_gamma": True,
@@ -438,7 +664,13 @@ def _write_fixed_scene_config(config, scene: dict, output: Path) -> dict:
     }
 
 
-def _checkpoint_policy(pretrain_dir: Path, expansion: Path, round_i: int):
+def _checkpoint_policy(
+    pretrain_dir: Path,
+    expansion: Path,
+    round_i: int,
+    *,
+    device: str | torch.device = "cpu",
+):
     policy = load_lab_reference_policy(pretrain_dir / "pretrained.pt")
     payload = torch.load(
         expansion / f"checkpoint_{round_i:03d}.pt",
@@ -446,7 +678,7 @@ def _checkpoint_policy(pretrain_dir: Path, expansion: Path, round_i: int):
         weights_only=False,
     )
     policy.load_state_dict(payload["model"], strict=True)
-    return policy.eval()
+    return policy.to(device).eval()
 
 
 def _summarize(
@@ -455,32 +687,65 @@ def _summarize(
     path_spread_domain: str | None = None,
 ) -> dict:
     success = [row for row in rows if row["status"] == "SUCCESS"]
-    clearance = [
-        row["min_clearance_m"] for row in success
-        if row["min_clearance_m"] is not None
+    clearance_rows = [
+        row for row in success if row["min_clearance_m"] is not None
     ]
-    times = [
-        row["time_to_goal_s"] for row in success
-        if row["time_to_goal_s"] is not None
+    clearance = [row["min_clearance_m"] for row in clearance_rows]
+    time_rows = [
+        row for row in success if row["time_to_goal_s"] is not None
     ]
+    times = [row["time_to_goal_s"] for row in time_rows]
     count = len(rows)
+    statuses = ("SUCCESS", "COLLISION", "OOB", "TIMEOUT")
+    status_keys = ("SR", "CR", "OOB", "timeout")
+    one_sigma = {
+        key: _wilson_one_sigma(
+            sum(row["status"] == status for row in rows), count,
+        )
+        for key, status in zip(status_keys, statuses)
+    }
+    one_sigma["window_validity"] = _bootstrap_mean_one_sigma(
+        [row["window_validity"] for row in rows],
+        rows=rows,
+        label="window_validity",
+    )
+    one_sigma["successful_min_clearance_m"] = _bootstrap_mean_one_sigma(
+        clearance,
+        rows=clearance_rows,
+        label="successful_min_clearance_m",
+    )
+    one_sigma["successful_time_to_goal_s"] = _bootstrap_mean_one_sigma(
+        times,
+        rows=time_rows,
+        label="successful_time_to_goal_s",
+    )
+    one_sigma["successful_path_spread_m"] = (
+        _bootstrap_path_spread_one_sigma(rows)
+        if path_spread_domain is not None
+        else {
+            "lower": None,
+            "upper": None,
+            "n": len(success),
+            "method": "not_applicable_cross_scene_or_gamma",
+        }
+    )
     return {
         "episodes": count,
         "SR": float(np.mean([
             row["status"] == "SUCCESS" for row in rows
-        ])),
+        ])) if rows else None,
         "CR": float(np.mean([
             row["status"] == "COLLISION" for row in rows
-        ])),
+        ])) if rows else None,
         "OOB": float(np.mean([
             row["status"] == "OOB" for row in rows
-        ])),
+        ])) if rows else None,
         "timeout": float(np.mean([
             row["status"] == "TIMEOUT" for row in rows
-        ])),
+        ])) if rows else None,
         "window_validity": float(np.mean([
             row["window_validity"] for row in rows
-        ])),
+        ])) if rows else None,
         "successful_min_clearance_m": (
             float(np.mean(clearance)) if clearance else None
         ),
@@ -499,10 +764,33 @@ def _summarize(
             if path_spread_domain is not None
             else "not_applicable_cross_scene_or_gamma"
         ),
+        "one_sigma": one_sigma,
     }
 
 
-def _raw_rows(policy, config, gammas, scene_bank, domain_seed: int):
+def _row_obstacle_count(row: dict) -> int:
+    value = row.get("obstacle_count")
+    if value is None:
+        value = len(row.get("spheres", ()))
+    value = int(value)
+    if value < 1:
+        raise ValueError("every clutter evaluation row needs an obstacle count")
+    return value
+
+
+def _raw_rows(
+    policy,
+    config,
+    gammas,
+    scene_bank,
+    domain_seed: int,
+    *,
+    device: str | torch.device = "cpu",
+    sampling_temperature: float = 1.0,
+):
+    rollout_kwargs = {"sampling_temperature": float(sampling_temperature)}
+    if torch.device(device).type != "cpu":
+        rollout_kwargs["device"] = device
     rows = []
     for gamma in gammas:
         for scene in scene_bank:
@@ -515,7 +803,7 @@ def _raw_rows(policy, config, gammas, scene_bank, domain_seed: int):
                 scene_config,
                 float(gamma),
                 rollout_seed,
-                sampling_temperature=1.0,
+                **rollout_kwargs,
             )
             rows.append({
                 "gamma": float(gamma),
@@ -523,6 +811,7 @@ def _raw_rows(policy, config, gammas, scene_bank, domain_seed: int):
                 "rollout_seed": int(rollout_seed),
                 "scene_seed": int(scene["scene_seed"]),
                 "scene_hash": str(scene["scene_hash"]),
+                "obstacle_count": int(len(spheres)),
                 "spheres": spheres.tolist(),
                 **result,
             })
@@ -536,12 +825,18 @@ def _fixed_scene_rows(
     scene: dict,
     rollouts: int,
     seed: int,
+    *,
+    device: str | torch.device = "cpu",
+    sampling_temperature: float = 1.0,
 ):
-    """Independent temperature-1 raw rollouts in one preregistered scene."""
+    """Independent raw rollouts in one preregistered scene."""
     if int(rollouts) < 1:
         raise ValueError("--fixed-scene-rollouts must be positive")
     spheres = np.asarray(scene["spheres"], np.float32)
     scene_config = _scene_config(config, spheres)
+    rollout_kwargs = {"sampling_temperature": float(sampling_temperature)}
+    if torch.device(device).type != "cpu":
+        rollout_kwargs["device"] = device
     rows = []
     for gamma_index, gamma in enumerate(gammas):
         for rollout in range(int(rollouts)):
@@ -556,7 +851,7 @@ def _fixed_scene_rows(
                 scene_config,
                 float(gamma),
                 rollout_seed,
-                sampling_temperature=1.0,
+                **rollout_kwargs,
             )
             rows.append({
                 "gamma": float(gamma),
@@ -564,6 +859,7 @@ def _fixed_scene_rows(
                 "rollout_seed": int(rollout_seed),
                 "scene_seed": int(scene["scene_seed"]),
                 "scene_hash": str(scene["scene_hash"]),
+                "obstacle_count": int(len(spheres)),
                 "spheres": spheres.tolist(),
                 **result,
             })
@@ -577,13 +873,18 @@ def _start_probe(
     gammas,
     samples: int,
     scene: dict,
+    *,
+    device: str | torch.device = "cpu",
 ):
     task = LabClutterSphereExpansionTask(
         config,
         context_schema=policy.context_schema,
+        device=device,
         tight_corridor=True,
     )
-    wrapped = LabClutterExpansionPolicyAdapter(policy)
+    wrapped = LabClutterExpansionPolicyAdapter(
+        policy, verifier_suffix_dim=task.verifier_suffix_dim,
+    )
     rows = []
     for gamma_index, gamma in enumerate(gammas):
         scene_seed = int(scene["scene_seed"])
@@ -591,7 +892,7 @@ def _start_probe(
         if state["scene_hash"] != scene["scene_hash"]:
             raise RuntimeError("start-probe scene does not match the fixed scene bank")
         context = task.context(state, float(gamma))
-        generator = torch.Generator().manual_seed(
+        generator = torch.Generator(device=torch.device(device)).manual_seed(
             scene_seed + 7919 * gamma_index
         )
         candidates = wrapped.sample(
@@ -635,9 +936,98 @@ def _plot_curves(summaries: dict, gammas: list[float], output: Path):
                 summaries[str(round_i)]["per_gamma"][f"{gamma:g}"][key]
                 for round_i in rounds
             ]
+            intervals = [
+                summaries[str(round_i)]["per_gamma"][f"{gamma:g}"][
+                    "one_sigma"
+                ][key]
+                for round_i in rounds
+            ]
             axis.plot(
                 rounds, values, marker="o", color=colors[gamma],
                 label=rf"$\gamma={gamma:g}$",
+            )
+            lower = [
+                interval["lower"] if interval["lower"] is not None else np.nan
+                for interval in intervals
+            ]
+            upper = [
+                interval["upper"] if interval["upper"] is not None else np.nan
+                for interval in intervals
+            ]
+            axis.fill_between(
+                rounds, lower, upper, color=colors[gamma], alpha=0.14,
+                linewidth=0.0,
+            )
+        axis.set_title(title)
+        axis.set_xlabel("Expansion round")
+        axis.grid(alpha=0.25)
+    axes[0, 0].legend(ncol=2, fontsize=10)
+    fig.tight_layout()
+    fig.savefig(output, dpi=190, bbox_inches="tight")
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_count_curves(
+    summaries: dict,
+    obstacle_counts: list[int],
+    output: Path,
+):
+    """Plot randomized-domain metrics stratified by sphere count."""
+    rounds = sorted(map(int, summaries))
+    cmap = plt.get_cmap("viridis")
+    colors = {
+        count: cmap(
+            0.12 + 0.76 * index / max(len(obstacle_counts) - 1, 1)
+        )
+        for index, count in enumerate(obstacle_counts)
+    }
+    specs = (
+        ("CR", "Collision rate"),
+        ("window_validity", "Validity"),
+        ("successful_min_clearance_m", "Min. clearance [m]"),
+        ("successful_time_to_goal_s", "Time-to-goal [s]"),
+    )
+    fig, axes = plt.subplots(2, 2, figsize=(12.0, 8.0))
+    for axis, (key, title) in zip(axes.flat, specs):
+        for count in obstacle_counts:
+            cells = [
+                summaries[str(round_i)]["per_obstacle_count"].get(str(count))
+                for round_i in rounds
+            ]
+            values = [
+                (
+                    cell[key]
+                    if cell is not None and cell[key] is not None
+                    else np.nan
+                )
+                for cell in cells
+            ]
+            lower = [
+                (
+                    cell["one_sigma"][key]["lower"]
+                    if cell is not None
+                    and cell["one_sigma"][key]["lower"] is not None
+                    else np.nan
+                )
+                for cell in cells
+            ]
+            upper = [
+                (
+                    cell["one_sigma"][key]["upper"]
+                    if cell is not None
+                    and cell["one_sigma"][key]["upper"] is not None
+                    else np.nan
+                )
+                for cell in cells
+            ]
+            axis.plot(
+                rounds, values, marker="o", color=colors[count],
+                label=rf"$N={count}$",
+            )
+            axis.fill_between(
+                rounds, lower, upper, color=colors[count], alpha=0.14,
+                linewidth=0.0,
             )
         axis.set_title(title)
         axis.set_xlabel("Expansion round")
@@ -734,6 +1124,8 @@ def _plot_fixed_scene_gallery(
     config,
     scene,
     output: Path,
+    *,
+    sampling_temperature: float = 1.0,
 ):
     """Overlay M independent raw rollouts in one scene shared by every cell."""
     physical_radius = float(
@@ -798,7 +1190,8 @@ def _plot_fixed_scene_gallery(
                     va="center", fontsize=13,
                 )
     fig.suptitle(
-        "Preregistered fixed-scene raw temperature-1 rollouts "
+        "Preregistered fixed-scene raw rollouts "
+        rf"($\tau={sampling_temperature:g}$) "
         "(separate from randomized-domain metrics)",
         fontsize=15,
         weight="bold",
@@ -816,9 +1209,18 @@ def _local_path(path: np.ndarray, env: TaskEnvironment, frame: np.ndarray):
 def _decode_event_scene(event: dict, task: LabClutterSphereExpansionTask):
     """Recover exact governor memory and geometry from a clutter event."""
     context = np.asarray(event.get("context"), np.float32).reshape(-1)
-    if len(context) < 25:
+    history_dim = (
+        LAB_VISUAL_HISTORY_LENGTH * LAB_VISUAL_HISTORY_STEP_DIM
+        if task.context_schema in LAB_VISUAL_HISTORY_CONTEXT_SCHEMAS else 0
+    )
+    governor_start = 7 + history_dim
+    scene_start = governor_start + 6
+    expected = scene_start + int(task.scene_spec.packed_dim)
+    if len(context) != expected:
         raise ValueError(
-            "clutter mechanism event lacks low7 + governor6 + sphere12 context"
+            "clutter mechanism event lacks low7 + optional history + "
+            "governor6 + packed-sphere "
+            f"context: expected {expected}, found {len(context)}"
         )
     gamma = float(event["gamma"])
     if not np.isclose(float(context[6]), gamma, atol=1.0e-6, rtol=0.0):
@@ -829,11 +1231,13 @@ def _decode_event_scene(event: dict, task: LabClutterSphereExpansionTask):
         robot[:3], expected_position, atol=2.0e-5, rtol=0.0,
     ):
         raise ValueError("clutter event robot disagrees with compact context")
-    previous_applied = context[-18:-15].copy()
-    previous_raw = context[-15:-12].copy()
-    spheres = task.scene_spec.validate(
-        task.env, canonical_spheres(context[-12:].reshape(3, 4)),
-    )
+    previous_applied = context[
+        governor_start:governor_start + 3
+    ].copy()
+    previous_raw = context[
+        governor_start + 3:governor_start + 6
+    ].copy()
+    spheres = task.scene_spec.unpack(task.env, context[scene_start:])
     scene_env = task._environment(spheres)
     return {
         "previous_applied": previous_applied,
@@ -880,9 +1284,9 @@ def _draw_scene_projections(
     spheres: np.ndarray,
     physical_radius: float,
 ):
-    """Draw all three physical spheres and their inflated safety shells."""
+    """Draw every physical sphere and its inflated safety shell."""
     theta = np.linspace(0.0, 2.0 * np.pi, 160)
-    for sphere in canonical_spheres(spheres):
+    for sphere in canonical_sphere_rows(spheres):
         center = (sphere[:3] - env.start[:3]) @ frame
         effective_radius = float(sphere[3])
         side.fill(
@@ -1421,8 +1825,38 @@ def evaluate_lab_clutter_expansion(
     pretrain_manifest,
     manifest,
 ):
-    """Evaluate raw temperature-1 policy on disjoint randomized and fixed scenes."""
+    """Evaluate raw policy on disjoint randomized and fixed scenes."""
     del pretrain_manifest
+    device = torch.device(getattr(args, "device", "cpu"))
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError(f"evaluation device {device} requires CUDA")
+    sampling_temperature = float(
+        getattr(args, "sampling_temperature", 1.0)
+    )
+    if (
+        not np.isfinite(sampling_temperature)
+        or sampling_temperature < 0.0
+    ):
+        raise ValueError(
+            "--sampling-temperature must be finite and nonnegative"
+        )
+    requested_output = getattr(args, "evaluation_output", None)
+    output = (
+        Path(requested_output)
+        if requested_output is not None
+        else args.expansion / "eval"
+    )
+    if (
+        requested_output is not None
+        and output.exists()
+        and (
+            not output.is_dir()
+            or any(output.iterdir())
+        )
+    ):
+        raise FileExistsError(
+            f"refusing to overwrite explicit evaluation output {output}"
+        )
     gammas = [float(value) for value in config.data.gammas]
     scene_bank = _evaluation_scene_provenance(
         config,
@@ -1444,12 +1878,40 @@ def evaluate_lab_clutter_expansion(
         manifest,
         scene_bank,
     )
+    evaluation_scene_spec = sphere_scene_spec_from_config(config)
+    minimum_count = int(
+        getattr(
+            getattr(evaluation_scene_spec, "spec", None),
+            "count_min",
+            evaluation_scene_spec.max_count,
+        )
+    )
+    obstacle_counts = list(range(
+        minimum_count, int(evaluation_scene_spec.max_count) + 1,
+    ))
     total_rounds = int(manifest["config"]["rounds"])
-    rounds = sorted({
-        0,
-        *range(0, total_rounds + 1, int(args.stride)),
-        total_rounds,
-    })
+    requested_evaluation_rounds = getattr(
+        args, "evaluation_rounds", None,
+    )
+    if requested_evaluation_rounds is None:
+        rounds = sorted({
+            0,
+            *range(0, total_rounds + 1, int(args.stride)),
+            total_rounds,
+        })
+    else:
+        rounds = sorted(set(map(int, requested_evaluation_rounds)))
+        if (
+            not rounds
+            or any(
+                round_i < 0 or round_i > total_rounds
+                for round_i in rounds
+            )
+        ):
+            raise ValueError(
+                f"--evaluation-rounds must lie in [0,{total_rounds}], "
+                f"got {rounds}"
+            )
     requested_display_rounds = getattr(args, "video_rounds", None)
     if requested_display_rounds is None:
         display_rounds = sorted({
@@ -1471,16 +1933,20 @@ def evaluate_lab_clutter_expansion(
             f"got {display_rounds}"
         )
     rounds = sorted(set(rounds) | set(display_rounds))
-    artifact_binding = _evaluation_artifact_binding(args, rounds)
+    binding_rounds = sorted({0, *rounds})
+    artifact_binding = _evaluation_artifact_binding(args, binding_rounds)
 
     per_round_rows = {}
     fixed_per_round_rows = {}
     summaries = {}
     fixed_summaries = {}
     probes = {}
+    device_kwargs = (
+        {} if device.type == "cpu" else {"device": device}
+    )
     for round_i in rounds:
         policy = _checkpoint_policy(
-            args.pretrain_dir, args.expansion, round_i,
+            args.pretrain_dir, args.expansion, round_i, **device_kwargs,
         )
         rows = _raw_rows(
             policy,
@@ -1488,6 +1954,8 @@ def evaluate_lab_clutter_expansion(
             gammas,
             scene_bank["scenes"],
             int(args.seed),
+            sampling_temperature=sampling_temperature,
+            **device_kwargs,
         )
         fixed_rows = _fixed_scene_rows(
             policy,
@@ -1496,6 +1964,8 @@ def evaluate_lab_clutter_expansion(
             fixed_scene["scene"],
             fixed_scene_rollouts,
             int(args.seed),
+            sampling_temperature=sampling_temperature,
+            **device_kwargs,
         )
         probe_rows = _start_probe(
             policy,
@@ -1503,6 +1973,7 @@ def evaluate_lab_clutter_expansion(
             gammas,
             int(args.probe_samples),
             scene_bank["start_probe_scene"],
+            **device_kwargs,
         )
         per_round_rows[round_i] = rows
         fixed_per_round_rows[round_i] = fixed_rows
@@ -1523,9 +1994,29 @@ def evaluate_lab_clutter_expansion(
             )
             for gamma in gammas
         }
+        per_obstacle_count = {
+            str(count): _summarize([
+                row for row in rows
+                if _row_obstacle_count(row) == count
+            ])
+            for count in obstacle_counts
+        }
+        per_gamma_obstacle_count = {
+            f"{gamma:g}": {
+                str(count): _summarize([
+                    row for row in rows
+                    if row["gamma"] == gamma
+                    and _row_obstacle_count(row) == count
+                ])
+                for count in obstacle_counts
+            }
+            for gamma in gammas
+        }
         summaries[str(round_i)] = {
             "pooled": _summarize(rows),
             "per_gamma": per_gamma,
+            "per_obstacle_count": per_obstacle_count,
+            "per_gamma_obstacle_count": per_gamma_obstacle_count,
             "start_probe_validity": float(np.mean([
                 row["valid"] for row in probe_rows
             ])),
@@ -1544,8 +2035,7 @@ def evaluate_lab_clutter_expansion(
             flush=True,
         )
 
-    output = args.expansion / "eval"
-    output.mkdir(exist_ok=True)
+    output.mkdir(parents=True, exist_ok=True)
     concrete_config = _write_fixed_scene_config(
         config,
         fixed_scene["scene"],
@@ -1601,9 +2091,24 @@ def evaluate_lab_clutter_expansion(
                 "fixed-scene rollout seeds changed across checkpoints"
             )
     (output / "raw_eval.json").write_text(json.dumps({
-        "status": "LAB_CLUTTER_RAW_TEMPERATURE1_EVALUATION_COMPLETE",
-        "sampling_temperature": 1.0,
+        "status": (
+            "LAB_CLUTTER_RAW_TEMPERATURE1_EVALUATION_COMPLETE"
+            if sampling_temperature == 1.0
+            else "LAB_CLUTTER_RAW_FIXED_TEMPERATURE_EVALUATION_COMPLETE"
+        ),
+        "sampling_temperature": sampling_temperature,
         "sigma_tilt_used": False,
+        "runtime_device": str(device),
+        "one_sigma_contract": {
+            "coverage": ONE_SIGMA_COVERAGE,
+            "rates": "Wilson score interval with z=1",
+            "continuous_metrics": (
+                "deterministic trajectory-level percentile bootstrap, "
+                "central 68.27%"
+            ),
+            "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+        },
+        "obstacle_counts": obstacle_counts,
         "artifact_binding": artifact_binding,
         "scene_bank": scene_bank,
         "summary": summaries,
@@ -1611,9 +2116,26 @@ def evaluate_lab_clutter_expansion(
         "start_probe_rows": probes,
     }, indent=2) + "\n")
     (output / "fixed_scene_raw_eval.json").write_text(json.dumps({
-        "status": "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE1_EVALUATION_COMPLETE",
-        "sampling_temperature": 1.0,
+        "status": (
+            "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE1_EVALUATION_COMPLETE"
+            if sampling_temperature == 1.0
+            else "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE_EVALUATION_COMPLETE"
+        ),
+        "sampling_temperature": sampling_temperature,
         "sigma_tilt_used": False,
+        "runtime_device": str(device),
+        "one_sigma_contract": {
+            "coverage": ONE_SIGMA_COVERAGE,
+            "rates": "Wilson score interval with z=1",
+            "continuous_metrics": (
+                "deterministic trajectory-level percentile bootstrap, "
+                "central 68.27%"
+            ),
+            "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+        },
+        "obstacle_count": int(
+            fixed_scene["scene"]["obstacle_count"]
+        ),
         "artifact_binding": artifact_binding,
         "rollouts_per_gamma": fixed_scene_rollouts,
         "path_spread_resample_points": PATH_SPREAD_RESAMPLE_POINTS,
@@ -1632,6 +2154,9 @@ def evaluate_lab_clutter_expansion(
     _plot_curves(
         summaries, gammas, output / "raw_curves.png",
     )
+    _plot_count_curves(
+        summaries, obstacle_counts, output / "raw_curves_by_obstacle_count.png",
+    )
     _plot_gallery(
         per_round_rows,
         display_rounds,
@@ -1647,6 +2172,7 @@ def evaluate_lab_clutter_expansion(
         config,
         fixed_scene["scene"],
         output / "fixed_scene_raw_gallery.png",
+        sampling_temperature=sampling_temperature,
     )
 
     if not getattr(args, "screening_only", False):
@@ -1679,11 +2205,12 @@ def evaluate_lab_clutter_expansion(
         committed_cells = resolve_committed_success(manifest, events)
         _validate_replay_provenance(manifest, committed_cells)
         policy = _checkpoint_policy(
-            args.pretrain_dir, args.expansion, total_rounds,
+            args.pretrain_dir, args.expansion, total_rounds, **device_kwargs,
         )
         task = LabClutterSphereExpansionTask(
             config,
             context_schema=policy.context_schema,
+            device=device,
             tight_corridor=True,
         )
         event_scenes = _event_scene_index(events, task, manifest)
