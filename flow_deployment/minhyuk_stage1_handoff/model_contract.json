@@ -26,11 +26,23 @@
   },
   "training": {
     "source_archive_sha256": "c9e593896678f1a083af27cd56b50c509bcc5b4670ed1393cd1e3d5679d58602",
+    "obstacle_distribution_config": "configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json",
+    "obstacle_distribution_config_sha256": "9336bc73ff6d18e2cfafe8f96db455ae9c7614a8c981906d196da7c385591429",
+    "obstacle_count_range": [4, 8],
     "accepted_trajectories": 8000,
     "randomized_scenes": 3262,
     "selected_windows": 256000,
     "selected_epoch": 52,
     "selected_validation_loss": 0.3372768461704254
+  },
+  "physical_lab_evidence": {
+    "distribution_config": "configs/lab_clutter_cylinders_lab_six_v2.json",
+    "distribution_config_sha256": "bef69e2111deb017b1b19ad59904f4b00be8c972cc23a2d5fe3b39a37fa0652d",
+    "obstacle_count": 6,
+    "selected_scene_id": "cylinders_00697",
+    "selected_scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+    "paired_rollout_seed": 1113273,
+    "qualitative_only": true
   },
   "scope": "pretrained cylinder-ID policy only; no expanded checkpoint and no flight-safety guarantee"
 }

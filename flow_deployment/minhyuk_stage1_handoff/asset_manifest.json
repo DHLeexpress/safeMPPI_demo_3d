@@ -1,73 +1,158 @@
 {
   "status": "MINHYUK_STAGE1_HANDOFF_ASSETS_COMPLETE",
-  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated and no rate was visually curated.",
+  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated. The exact-six cylinder panel is a declared qualitative selection, not a success-rate estimate.",
   "source": {
-    "repository_head": "5bcd05d197eb46ef9282c12b83291ae19a2ea928",
+    "repository_head": "ef271a8d3e4df4eb01194265162e77af8249aa31",
     "path_focused_source_commit": "5c8a57779f165c583b297b73ab6d8bf90e3f59f5",
     "builder": "scripts/build_minhyuk_stage1_handoff_assets.py",
-    "builder_sha256": "309b02b9481297f60cf8d6db704468f3f3846d176b2cc50052b715d7cf8d52c0",
+    "builder_sha256": "17dad2c0012112337283ba9088edac9dba640074d92f34ce2bb24dcfc97e0347",
     "checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
     "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
     "configs": {
       "configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json": "9336bc73ff6d18e2cfafe8f96db455ae9c7614a8c981906d196da7c385591429",
+      "configs/lab_clutter_cylinders_lab_six_v2.json": "bef69e2111deb017b1b19ad59904f4b00be8c972cc23a2d5fe3b39a37fa0652d",
       "configs/lab_ball_stage1_t128.json": "31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38",
       "configs/lab_clutter_spheres_path_midpoint_uniform_v2.json": "6727e70afbee4f8da37aba211b9aaba79156f7ee7932ad137a62480f9df9992c"
     }
   },
   "command": "python scripts/build_minhyuk_stage1_handoff_assets.py --device cpu",
   "id_cylinder_safemppi": {
-    "scene_id": "cylinders_00051",
-    "scene_hash": "a69c39e18adaec64faa448e69db0de34fd9590468258e4975719830d34250ebc",
-    "cross_gamma_rms_spread_m": 0.5824536549678093,
+    "evidence_contract": {
+      "training_obstacle_count_range": [
+        4,
+        8
+      ],
+      "physical_lab_obstacle_count": 6,
+      "paired_scene_and_rollout_seed": true,
+      "selection_scope": "144 exact-six, all-four-gamma-success scenes in the canonical 2000-successes-per-gamma archive",
+      "source_commit": "c46ae2fff7f77b920d38c2e249c43267f68504ca",
+      "source_scene_bank_seed": 20260731,
+      "selection_rule": "strictly decreasing horizontal transverse RMS detour and larger low-vs-high time-to-goal; then maximize visible low-vs-high route contrast",
+      "rate_estimate": false
+    },
+    "scene_id": "cylinders_00697",
+    "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+    "scene_bank_seed": 20260731,
+    "scene_seed": 2096909582,
+    "rollout_seed": 1113273,
+    "cylinder_count": 6,
+    "cross_gamma_rms_spread_m": 0.22996679181388993,
+    "low_vs_high_detour_rms_gap_m": 0.13648449285741598,
     "all_success": true,
     "rows": [
       {
         "gamma": 0.1,
         "status": "SUCCESS",
-        "seed": 461459,
-        "scene_id": "cylinders_00051",
-        "scene_hash": "a69c39e18adaec64faa448e69db0de34fd9590468258e4975719830d34250ebc",
-        "steps": 120,
-        "time_to_goal_s": 12.0,
-        "goal_distance_m": 0.1907849253501891,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.1_cylinders_00051_s461459.npz",
-        "archive_sha256": "507f56b3925b02b063cf91a165a9ec61bd9052b2965d29c475603dca8e797aa9"
+        "seed": 1113273,
+        "scene_id": "cylinders_00697",
+        "scene_seed": 2096909582,
+        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+        "steps": 113,
+        "time_to_goal_s": 11.3,
+        "goal_distance_m": 0.18467359473120779,
+        "min_clearance_m": 0.11846078406750693,
+        "horizontal_transverse_rms_m": 0.2258302047303245,
+        "horizontal_max_abs_cross_track_m": 0.36041101903155137,
+        "horizontal_path_length_m": 4.802814726544587,
+        "horizontal_path_inefficiency_m": 0.5608817078967956,
+        "mean_signed_cross_track_m": -0.02684377530641845,
+        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.1_cylinders_00697_s1113273.npz",
+        "archive_sha256": "68f7473e21ef1489fc662da7160a2e01f231d113fb803eedce1a6ef5e11d4efd"
       },
       {
         "gamma": 0.3,
         "status": "SUCCESS",
-        "seed": 461459,
-        "scene_id": "cylinders_00051",
-        "scene_hash": "a69c39e18adaec64faa448e69db0de34fd9590468258e4975719830d34250ebc",
-        "steps": 126,
-        "time_to_goal_s": 12.600000000000001,
-        "goal_distance_m": 0.19933805741504645,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.3_cylinders_00051_s461459.npz",
-        "archive_sha256": "d8e0c466d8c22e338af999bf80010d4a7980bbd70bf5927ede23f65afe23da20"
+        "seed": 1113273,
+        "scene_id": "cylinders_00697",
+        "scene_seed": 2096909582,
+        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+        "steps": 72,
+        "time_to_goal_s": 7.2,
+        "goal_distance_m": 0.1567770455729654,
+        "min_clearance_m": 0.1533462267485351,
+        "horizontal_transverse_rms_m": 0.12523489881425734,
+        "horizontal_max_abs_cross_track_m": 0.23312014269275363,
+        "horizontal_path_length_m": 4.063787676843802,
+        "horizontal_path_inefficiency_m": 0.07700622858466932,
+        "mean_signed_cross_track_m": -0.055258197599404715,
+        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.3_cylinders_00697_s1113273.npz",
+        "archive_sha256": "2dbe5d0283a4da2da4c71dbf3df8d0ea5fe5be5ffc24b80e4abbbb1a56c66836"
       },
       {
         "gamma": 0.5,
         "status": "SUCCESS",
-        "seed": 461459,
-        "scene_id": "cylinders_00051",
-        "scene_hash": "a69c39e18adaec64faa448e69db0de34fd9590468258e4975719830d34250ebc",
-        "steps": 86,
-        "time_to_goal_s": 8.6,
-        "goal_distance_m": 0.15878001269563355,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.5_cylinders_00051_s461459.npz",
-        "archive_sha256": "bac6468ff91052d88ddf3a76bc202ea26ffdbf4631b3c6dae6bfb8ba5f711550"
+        "seed": 1113273,
+        "scene_id": "cylinders_00697",
+        "scene_seed": 2096909582,
+        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+        "steps": 69,
+        "time_to_goal_s": 6.9,
+        "goal_distance_m": 0.16745131382311612,
+        "min_clearance_m": 0.23668922958590116,
+        "horizontal_transverse_rms_m": 0.10713261059145857,
+        "horizontal_max_abs_cross_track_m": 0.19216594537432735,
+        "horizontal_path_length_m": 4.023540965755295,
+        "horizontal_path_inefficiency_m": 0.07803969576126146,
+        "mean_signed_cross_track_m": -0.032963070608035466,
+        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.5_cylinders_00697_s1113273.npz",
+        "archive_sha256": "19337aaac49df69525cb80cafd1acf50008a3c23216ccd991dbef5d393419bc3"
       },
       {
         "gamma": 1.0,
         "status": "SUCCESS",
-        "seed": 461459,
-        "scene_id": "cylinders_00051",
-        "scene_hash": "a69c39e18adaec64faa448e69db0de34fd9590468258e4975719830d34250ebc",
-        "steps": 107,
-        "time_to_goal_s": 10.700000000000001,
-        "goal_distance_m": 0.17351050655517272,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g1_cylinders_00051_s461459.npz",
-        "archive_sha256": "5015741b4ab397f05a941dce02b851d6837eef7f578641f2dd6a433f7428fdd5"
+        "seed": 1113273,
+        "scene_id": "cylinders_00697",
+        "scene_seed": 2096909582,
+        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
+        "steps": 71,
+        "time_to_goal_s": 7.1000000000000005,
+        "goal_distance_m": 0.16664524204156875,
+        "min_clearance_m": 0.11886869930894106,
+        "horizontal_transverse_rms_m": 0.08934571187290852,
+        "horizontal_max_abs_cross_track_m": 0.1821014762393698,
+        "horizontal_path_length_m": 4.003055120568441,
+        "horizontal_path_inefficiency_m": 0.046942604492641316,
+        "mean_signed_cross_track_m": -0.04476660378229259,
+        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g1_cylinders_00697_s1113273.npz",
+        "archive_sha256": "63f512ed10cf32623395d1f92c4585ce89ec9c46ae32d3719f39fbd6db78afe4"
+      }
+    ],
+    "nominal_polytope_gifs": [
+      {
+        "gamma": 0.1,
+        "path": "assets/cylinder_id_safemppi_nominal_g0p1.gif",
+        "frames": 39,
+        "fps": 8,
+        "dense_substeps_per_control": 10,
+        "bytes": 699596,
+        "sha256": "a6cae6168e4e5126086eaa5c0ca5e0c17749d0e7f1a4d6b2f35c3d0a78fc6708"
+      },
+      {
+        "gamma": 0.3,
+        "path": "assets/cylinder_id_safemppi_nominal_g0p3.gif",
+        "frames": 37,
+        "fps": 8,
+        "dense_substeps_per_control": 10,
+        "bytes": 582581,
+        "sha256": "e8918eccd56c69b895bb0f9044af55a0eff2217c4b00a41497286760fb67dcab"
+      },
+      {
+        "gamma": 0.5,
+        "path": "assets/cylinder_id_safemppi_nominal_g0p5.gif",
+        "frames": 36,
+        "fps": 8,
+        "dense_substeps_per_control": 10,
+        "bytes": 454173,
+        "sha256": "88b152ee9a44cb8620bbf8f366f73006384ebe7f3b2bc58bd6ba6a775e2b2da2"
+      },
+      {
+        "gamma": 1.0,
+        "path": "assets/cylinder_id_safemppi_nominal_g1p0.gif",
+        "frames": 37,
+        "fps": 8,
+        "dense_substeps_per_control": 10,
+        "bytes": 599743,
+        "sha256": "e133398021341c8c96d9e08a53f58f645eb35975a153141252bd254f61791ee7"
       }
     ]
   },
@@ -1505,13 +1590,33 @@
   "generated_files": [
     {
       "path": "assets/cylinder_id_safemppi_gamma_overlay.pdf",
-      "bytes": 42516,
-      "sha256": "ee1cde7a5b9ca01bda46b979928f2569630b65196ba4b4a7721c0184671486d0"
+      "bytes": 44448,
+      "sha256": "a3ed21f63506ccaa436c1e7f93887e47c371b3cb7b9b40cdabda5e75d71076c4"
     },
     {
       "path": "assets/cylinder_id_safemppi_gamma_overlay.png",
-      "bytes": 475382,
-      "sha256": "fe637d79f12a9db5d6d37c1e79f059a3da05b1bd9ad0103286fe89fae3af08c0"
+      "bytes": 468127,
+      "sha256": "a840c3fbc97f95402d846c3bf2672673306b377d385a252fc1b0626ee3a4217c"
+    },
+    {
+      "path": "assets/cylinder_id_safemppi_nominal_g0p1.gif",
+      "bytes": 699596,
+      "sha256": "a6cae6168e4e5126086eaa5c0ca5e0c17749d0e7f1a4d6b2f35c3d0a78fc6708"
+    },
+    {
+      "path": "assets/cylinder_id_safemppi_nominal_g0p3.gif",
+      "bytes": 582581,
+      "sha256": "e8918eccd56c69b895bb0f9044af55a0eff2217c4b00a41497286760fb67dcab"
+    },
+    {
+      "path": "assets/cylinder_id_safemppi_nominal_g0p5.gif",
+      "bytes": 454173,
+      "sha256": "88b152ee9a44cb8620bbf8f366f73006384ebe7f3b2bc58bd6ba6a775e2b2da2"
+    },
+    {
+      "path": "assets/cylinder_id_safemppi_nominal_g1p0.gif",
+      "bytes": 599743,
+      "sha256": "e133398021341c8c96d9e08a53f58f645eb35975a153141252bd254f61791ee7"
     },
     {
       "path": "assets/single_sphere_pretrained_r0_overlay.pdf",
@@ -1532,6 +1637,26 @@
       "path": "assets/three_sphere_ood_failure_overlay.png",
       "bytes": 1011992,
       "sha256": "c1023def5c3da36f9190002b50374c68d6d817c9f7b8567f14e21da6fa6f05fe"
+    },
+    {
+      "path": "trajectory_archives/run_g0.1_cylinders_00697_s1113273.npz",
+      "bytes": 62337,
+      "sha256": "68f7473e21ef1489fc662da7160a2e01f231d113fb803eedce1a6ef5e11d4efd"
+    },
+    {
+      "path": "trajectory_archives/run_g0.3_cylinders_00697_s1113273.npz",
+      "bytes": 41943,
+      "sha256": "2dbe5d0283a4da2da4c71dbf3df8d0ea5fe5be5ffc24b80e4abbbb1a56c66836"
+    },
+    {
+      "path": "trajectory_archives/run_g0.5_cylinders_00697_s1113273.npz",
+      "bytes": 40480,
+      "sha256": "19337aaac49df69525cb80cafd1acf50008a3c23216ccd991dbef5d393419bc3"
+    },
+    {
+      "path": "trajectory_archives/run_g1_cylinders_00697_s1113273.npz",
+      "bytes": 41515,
+      "sha256": "63f512ed10cf32623395d1f92c4585ce89ec9c46ae32d3719f39fbd6db78afe4"
     },
     {
       "path": "trajectory_archives/stage1_single_sphere_raw_g0.1_s91000_success.npz",
