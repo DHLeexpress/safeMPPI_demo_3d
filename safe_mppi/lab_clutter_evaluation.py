@@ -73,9 +73,16 @@ BOOTSTRAP_REPLICATES = 1_000
 PATH_FOCUSED_SPHERE_SCENE_SCHEMA = (
     "lab_path_focused_variable_spheres_v2"
 )
+PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA = (
+    "lab_path_focused_midpoint_uniform_variable_spheres_v2"
+)
+PATH_FOCUSED_SPHERE_SCENE_SCHEMAS = frozenset({
+    PATH_FOCUSED_SPHERE_SCENE_SCHEMA,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA,
+})
 SUPPORTED_SPHERE_SCENE_SCHEMAS = frozenset({
     LAB_CLUTTER_SCENE_SCHEMA,
-    PATH_FOCUSED_SPHERE_SCENE_SCHEMA,
+    *PATH_FOCUSED_SPHERE_SCENE_SCHEMAS,
 })
 SUPPORTED_LAB_VISUAL_CONTEXT_SCHEMAS = frozenset({
     LAB_HP100_EXACT_MEMORY_SCHEMA,
@@ -238,14 +245,14 @@ def is_lab_clutter_evaluation_manifest(manifest: dict) -> bool:
         for row in ledger
         if isinstance(row, dict)
     }
-    expected_schema = (
-        LAB_CLUTTER_SCENE_SCHEMA
+    expected_schemas = (
+        frozenset({LAB_CLUTTER_SCENE_SCHEMA})
         if profile == LAB_CLUTTER_TASK_PROFILE
-        else PATH_FOCUSED_SPHERE_SCENE_SCHEMA
+        else PATH_FOCUSED_SPHERE_SCENE_SCHEMAS
     )
     if (
         len(schemas) != 1
-        or schemas != {expected_schema}
+        or not schemas.issubset(expected_schemas)
         or not schemas.issubset(SUPPORTED_SPHERE_SCENE_SCHEMAS)
         or any(not isinstance(row, dict) for row in ledger)
     ):

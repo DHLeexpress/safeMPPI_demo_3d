@@ -13,6 +13,8 @@ from safe_mppi.lab_clutter_evaluation import (
     EVALUATION_SCENE_SEED_STRIDE,
     FIXED_SCENE_ROLLOUT_SEED_OFFSET,
     LAB_CLUTTER_TASK_PROFILE,
+    PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA,
+    PATH_FOCUSED_SPHERE_TASK_PROFILE,
     START_PROBE_SCENE_SEED_OFFSET,
     _event_scene_index,
     _evaluation_scene_provenance,
@@ -102,6 +104,16 @@ def test_clutter_dispatch_requires_task_profile_and_schemas():
     wrong_scene["lab_scene_ledger"][0]["schema"] = "other_scene_v1"
     with pytest.raises(ValueError, match="scene ledger schema mismatch"):
         is_lab_clutter_evaluation_manifest(wrong_scene)
+
+
+def test_midpoint_uniform_path_focused_scene_schema_is_supported():
+    manifest = _manifest()
+    manifest["task_profile"] = PATH_FOCUSED_SPHERE_TASK_PROFILE
+    manifest["lab_scene_ledger"][0]["schema"] = (
+        PATH_FOCUSED_MIDPOINT_UNIFORM_SPHERE_SCENE_SCHEMA
+    )
+
+    assert is_lab_clutter_evaluation_manifest(manifest)
 
 
 def test_round_zero_must_equal_pretrained_model_bitwise(tmp_path):
