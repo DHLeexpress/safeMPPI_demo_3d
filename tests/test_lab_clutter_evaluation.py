@@ -240,6 +240,7 @@ def test_fixed_scene_rows_reuse_exact_independent_seeds(monkeypatch):
     )
     second = _fixed_scene_rows(
         object(), config, [0.1, 0.3], bank["scenes"][0], 3, 17,
+        sampling_temperature=0.4,
     )
 
     first_seeds = [row["rollout_seed"] for row in first]
@@ -247,7 +248,12 @@ def test_fixed_scene_rows_reuse_exact_independent_seeds(monkeypatch):
     assert len(first_seeds) == len(set(first_seeds))
     assert first_seeds[0] == 17 + FIXED_SCENE_ROLLOUT_SEED_OFFSET
     assert all(row["scene_hash"] == first[0]["scene_hash"] for row in first)
-    assert all(temperature == 1.0 for _, _, temperature in calls)
+    assert all(
+        temperature == 1.0 for _, _, temperature in calls[:len(first)]
+    )
+    assert all(
+        temperature == 0.4 for _, _, temperature in calls[len(first):]
+    )
 
 
 def test_successful_path_spread_uses_arc_length_not_time_index():
@@ -399,8 +405,17 @@ def test_metrics_output_serializes_evaluation_scene_bank(tmp_path, monkeypatch):
         lambda *args: SimpleNamespace(context_schema=LAB_VISUAL_SCHEMA),
     )
 
-    def fake_raw_rows(policy, task_config, gammas, scene_bank, domain_seed):
+    def fake_raw_rows(
+        policy,
+        task_config,
+        gammas,
+        scene_bank,
+        domain_seed,
+        *,
+        sampling_temperature=1.0,
+    ):
         del policy, task_config, domain_seed
+        assert sampling_temperature == 1.0
         return [{
             "gamma": float(gamma),
             "episode": int(scene["episode"]),

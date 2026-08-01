@@ -1194,6 +1194,15 @@ def main():
     )
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--probe-samples", type=int, default=16)
+    parser.add_argument(
+        "--sampling-temperature",
+        type=float,
+        default=1.0,
+        help=(
+            "raw flow-base standard deviation used only for evaluation; "
+            "1.0 preserves the canonical audit"
+        ),
+    )
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--seed", type=int, default=91000)
     parser.add_argument(

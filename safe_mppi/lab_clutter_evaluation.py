@@ -786,8 +786,9 @@ def _raw_rows(
     domain_seed: int,
     *,
     device: str | torch.device = "cpu",
+    sampling_temperature: float = 1.0,
 ):
-    rollout_kwargs = {"sampling_temperature": 1.0}
+    rollout_kwargs = {"sampling_temperature": float(sampling_temperature)}
     if torch.device(device).type != "cpu":
         rollout_kwargs["device"] = device
     rows = []
@@ -826,13 +827,14 @@ def _fixed_scene_rows(
     seed: int,
     *,
     device: str | torch.device = "cpu",
+    sampling_temperature: float = 1.0,
 ):
-    """Independent temperature-1 raw rollouts in one preregistered scene."""
+    """Independent raw rollouts in one preregistered scene."""
     if int(rollouts) < 1:
         raise ValueError("--fixed-scene-rollouts must be positive")
     spheres = np.asarray(scene["spheres"], np.float32)
     scene_config = _scene_config(config, spheres)
-    rollout_kwargs = {"sampling_temperature": 1.0}
+    rollout_kwargs = {"sampling_temperature": float(sampling_temperature)}
     if torch.device(device).type != "cpu":
         rollout_kwargs["device"] = device
     rows = []
@@ -1122,6 +1124,8 @@ def _plot_fixed_scene_gallery(
     config,
     scene,
     output: Path,
+    *,
+    sampling_temperature: float = 1.0,
 ):
     """Overlay M independent raw rollouts in one scene shared by every cell."""
     physical_radius = float(
@@ -1186,7 +1190,8 @@ def _plot_fixed_scene_gallery(
                     va="center", fontsize=13,
                 )
     fig.suptitle(
-        "Preregistered fixed-scene raw temperature-1 rollouts "
+        "Preregistered fixed-scene raw rollouts "
+        rf"($\tau={sampling_temperature:g}$) "
         "(separate from randomized-domain metrics)",
         fontsize=15,
         weight="bold",
@@ -1820,11 +1825,21 @@ def evaluate_lab_clutter_expansion(
     pretrain_manifest,
     manifest,
 ):
-    """Evaluate raw temperature-1 policy on disjoint randomized and fixed scenes."""
+    """Evaluate raw policy on disjoint randomized and fixed scenes."""
     del pretrain_manifest
     device = torch.device(getattr(args, "device", "cpu"))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise ValueError(f"evaluation device {device} requires CUDA")
+    sampling_temperature = float(
+        getattr(args, "sampling_temperature", 1.0)
+    )
+    if (
+        not np.isfinite(sampling_temperature)
+        or sampling_temperature < 0.0
+    ):
+        raise ValueError(
+            "--sampling-temperature must be finite and nonnegative"
+        )
     requested_output = getattr(args, "evaluation_output", None)
     output = (
         Path(requested_output)
@@ -1921,6 +1936,7 @@ def evaluate_lab_clutter_expansion(
             gammas,
             scene_bank["scenes"],
             int(args.seed),
+            sampling_temperature=sampling_temperature,
             **device_kwargs,
         )
         fixed_rows = _fixed_scene_rows(
@@ -1930,6 +1946,7 @@ def evaluate_lab_clutter_expansion(
             fixed_scene["scene"],
             fixed_scene_rollouts,
             int(args.seed),
+            sampling_temperature=sampling_temperature,
             **device_kwargs,
         )
         probe_rows = _start_probe(
@@ -2056,8 +2073,12 @@ def evaluate_lab_clutter_expansion(
                 "fixed-scene rollout seeds changed across checkpoints"
             )
     (output / "raw_eval.json").write_text(json.dumps({
-        "status": "LAB_CLUTTER_RAW_TEMPERATURE1_EVALUATION_COMPLETE",
-        "sampling_temperature": 1.0,
+        "status": (
+            "LAB_CLUTTER_RAW_TEMPERATURE1_EVALUATION_COMPLETE"
+            if sampling_temperature == 1.0
+            else "LAB_CLUTTER_RAW_FIXED_TEMPERATURE_EVALUATION_COMPLETE"
+        ),
+        "sampling_temperature": sampling_temperature,
         "sigma_tilt_used": False,
         "runtime_device": str(device),
         "one_sigma_contract": {
@@ -2077,8 +2098,12 @@ def evaluate_lab_clutter_expansion(
         "start_probe_rows": probes,
     }, indent=2) + "\n")
     (output / "fixed_scene_raw_eval.json").write_text(json.dumps({
-        "status": "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE1_EVALUATION_COMPLETE",
-        "sampling_temperature": 1.0,
+        "status": (
+            "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE1_EVALUATION_COMPLETE"
+            if sampling_temperature == 1.0
+            else "LAB_CLUTTER_FIXED_SCENE_RAW_TEMPERATURE_EVALUATION_COMPLETE"
+        ),
+        "sampling_temperature": sampling_temperature,
         "sigma_tilt_used": False,
         "runtime_device": str(device),
         "one_sigma_contract": {
@@ -2129,6 +2154,7 @@ def evaluate_lab_clutter_expansion(
         config,
         fixed_scene["scene"],
         output / "fixed_scene_raw_gallery.png",
+        sampling_temperature=sampling_temperature,
     )
 
     if not getattr(args, "screening_only", False):
