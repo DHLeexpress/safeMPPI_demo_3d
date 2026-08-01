@@ -1204,6 +1204,13 @@ def main():
         ),
     )
     parser.add_argument("--stride", type=int, default=1)
+    parser.add_argument(
+        "--evaluation-rounds", type=int, nargs="+",
+        help=(
+            "optional exact checkpoint rounds to evaluate; by default the "
+            "stride schedule plus endpoints is used"
+        ),
+    )
     parser.add_argument("--seed", type=int, default=91000)
     parser.add_argument(
         "--fixed-scene-rollouts",

@@ -1890,11 +1890,28 @@ def evaluate_lab_clutter_expansion(
         minimum_count, int(evaluation_scene_spec.max_count) + 1,
     ))
     total_rounds = int(manifest["config"]["rounds"])
-    rounds = sorted({
-        0,
-        *range(0, total_rounds + 1, int(args.stride)),
-        total_rounds,
-    })
+    requested_evaluation_rounds = getattr(
+        args, "evaluation_rounds", None,
+    )
+    if requested_evaluation_rounds is None:
+        rounds = sorted({
+            0,
+            *range(0, total_rounds + 1, int(args.stride)),
+            total_rounds,
+        })
+    else:
+        rounds = sorted(set(map(int, requested_evaluation_rounds)))
+        if (
+            not rounds
+            or any(
+                round_i < 0 or round_i > total_rounds
+                for round_i in rounds
+            )
+        ):
+            raise ValueError(
+                f"--evaluation-rounds must lie in [0,{total_rounds}], "
+                f"got {rounds}"
+            )
     requested_display_rounds = getattr(args, "video_rounds", None)
     if requested_display_rounds is None:
         display_rounds = sorted({
