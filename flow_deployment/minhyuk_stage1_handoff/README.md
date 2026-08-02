@@ -116,10 +116,38 @@ all 79 r5 successes use the left route, so route coverage is only `1/4`.
 
 ![Current Stage-1 raw gallery](default_v0_mppicost_lamd7e4/eval/raw_gallery.png)
 
-The exact metrics, curves, mechanism video, and manifests are under
-[`default_v0_mppicost_lamd7e4/`](default_v0_mppicost_lamd7e4/). A follow-up handoff will add explicitly selected
-four-way successful references and paired pretrained failures after their
-seeds and trajectories are regenerated and authenticated.
+The exact metrics, curves, mechanism video, manifests, and governed reference
+arrays are under
+[`default_v0_mppicost_lamd7e4/`](default_v0_mppicost_lamd7e4/).
+
+#### Paired deployment references
+
+Seed `91074` is an exact paired example for all four safety levels. The
+pretrained policy collides at every gamma; the r5 policy succeeds at every
+gamma with window validity `1.0`. Each NPZ contains dense positions, 10 Hz
+states, raw controls, and the already-governed executed controls. Do not apply
+the governor or smoothing a second time.
+
+| policy | gamma | outcome | route | clearance | time |
+|---|---:|---|---|---:|---:|
+| pretrained r0 | .1/.3/.5/1.0 | collision at all four | none | negative | -- |
+| expanded r5 | .1 | success | left | .3411 m | 11.4 s |
+| expanded r5 | .3 | success | left | .3196 m | 11.3 s |
+| expanded r5 | .5 | success | left | .3013 m | 11.2 s |
+| expanded r5 | 1.0 | success | left | .2611 m | 11.0 s |
+
+![Expanded r5 governed references](default_v0_mppicost_lamd7e4/references/expanded_r5_seed91074/frozen_references.png)
+
+![Paired pretrained r0 failures](default_v0_mppicost_lamd7e4/references/pretrained_r0_seed91074/frozen_references.png)
+
+The requested four-way successful reference set does **not** exist in this
+terminal model. A supplemental CPU search over 100 new temperature-one seeds
+per gamma found `395/400` successes, all left. A gamma-.3 diagnostic over
+sampling temperatures `.5, 1.5, 2, 3, 4, 5` likewise found no successful
+non-left route. The exact bounded-search counts are in
+[`reference_search_audit.json`](default_v0_mppicost_lamd7e4/references/reference_search_audit.json).
+This is why the handoff supplies the honest paired left-route references rather
+than relabeling visually different left paths as four homotopies.
 
 ### Stage 1: pretrained raw policy before expansion
 

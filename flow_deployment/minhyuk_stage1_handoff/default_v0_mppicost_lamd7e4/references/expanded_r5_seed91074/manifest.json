@@ -1,0 +1,65 @@
+{
+  "status": "LAB_FLOW_FROZEN_REFERENCES_COMPLETE",
+  "scope": "Open-loop governed reference export. The policy is replanned against its simulated reference state while generating the file; the exported file itself contains no later state feedback.",
+  "config": "configs/lab_ball_stage1_t128.json",
+  "config_sha256": "31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38",
+  "policy": {
+    "checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_lamd7e4_terminal_r5.pt",
+    "checkpoint_sha256": "115a50e38b9f1c52819649663853d0699568bd07a00df3f4c6ef899262243d99",
+    "context_schema": "lab_spherical_hp3d_uniform_radial100_planepack_v1",
+    "context_dim": 117,
+    "plan_shape": [
+      10,
+      3
+    ],
+    "control_limit": 0.3,
+    "nfe": 16,
+    "sampling_temperature": 1.0,
+    "sampling_temperature_definition": "x0 ~ N(0, tau^2 I)",
+    "policy_output": "pre_smoothing_raw_acceleration_command",
+    "tracking_and_governor": "external"
+  },
+  "runs": [
+    {
+      "gamma": 0.1,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.34108855865247334,
+      "time_to_goal_s": 11.4,
+      "file": "gamma_0p1_seed_91074.npz"
+    },
+    {
+      "gamma": 0.3,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.31959953320293666,
+      "time_to_goal_s": 11.3,
+      "file": "gamma_0p3_seed_91074.npz"
+    },
+    {
+      "gamma": 0.5,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.3013394836371529,
+      "time_to_goal_s": 11.200000000000001,
+      "file": "gamma_0p5_seed_91074.npz"
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "mode": "left",
+      "window_validity": 1.0,
+      "min_clearance_m": 0.2610871212421302,
+      "time_to_goal_s": 11.0,
+      "file": "gamma_1_seed_91074.npz"
+    }
+  ],
+  "all_successful": true
+}

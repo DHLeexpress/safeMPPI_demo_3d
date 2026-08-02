@@ -46,3 +46,24 @@ successful-window buffer. Execution ranks verifier-positive plans by
 `J_native - 70000 * first_step_nominal_H_P_margin`.
 
 ![Raw r0/r3/r5 gallery](eval/raw_gallery.png)
+
+## Governed deployment references
+
+The `references/` directory contains a CPU-authenticated paired seed:
+
+- [`expanded_r5_seed91074/manifest.json`](references/expanded_r5_seed91074/manifest.json):
+  four successful gamma trajectories from the terminal model.
+- [`pretrained_r0_seed91074/manifest.json`](references/pretrained_r0_seed91074/manifest.json):
+  the same seed and gammas, all ending in collision before expansion.
+- [`reference_search_audit.json`](references/reference_search_audit.json):
+  the bounded search proving that the terminal policy has no authenticated
+  successful below/above/right reference.
+
+Every NPZ contains `dense_positions`, `states`, raw `controls`, governed
+`executed_controls`, and `dense_steps`. The executed controls already include
+the external governor once. All four r5 references are left-route successes;
+they are deployable tracking candidates, not four-way coverage evidence.
+
+![Expanded r5 references](references/expanded_r5_seed91074/frozen_references.png)
+
+![Pretrained r0 failures](references/pretrained_r0_seed91074/frozen_references.png)

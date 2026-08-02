@@ -33,7 +33,13 @@ def gamma_name(gamma: float) -> str:
     return f"{gamma:g}".replace(".", "p")
 
 
-def save_overlay(rows: list[dict], env: TaskEnvironment, output: Path) -> None:
+def save_overlay(
+    rows: list[dict],
+    env: TaskEnvironment,
+    output: Path,
+    *,
+    title: str,
+) -> None:
     fig = plt.figure(figsize=(8.1, 6.3))
     axis = fig.add_subplot(111, projection="3d")
     colors = plt.get_cmap("plasma")(
@@ -65,7 +71,7 @@ def save_overlay(rows: list[dict], env: TaskEnvironment, output: Path) -> None:
     axis.scatter(*env.goal, marker="*", s=130, color="gold", edgecolor="black")
     axis.set(xlabel="x [m]", ylabel="y [m]", zlabel="z [m]")
     axis.legend(loc="best")
-    axis.set_title("Frozen pretrained-flow references")
+    axis.set_title(title)
     fig.tight_layout()
     fig.savefig(output, dpi=180, bbox_inches="tight")
     fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
@@ -103,6 +109,11 @@ def main() -> int:
         help="one seed broadcasts to every gamma; otherwise one seed per gamma",
     )
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--title",
+        default="Frozen pretrained-flow references",
+        help="plot title; does not affect trajectory generation",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -172,7 +183,23 @@ def main() -> int:
             "dense_positions": dense_positions,
         })
 
-    save_overlay(rows, env, args.output / "frozen_references.png")
+    save_overlay(
+        rows,
+        env,
+        args.output / "frozen_references.png",
+        title=args.title,
+    )
+    try:
+        portable_config = str(args.config.resolve().relative_to(ROOT))
+    except ValueError:
+        portable_config = str(args.config.resolve())
+    checkpoint_path = Path(policy_contract["checkpoint"])
+    try:
+        policy_contract["checkpoint"] = str(
+            checkpoint_path.resolve().relative_to(ROOT)
+        )
+    except ValueError:
+        policy_contract["checkpoint"] = str(checkpoint_path.resolve())
     manifest = {
         "status": "LAB_FLOW_FROZEN_REFERENCES_COMPLETE",
         "scope": (
@@ -180,7 +207,7 @@ def main() -> int:
             "against its simulated reference state while generating the file; "
             "the exported file itself contains no later state feedback."
         ),
-        "config": str(args.config.resolve()),
+        "config": portable_config,
         "config_sha256": config_sha256,
         "policy": policy_contract,
         "runs": [

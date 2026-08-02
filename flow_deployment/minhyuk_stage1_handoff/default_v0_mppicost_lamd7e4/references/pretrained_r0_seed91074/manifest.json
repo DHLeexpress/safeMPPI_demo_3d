@@ -1,0 +1,65 @@
+{
+  "status": "LAB_FLOW_FROZEN_REFERENCES_COMPLETE",
+  "scope": "Open-loop governed reference export. The policy is replanned against its simulated reference state while generating the file; the exported file itself contains no later state feedback.",
+  "config": "configs/lab_ball_stage1_t128.json",
+  "config_sha256": "31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38",
+  "policy": {
+    "checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
+    "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+    "context_schema": "lab_spherical_hp3d_uniform_radial100_planepack_v1",
+    "context_dim": 117,
+    "plan_shape": [
+      10,
+      3
+    ],
+    "control_limit": 0.3,
+    "nfe": 16,
+    "sampling_temperature": 1.0,
+    "sampling_temperature_definition": "x0 ~ N(0, tau^2 I)",
+    "policy_output": "pre_smoothing_raw_acceleration_command",
+    "tracking_and_governor": "external"
+  },
+  "runs": [
+    {
+      "gamma": 0.1,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.5853658536585366,
+      "min_clearance_m": -0.009647240266533907,
+      "time_to_goal_s": null,
+      "file": "gamma_0p1_seed_91074.npz"
+    },
+    {
+      "gamma": 0.3,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7317073170731707,
+      "min_clearance_m": -0.029850485303663132,
+      "time_to_goal_s": null,
+      "file": "gamma_0p3_seed_91074.npz"
+    },
+    {
+      "gamma": 0.5,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.75,
+      "min_clearance_m": -0.011252335577619954,
+      "time_to_goal_s": null,
+      "file": "gamma_0p5_seed_91074.npz"
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91074,
+      "status": "COLLISION",
+      "mode": "none",
+      "window_validity": 0.7435897435897436,
+      "min_clearance_m": -0.004169662221318593,
+      "time_to_goal_s": null,
+      "file": "gamma_1_seed_91074.npz"
+    }
+  ],
+  "all_successful": false
+}
