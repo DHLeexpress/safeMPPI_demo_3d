@@ -1,143 +1,124 @@
-# Minhyuk three-sphere clutter deployment handoff
+# Minhyuk handoff: Stage 2 canonical three-sphere baseline
 
-Deployment-only package for one known three-sphere map. The model has no
-onboard perception: rebuild this handoff with a new concrete config whenever
-the obstacle map changes. The randomized template is provenance only and must
-never be passed to a deployment runner.
+This folder replaces the retired 20-inch/random-sphere r10 handoff. It contains
+only the current fixed Stage-2 scene and an authenticated round-zero baseline.
+Stage-2 expansion is still research-side work, so no provisional expanded
+checkpoint is shipped. No file under `deploy_sim/` is changed.
 
-- selected expansion round: `10`
-- selection criterion: Among evaluated positive rounds {1,10,20,30,40,50}: maximize disjoint randomized-sphere pooled SR; tie-break by window validity, then earliest round.
-- pretrained SHA-256: `b0fb3313e9bed30135517aa81c4a8677e070b31d3b6fa4b6bdb986b08952a4d6`
-- expanded SHA-256: `657210c7b87716b8fa7da8121e00bab6bf5adc173383338431e2168df3566c5f`
-- concrete config SHA-256: `2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e`
-- exact-map fixed-scene evaluation SHA-256: `068a3d5f3906c3521fa585f0e2364746c99dee4ed7ac1acc7e4c2cf5c89912a9`
-- checkpoint output: raw pre-smoothing acceleration; governor/tracking external
-- status: experimental, not flight-safety-qualified
+## What is canonical
 
-## Deterministic successful fixed-scene examples
+- start: `(-2.1, 1.5, 0.9)` m
+- goal: `(0.7, -1.5, 0.9)` m
+- geofence: `x=[-2.5,1.3]`, `y=[-1.7,1.8]`, `z=[0.4,2.0]` m
+- three 15-inch-diameter spheres: physical radius `0.1905 m`
+- robot inflation: `0.10 m`; modeled radius `0.2905 m`
+- original, unflipped equilateral triangle; center spacing `0.70 m`
+- canonical scene: the unjittered triangle in
+  [`canonical_three_sphere_config.json`](canonical_three_sphere_config.json)
+- research randomization law: every sphere independently moves only along its
+  own start-goal-parallel line, with `sigma_parallel=0.30 m` and
+  `sigma_perp=0`. This fixed handoff deliberately does not resample it.
 
-These are the first `SUCCESS` rows in evaluator seed order, without manual
-trajectory curation. `null` means that the unbiased fixed-scene M-rollout bank
-contained no successful example for that model/gamma.
+The three modeled centers are:
 
-| gamma | pretrained r0 seed | expanded r010 seed |
-|---:|---:|---:|
-| 0.1 | `1091077` | `1091003` |
-| 0.3 | `1101047` | `1101010` |
-| 0.5 | `1111017` | `1111017` |
-| 1 | `1121283` | `1121024` |
+| sphere | x | y | z | modeled radius |
+|---:|---:|---:|---:|---:|
+| 1 | -0.955869 | -0.238811 | 0.697927 | 0.2905 |
+| 2 | -0.700000 | 0.000000 | 1.304145 | 0.2905 |
+| 3 | -0.444131 | 0.238811 | 0.697927 | 0.2905 |
 
-### Pretrained round 0
+The modeled bodies have `0.119 m` pairwise surface gaps. The lower modeled
+bodies clear the floor by only about `7.4 mm`; the physical spheres clear it by
+about `0.107 m`. Longitudinal-only randomization does not change either height.
+
+## Why this is an expansion baseline
+
+Both current OOD tasks expose failures of the same cylinder-ID pretrained
+policy:
+
+| task | raw temperature-one bank | pretrained SR | CR | OOB | result after expansion |
+|---|---:|---:|---:|---:|---|
+| Stage 1, fixed single 20-inch sphere | M=20/gamma | 13.75% | 80.0% | 6.25% | r5 SR 98.75%, CR 0%, but all 79 successes use one route |
+| Stage 2, canonical three 15-inch spheres | M=50/gamma | 48.5% | 49.5% | 2.0% | in progress; no expanded model shipped |
+
+The Stage-2 per-gamma SR is `.46/.44/.48/.56` for
+`gamma=.1/.3/.5/1.0`. Exact compact metrics are in
+[`pretrained_r0_m50_summary.json`](pretrained_r0_m50_summary.json). The target
+for Stage 2 is to move this raw policy toward 100% SR while preserving validity,
+gamma trends, and genuinely different paths around/through the three-sphere
+arrangement.
+
+## Files to use
+
+| purpose | file |
+|---|---|
+| fixed Stage-2 task and SafeMPPI recipe | [`canonical_three_sphere_config.json`](canonical_three_sphere_config.json) |
+| pretrained HP100-T128-D3 policy | [`../minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt`](../minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt) |
+| architecture/training contract | [`../minhyuk_stage1_handoff/model_contract.json`](../minhyuk_stage1_handoff/model_contract.json) |
+| Stage-2 baseline metrics | [`pretrained_r0_m50_summary.json`](pretrained_r0_m50_summary.json) |
+| all handoff hashes | [`SHA256SUMS`](SHA256SUMS) |
+
+The checkpoint emits one raw `H=10` acceleration plan and uses a
+robot-centered `1 x 32 x 32 x 100` clipped-`H_P` volume. It has no internal
+governor or GRU. Deployment smoothing, measured-state feedback, and command
+limits stay in Minhyuk's existing loop and must be applied exactly once.
+
+## 1. Run native SafeMPPI on the canonical scene
+
+This searches at most 64 fixed-scene controller-noise seeds for one
+nominal-safe successful reference per gamma. It is a reference exporter, not
+an unbiased SafeMPPI success-rate audit; inspect the attempt rows as well as
+the accepted trajectories.
 
 ```bash
-python scripts/export_lab_flow_frozen_references.py \
-  --config "flow_deployment/minhyuk_clutter_handoff/concrete_three_sphere_config.json" \
-  --expected-config-sha256 2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e \
-  --checkpoint "flow_deployment/minhyuk_clutter_handoff/pretrained_visual_clutter_hp3d.pt" \
-  --expected-checkpoint-sha256 b0fb3313e9bed30135517aa81c4a8677e070b31d3b6fa4b6bdb986b08952a4d6 \
-  --sampling-temperature 1.0 \
-  --gammas 0.1 0.3 0.5 1 \
-  --seeds 1091077 1101047 1111017 1121283 \
-  --output outputs/minhyuk_clutter_pretrained_validated_successes
+python run.py \
+  --config flow_deployment/minhyuk_clutter_handoff/canonical_three_sphere_config.json \
+  --output outputs/minhyuk_stage2_safemppi_one_per_gamma \
+  --device cpu
 ```
 
-### Expanded round 10
+Inspect `metrics.json` and the saved trajectories; process completion alone is
+not a success claim.
+
+## 2. Export frozen pretrained-policy trajectories
 
 ```bash
+CFG=flow_deployment/minhyuk_clutter_handoff/canonical_three_sphere_config.json
+CKPT=flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt
+CFG_SHA=b34b4c1a330da8554985476ddb1d4758d9f0a7db24d694c9f3cb6361d39e9455
+CKPT_SHA=cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff
+
 python scripts/export_lab_flow_frozen_references.py \
-  --config "flow_deployment/minhyuk_clutter_handoff/concrete_three_sphere_config.json" \
-  --expected-config-sha256 2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e \
-  --checkpoint "flow_deployment/minhyuk_clutter_handoff/expanded_visual_clutter_r010.pt" \
-  --expected-checkpoint-sha256 657210c7b87716b8fa7da8121e00bab6bf5adc173383338431e2168df3566c5f \
-  --sampling-temperature 1.0 \
-  --gammas 0.1 0.3 0.5 1 \
-  --seeds 1091003 1101010 1111017 1121024 \
-  --output outputs/minhyuk_clutter_expanded_validated_successes
-```
-
-
-## Frozen/open-loop reference export
-
-The generator replans against its simulated reference state; the resulting NPZ
-is the frozen/open-loop artifact. The seed `91000` below is syntax-only and is
-not claimed to be successful; use the validated commands above for successful
-examples.
-
-```bash
-python scripts/export_lab_flow_frozen_references.py \
-  --config "flow_deployment/minhyuk_clutter_handoff/concrete_three_sphere_config.json" \
-  --expected-config-sha256 2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e \
-  --checkpoint "flow_deployment/minhyuk_clutter_handoff/expanded_visual_clutter_r010.pt" \
-  --expected-checkpoint-sha256 657210c7b87716b8fa7da8121e00bab6bf5adc173383338431e2168df3566c5f \
-  --sampling-temperature 1.0 \
+  --config "$CFG" \
+  --expected-config-sha256 "$CFG_SHA" \
+  --checkpoint "$CKPT" \
+  --expected-checkpoint-sha256 "$CKPT_SHA" \
+  --sampling-temperature 1 \
   --gammas 0.1 0.3 0.5 1.0 \
   --seeds 91000 \
-  --output outputs/minhyuk_clutter_frozen_r010
+  --device cpu \
+  --title "Stage 2 canonical three-sphere pretrained references" \
+  --output outputs/minhyuk_stage2_pretrained_frozen_s91000
 ```
 
-Inspect `manifest.json`; process exit alone does not establish success.
+The exporter writes states, raw controls, governed executed controls, dense
+positions, a PNG/PDF overlay, and `manifest.json`.
 
-## Native closed-loop state-feedback smoke
+## 3. Closed-loop software smoke in the unchanged deployment harness
 
 ```bash
 python scripts/run_lab_flow_deployment.py \
-  --config "flow_deployment/minhyuk_clutter_handoff/concrete_three_sphere_config.json" \
-  --expected-config-sha256 2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e \
-  --checkpoint "flow_deployment/minhyuk_clutter_handoff/expanded_visual_clutter_r010.pt" \
-  --expected-checkpoint-sha256 657210c7b87716b8fa7da8121e00bab6bf5adc173383338431e2168df3566c5f \
-  --sampling-temperature 1.0 \
+  --config "$CFG" \
+  --expected-config-sha256 "$CFG_SHA" \
+  --checkpoint "$CKPT" \
+  --expected-checkpoint-sha256 "$CKPT_SHA" \
+  --sampling-temperature 1 \
   --gamma 0.3 \
   --seed 91000 \
-  --output outputs/minhyuk_clutter_closed_loop_r010
+  --device cpu \
+  --output outputs/minhyuk_stage2_pretrained_closed_loop_g03_s91000
 ```
 
-This exercises the unchanged native harness offline; it is not a hardware
-flight command or safety certificate. Verify `deployment_contract.json`.
-Aggregate clearance covers all three spheres, but the unchanged `deploy_sim`
-log/GIF displays only the first sphere and has no online obstacle-collision
-abort.
-
-## Evidence
-
-[`evidence/`](evidence/) contains the cylinder demonstration overlay,
-pretraining qualification, disjoint randomized-domain curves, fixed-scene
-temperature-one gallery, and the actual committed-success mechanism
-visualizations. The three committed trajectories shown per
-\((\mathrm{round},\gamma)\) come from separate randomized scenes; only the
-fixed-scene gallery is evidence about conditional multimodality on one map.
-
-## Live hardware controller contract
-
-The repository has no live-flight CLI. Hardware integration must construct the
-same authenticated controller and pass `[p_meas, v_ref]` at every 10 Hz replan:
-
-```python
-from flow_deployment.lab_pretrained import (
-    load_lab_deployment_controller,
-    sha256_file,
-)
-from safe_mppi.config import load_config
-from safe_mppi.environment import TaskEnvironment
-
-config_path = "flow_deployment/minhyuk_clutter_handoff/concrete_three_sphere_config.json"
-if sha256_file(config_path) != "2b54f98a30657cd0da0352a16279d7b72cb8e70cb1a2ce246b99718a0947628e":
-    raise ValueError("concrete deployment config SHA-256 mismatch")
-cfg = load_config(config_path)
-env = TaskEnvironment(cfg)
-controller, contract = load_lab_deployment_controller(
-    "flow_deployment/minhyuk_clutter_handoff/expanded_visual_clutter_r010.pt",
-    env,
-    sampling_temperature=1.0,
-    expected_sha256="657210c7b87716b8fa7da8121e00bab6bf5adc173383338431e2168df3566c5f",
-)
-action, info = controller.plan(
-    state=[px, py, pz, vx_ref, vy_ref, vz_ref],
-    goal=env.goal,
-    gamma=0.3,
-    seed=episode_seed * 100_000 + step,
-)
-```
-
-To use the byte-identical pretrained baseline instead, replace the checkpoint
-with `pretrained_visual_clutter_hp3d.pt` and its SHA-256 `b0fb3313e9bed30135517aa81c4a8677e070b31d3b6fa4b6bdb986b08952a4d6`. Apply smoothing and
-the reference governor exactly once outside the policy.
+This is an interface smoke, not a flight-safety certificate. Collision and
+clearance calculations use all three configured spheres. The visual volume is
+built from the known map; this handoff does not add onboard perception.

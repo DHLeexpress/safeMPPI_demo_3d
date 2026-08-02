@@ -55,7 +55,7 @@ All tasks use the lab geofence
 | cylinder ID / pretraining | [`../../configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json`](../../configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json) | 4--8 vertical cylinders; physical radius 0.10 m plus 0.10 m robot inflation |
 | physical lab cylinder evidence | [`../../configs/lab_clutter_cylinders_lab_five_v2.json`](../../configs/lab_clutter_cylinders_lab_five_v2.json) | exactly 5 vertical cylinders, matching the available lab inventory |
 | randomized sphere OOD | [`../../configs/lab_clutter_spheres_path_midpoint_uniform_v2.json`](../../configs/lab_clutter_spheres_path_midpoint_uniform_v2.json) | 3--6 spheres; physical radius 0.254 m plus 0.10 m robot inflation |
-| fixed three-sphere OOD screen | [`../../configs/lab_clutter_spheres_stage2_three_v2.json`](../../configs/lab_clutter_spheres_stage2_three_v2.json) | exactly three spheres from the same OOD law |
+| Stage-2 canonical three-sphere screen | [`../minhyuk_clutter_handoff/canonical_three_sphere_config.json`](../minhyuk_clutter_handoff/canonical_three_sphere_config.json) | fixed original 0.70 m equilateral triangle of three 15-inch spheres |
 | Stage 1 | [`../../configs/lab_ball_stage1_t128.json`](../../configs/lab_ball_stage1_t128.json) | one fixed modeled sphere at `(-0.7,0,0.9)`, radius 0.354 m |
 
 The ID and OOD randomizers admit geometry without conditioning on expert
@@ -202,15 +202,13 @@ r5, all 70 successes use the left route. Round 3 was selected on the same M=20
 screen rather than a disjoint confirmation, so it remains an experimental
 handoff checkpoint.
 
-### Stage 2 preview: fixed three-sphere OOD failure
+### Stage 2 baseline
 
-![Pretrained policy on a fixed three-sphere OOD scene](assets/three_sphere_ood_failure_overlay.png)
-
-The concrete scene is generated from scene-bank seed `191000`, episode `42`,
-and has SHA-256-like scene identity
-`82eb7361927f8d076a6a7fc7a3f52e17f4ff9d203b4af49ca532ceffa2afd0c3`.
-With raw seed `192554`, every gamma collides. The scene JSON and all four exact
-trajectory archives are in `trajectory_archives/`.
+The current canonical three-sphere task and its independent raw
+`M=50/gamma` pretrained baseline are now documented in
+[`../minhyuk_clutter_handoff/`](../minhyuk_clutter_handoff/). Its pooled raw
+temperature-one result is `SR=48.5%`, `CR=49.5%`, and `OOB=2.0%`. Stage-2
+expansion is still in progress; no provisional expanded checkpoint is shipped.
 
 Revalidate and rebuild the exact-five E/F evidence without rerunning the raw
 policy screens:
@@ -224,14 +222,14 @@ The builder fails if the Stage-1 aggregate differs from
 `SR=.1375, CR=.80, OOB=.0625`. Two independent clean reruns produced identical
 manifests and generated-file hashes.
 
-## Native deployment entry points
+## Native Stage-1 deployment entry points
 
 From the repository root:
 
 ```bash
 CFG=configs/lab_ball_stage1_t128.json
-CKPT=flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt
-CKPT_SHA=cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff
+CKPT=flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_lamd7e4_terminal_r5.pt
+CKPT_SHA=115a50e38b9f1c52819649663853d0699568bd07a00df3f4c6ef899262243d99
 CFG_SHA=31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38
 
 # Closed-loop software integration through Minhyuk's unchanged harness.
@@ -242,9 +240,9 @@ python scripts/run_lab_flow_deployment.py \
   --expected-config-sha256 "$CFG_SHA" \
   --sampling-temperature 1 \
   --gamma 0.3 \
-  --seed 91000 \
+  --seed 91074 \
   --device cpu \
-  --output outputs/minhyuk_hp100_online_g03_s91000
+  --output outputs/minhyuk_stage1_lamd7e4_online_g03_s91074
 
 # Deterministic frozen references for the four gammas.
 python scripts/export_lab_flow_frozen_references.py \
@@ -254,9 +252,10 @@ python scripts/export_lab_flow_frozen_references.py \
   --expected-config-sha256 "$CFG_SHA" \
   --sampling-temperature 1 \
   --gammas 0.1 0.3 0.5 1.0 \
-  --seeds 91000 \
+  --seeds 91074 \
   --device cpu \
-  --output outputs/minhyuk_hp100_frozen_s91000
+  --title "Stage 1 expanded r5 references" \
+  --output outputs/minhyuk_stage1_lamd7e4_frozen_s91074
 ```
 
 The frozen exporter applies the repository `ReferenceGovernor` once and stores
@@ -266,60 +265,17 @@ at every replan, then passes commands through the unchanged native harness.
 The visual volume is built from the known configured map; it is not an onboard
 perception system.
 
-The selected raw seed has only about `0.013--0.025 m` clearance beyond the
-modeled Stage-1 sphere, and an integration smoke reached the goal while losing
-that modeled clearance. Treat it as an interface/tracking candidate, not as a
-flight-ready safety certificate. Minhyuk should first replay the frozen
-reference and then validate closed-loop clearance in the native simulator.
+Seed `91074` is the authenticated paired handoff: pretrained r0 collides for
+all four gammas, while expanded r5 succeeds for all four with validity `1.0`.
+Those four expanded paths are all the same left route, so this is a
+success/safety result rather than a coverage result. Minhyuk should first
+replay the frozen references, then validate measured-state closed-loop
+clearance in the native simulator.
 
-## Reproduce and deploy `default_v0`
-
-The research-side source is
-[`../../scripts/run_ball_expansion.py`](../../scripts/run_ball_expansion.py)
-plus
-[`../../scripts/evaluate_ball_expansion.py`](../../scripts/evaluate_ball_expansion.py).
-The full local pretraining bundle remains
-`results/stage1_single_ball_t128/pretrain_hp100_t128_d3_e52`; the standalone
-pretrained and packaged expanded checkpoints are both included here.
-
-```bash
-PRE=results/stage1_single_ball_t128/pretrain_hp100_t128_d3_e52
-OUT=results/stage1_single_ball_t128/default_v0
-
-python scripts/run_ball_expansion.py \
-  --pretrain-dir "$PRE" \
-  --lab-task-config configs/lab_ball_stage1_t128.json \
-  --output "$OUT" --device mps --rounds 5 \
-  --head-only-expansion --flow-base-std 1.0 --learning-rate 1e-5 \
-  --freeze-visual-encoder-during-expansion \
-  --adaptive-beta --ess-target 0.1 \
-  --parallel-episodes 4 --verifier-workers 8 --max-retry-batches 32 \
-  --successful-trajectories-per-gamma 2 --K 16 --B 4 \
-  --inner-steps 10 --batch-size 64 --replay-top-fraction 1.0 \
-  --replay-selector uniform --replay-rounds 3 --gp-buffer-cap 768 \
-  --gp-reference-mode sliding_success_per_gamma_current_phi \
-  --gp-sliding-row-selector trajectory_uniform \
-  --candidate-perturb-std 0 --candidate-perturb-scope coherent_horizon \
-  --negative-alpha 0 --archive-rule successful_executed_windows \
-  --successful-trajectory-selector lowest_episode_id \
-  --replay-acceptance execution_eligible --execution-rule max_step_margin \
-  --acquisition-feature learned_phi --coverage-replay none \
-  --replay-augmentation none --execution-z-bias-mode none \
-  --tight-corridor --verifier-mode full_polytope \
-  --verifier-solver analytic --event-log full \
-  --paired-noised-representation --seed 1
-
-python scripts/evaluate_ball_expansion.py \
-  --pretrain-dir "$PRE" \
-  --expansion "$OUT" \
-  --device mps --episodes 20 --probe-samples 16 --stride 1 \
-  --seed 91000 --video-gamma 0.5 --video-rounds 1 2 3 4 5
-```
-
-The raw evaluator currently executes these policy rollouts on CPU even when
-the CLI carries `--device mps`; the delivered metrics and selected trajectories
-were replayed on CPU for exact agreement. To load the selected checkpoint in
-the existing deployment commands, replace `CKPT` with
-`flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_default_v0_best_r3.pt`
-and use its SHA-256 above. The input/output contract is identical to the
-pretrained checkpoint; only the flow head changed.
+For a pretrained comparison, set `CKPT` to
+`flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt` and
+`CKPT_SHA` to
+`cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff`.
+The exact lambda7e4 research recipe, raw gallery, curves, metrics, and final
+raw expansion checkpoint remain under
+[`default_v0_mppicost_lamd7e4/`](default_v0_mppicost_lamd7e4/).

@@ -4,30 +4,39 @@
     "size": [3.8, 3.5, 1.6],
     "start": [-2.1, 1.5, 0.9, 0.0, 0.0, 0.0],
     "goal": [0.7, -1.5, 0.9],
-    "reach_radius": 0.35,
+    "reach_radius": 0.2,
     "max_steps": 250
   },
   "obstacles": {
-    "spheres": [],
+    "spheres": [
+      [-0.9558693170547485, -0.23881137371063232, 0.6979273557662964, 0.2904999852180481],
+      [-0.6999999284744263, 0.0, 1.3041452169418335, 0.2904999852180481],
+      [-0.44413062930107117, 0.23881137371063232, 0.6979273557662964, 0.2904999852180481]
+    ],
     "cylinders": []
   },
   "scene_randomization": {
-    "enabled": true,
+    "enabled": false,
     "resample_frequency": "per_episode_reset",
     "obstacle_family": "spheres",
+    "distribution": "perpendicular_triangle_anisotropic_v1",
     "count": 3,
-    "physical_radius_m": 0.254,
-    "vehicle_inflation_m": 0.125,
-    "radius_m": 0.379,
+    "physical_radius_m": 0.1905,
+    "vehicle_inflation_m": 0.1,
+    "radius_m": 0.2905,
     "sample_center_axes": ["x", "y", "z"],
-    "minimum_obstacle_surface_gap_m": 0.2,
-    "minimum_taskspace_wall_surface_clearance_m": 0.1,
-    "taskspace_wall_clearance_axes": ["x", "y", "z"],
-    "minimum_start_surface_clearance_m": 0.5,
-    "minimum_goal_surface_clearance_m": 0.5,
-    "start_goal_clearance_axes": ["x", "y", "z"],
+    "triangle_center_fraction": 0.5,
+    "triangle_center_spacing_m": 0.7,
+    "parallel_position_std_m": 0.3,
+    "perpendicular_plane_position_std_m": 0.0,
+    "minimum_obstacle_surface_gap_m": 0.0,
+    "minimum_taskspace_wall_surface_clearance_m": 0.0,
+    "minimum_start_surface_clearance_m": 0.0,
+    "minimum_goal_surface_clearance_m": 0.0,
     "seed": 0,
-    "geometry_contract": "20-inch physical radius is 0.254 m; hard point-mass radius_m=0.379 includes 0.125 m vehicle inflation"
+    "max_layout_attempts": 100000,
+    "admission_mode": "geometry_only_no_expert_conditioning",
+    "geometry_contract": "15-inch diameter spheres: physical radius 0.1905 m plus robot radius 0.10 m; original unflipped 0.70 m equilateral triangle; the randomized research law moves each center only along its start-goal-parallel line with sigma_parallel=0.30 m and sigma_perp=0; this deployment config fixes the unjittered canonical centers"
   },
   "safety": {
     "safe_min": [-2.5, -1.7, 0.4],
@@ -55,7 +64,7 @@
     "terminal_goal_weight": 80.0,
     "control_weight": 0.05,
     "smooth_weight": 0.35,
-    "soft_clearance_weight": 60.0,
+    "soft_clearance_weight": 0.0,
     "soft_clearance_target": 0.3,
     "progress_weight": 2.0,
     "z_bias_plane": 0.9,
@@ -75,10 +84,10 @@
   },
   "data": {
     "gammas": [0.1, 0.3, 0.5, 1.0],
-    "episodes_per_gamma": 50,
-    "seed_start": 0,
+    "episodes_per_gamma": 1,
+    "seed_start": 91000,
     "rollout_dynamics": "minhyuk_reference_governor",
     "acceptance": "nominal_safe_success",
-    "max_attempts_per_gamma": 500
+    "max_attempts_per_gamma": 64
   }
 }

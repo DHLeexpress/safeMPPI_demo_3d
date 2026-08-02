@@ -1,0 +1,35 @@
+{
+  "status": "STAGE2_CANONICAL_PRETRAINED_BASELINE",
+  "policy": "cylinder-ID HP100-T128-D3 pretrained policy",
+  "checkpoint": "../minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
+  "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+  "scene": "canonical unjittered three-sphere triangle",
+  "scene_sha256": "2626c9adf9dcfa9b57d4715d104b97cefd287f593afaa2cd8fb5d572c38ec1f3",
+  "evaluation": {
+    "sampling_temperature": 1.0,
+    "uncertainty_tilt": false,
+    "verifier_controller": false,
+    "fallback": false,
+    "common_random_numbers": true,
+    "episodes_per_gamma": 50,
+    "total_episodes": 200,
+    "seed_contract": "gamma-specific base seed plus 37 * episode",
+    "pooled": {
+      "SR": 0.485,
+      "CR": 0.495,
+      "OOB": 0.02,
+      "timeout": 0.0,
+      "window_validity": 0.8596968086841679,
+      "successful_min_clearance_m": 0.04146393795672351,
+      "successful_time_to_goal_s": 8.737113402061857
+    },
+    "per_gamma": {
+      "0.1": {"SR": 0.46, "CR": 0.54, "OOB": 0.0},
+      "0.3": {"SR": 0.44, "CR": 0.52, "OOB": 0.04},
+      "0.5": {"SR": 0.48, "CR": 0.52, "OOB": 0.0},
+      "1.0": {"SR": 0.56, "CR": 0.40, "OOB": 0.04}
+    }
+  },
+  "interpretation": "The pretrained cylinder-ID policy fails on 103 of 200 canonical three-sphere rollouts. This is the Stage-2 expansion baseline, not a deployment-success claim.",
+  "stage2_expansion_status": "in progress; no Stage-2 expanded checkpoint is delivered here"
+}

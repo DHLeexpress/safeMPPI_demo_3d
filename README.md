@@ -14,10 +14,10 @@ hashes, reproducible trajectory archives, and exact commands are in
 | cylinder-ID distribution, 4–8 vertical cylinders | [`lab_clutter_cylinders_path_midpoint_uniform_v2.json`](configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json) |
 | physical-lab evidence, exactly 5 vertical cylinders | [`lab_clutter_cylinders_lab_five_v2.json`](configs/lab_clutter_cylinders_lab_five_v2.json) |
 | sphere-OOD distribution, 3–6 spheres | [`lab_clutter_spheres_path_midpoint_uniform_v2.json`](configs/lab_clutter_spheres_path_midpoint_uniform_v2.json) |
-| fixed three-sphere OOD screen | [`lab_clutter_spheres_stage2_three_v2.json`](configs/lab_clutter_spheres_stage2_three_v2.json) |
+| Stage-2 canonical three-sphere screen | [`canonical_three_sphere_config.json`](flow_deployment/minhyuk_clutter_handoff/canonical_three_sphere_config.json) |
 | today's fixed midpoint-sphere expansion task | [`lab_ball_stage1_t128.json`](configs/lab_ball_stage1_t128.json) |
 | pretrained cylinder-ID policy | [`hp100_t128_d3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt), SHA-256 `cc87b65f...e28ff` |
-| Stage-1 `default_v0` selected checkpoint | [`stage1_default_v0_best_r3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_default_v0_best_r3.pt), SHA-256 `dfa4b72a...fd69c` |
+| Stage-1 current expanded checkpoint | [`stage1_lamd7e4_terminal_r5.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_lamd7e4_terminal_r5.pt), SHA-256 `115a50e3...3d99` |
 
 The physical lab has five cylinders. Two paired-seed, exact-five SafeMPPI
 candidates are therefore packaged: E (`cylinders_00317`, seed `729853`) and F
@@ -45,19 +45,18 @@ uncertainty tilt, no verifier controller, and no fallback.
 
 ![HP100 T128 D3 pretrained policy on the fixed midpoint sphere](flow_deployment/minhyuk_stage1_handoff/assets/single_sphere_pretrained_r0_overlay.png)
 
-Stage-1 `default_v0` is now packaged. On the same raw temperature-one
-`M=20/gamma` bank, pretrained r0 had `SR=13.75%`, `CR=80.0%`, and
-`Validity=75.64%`; the screening-selected r3 reached `SR=92.5%`, `CR=2.5%`,
-and `Validity=98.87%`. Terminal r5 reached zero collision and 99.37% validity,
-but its 70 successes all used one route. This is therefore a strong
-success/safety improvement—not full 3-D coverage or a flight-safety claim.
+Stage-1 `lamd7e4` is now the current packaged result. On the same raw
+temperature-one `M=20/gamma` bank, pretrained r0 had `SR=13.75%`, `CR=80.0%`,
+and `Validity=75.64%`; expanded r5 reached `SR=98.75%`, `CR=0%`, and
+`Validity=99.77%`. All 79 successes still used one left route. This is
+therefore a strong success/safety improvement—not full 3-D coverage or a
+flight-safety claim.
 
-![Stage-1 paired pretrained failure and expanded success](flow_deployment/minhyuk_stage1_handoff/assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png)
+![Stage-1 lambda7e4 raw gallery](flow_deployment/minhyuk_stage1_handoff/default_v0_mppicost_lamd7e4/eval/raw_gallery.png)
 
-The aggregate r0/r3/r5 gallery, metric curves, exact trajectories, raw metrics,
-recipe, and both r3/r5 packaged checkpoints are in
+The aggregate r0/r5 gallery, metric curves, exact trajectories, raw metrics,
+recipe, and packaged r5 checkpoint are in
 [`flow_deployment/minhyuk_stage1_handoff/`](flow_deployment/minhyuk_stage1_handoff/).
-Round 3 was selected on the same M=20 screen, not a disjoint confirmation.
 Randomized multi-sphere expansion remains Stage 2.
 
 A small, standalone reference for collecting 3D SafeMPPI rollouts from a point-mass double
@@ -80,8 +79,8 @@ This repository intentionally contains one sampling implementation:
 | Task-agnostic B1 Safe Flow Expansion core | implemented | [`expansion.py`](safe_mppi/expansion.py), [`flow_model.py`](safe_mppi/flow_model.py) |
 | Expansion result/gallery/video skeletons | implemented | [`expansion_visualize.py`](safe_mppi/expansion_visualize.py) |
 | Frozen flow policy → unchanged offline deployment loop | diagnostic bridge | [`flow_deployment/`](flow_deployment/) |
-| Lab-native pretrained flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_handoff/`](flow_deployment/minhyuk_handoff/) |
-| Random-cylinder pretraining → random-sphere expansion handoff | experimental | [`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/) |
+| Lab-native HP100 flow → online/frozen handoff | implemented | [`flow_deployment/minhyuk_stage1_handoff/`](flow_deployment/minhyuk_stage1_handoff/) |
+| Cylinder-ID pretraining → canonical three-sphere Stage-2 baseline | in progress | [`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/) |
 
 The expansion core is deliberately separated from task facts. A new 3D task must provide its own
 context, dynamics, nominal `H_P` gate, full-H verifier, and execution cost through the documented
@@ -384,39 +383,24 @@ randomized-domain metrics pooled, per gamma, per obstacle count, and per
 \((\gamma,N)\), with deterministic one-standard-deviation Wilson/bootstrap
 bands. `deploy_sim/` remains untouched.
 
-#### Canonical 50-round clutter result
+#### Current Stage-2 canonical baseline
 
-The authenticated run used 50 accepted randomized cylinder scenes per gamma
-for pretraining, then 50 expansion rounds in randomized three-sphere scenes.
-Every round committed exactly three successful trajectories per gamma (600
-total). Among the preregistered positive checkpoints
-`{1,10,20,30,40,50}`, round 10 maximized pooled SR on the disjoint randomized
-temperature-one evaluation; window validity and earliest round were the fixed
-tie-breakers. The fixed-scene result was not used to choose the checkpoint.
+The former 20-inch/random-sphere r10 package has been retired. The current
+Stage-2 challenge is a fixed, original-orientation equilateral triangle of
+three 15-inch spheres, with `0.70 m` center spacing and `0.10 m` robot
+inflation. Its research randomization moves each center independently only
+along the start-goal direction (`sigma_parallel=0.30 m`, `sigma_perp=0`).
 
-| checkpoint | pooled SR | CR | OOB | window validity | successful clearance |
-|---|---:|---:|---:|---:|---:|
-| pretrained r0 | .5875 | .1750 | .2375 | .9213 | .2267 m |
-| selected r10 | **.6250** | .3125 | **.0625** | .9131 | .2772 m |
-| final r50 | .5375 | .3500 | .1125 | .9130 | **.3520 m** |
+On the fixed unjittered triangle, the cylinder-ID HP100-T128-D3 pretrained
+policy reaches only `SR=48.5%` on an independent raw temperature-one
+`M=50/gamma` bank (`CR=49.5%`, `OOB=2.0%`). Per-gamma SR is
+`.46/.44/.48/.56` for gamma `.1/.3/.5/1`. This is the declared Stage-2
+expansion baseline. The expansion is still in progress, so no provisional
+Stage-2 expanded checkpoint or success claim is published.
 
-This is a non-monotone experimental result, not a solved safety claim: r10
-improves SR and OOB over r0 but raises collision rate, and r20 temporarily
-collapses. On the preregistered fixed three-sphere scene, r10 reaches
-`.60/1.00/.60/.70` SR for gamma `.1/.3/.5/1`; successful path spread is
-`.212/.189/.167/.149 m`. The repeated raw rollouts visibly differ, but they
-remain variations within a limited route family rather than evidence of four
-categorical homotopies.
-
-The portable pretrained and selected expanded checkpoints, exact known-map
-configuration, hashes, deterministic successful seeds, deployment commands,
-and evidence are in
+The exact fixed config, compact metrics, current pretrained checkpoint link,
+SafeMPPI command, and pretrained-policy commands are in
 [`flow_deployment/minhyuk_clutter_handoff/`](flow_deployment/minhyuk_clutter_handoff/).
-See the
-[`fixed-scene raw gallery`](flow_deployment/minhyuk_clutter_handoff/evidence/fixed_scene_raw_gallery.png),
-[`mechanism video`](flow_deployment/minhyuk_clutter_handoff/evidence/mechanism.mp4),
-and
-[`randomized-domain curves`](flow_deployment/minhyuk_clutter_handoff/evidence/randomized_raw_curves.pdf).
 
 ### Full 50-per-gamma pretraining archive
 
