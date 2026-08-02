@@ -1,15 +1,16 @@
-# Minhyuk handoff: HP100-T128-D3 and Stage-1 `default_v0`
+# Minhyuk handoff: HP100-T128-D3 and Stage-1 single-sphere expansion
 
 This folder is the 2026-08-01 pretrained-policy handoff. It sits on top of
 Minhyuk and Claude's trajectory-following commit
 `5bcd05d197eb46ef9282c12b83291ae19a2ea928`. No executable file under
 `deploy_sim/` was changed by this integration.
 
-The handoff now contains the cylinder-ID pretrained policy and the completed
-five-round fixed-sphere `default_v0` expansion. Round 3 is packaged as the
-M=20/gamma screening-selected performance checkpoint; round 5 is retained as
-the terminal checkpoint. Neither is a flight-safety guarantee. Randomized
-multi-sphere expansion remains Stage 2.
+The handoff contains the cylinder-ID pretrained policy and two completed
+five-round fixed-sphere expansions. `lamd7e4` is the current Stage-1 result;
+only its terminal round-5 checkpoint is packaged. The earlier `default_v0`
+screen remains below as historical evidence. Neither is a flight-safety
+guarantee. Randomized multi-sphere expansion remains active Stage-2 work and
+is not part of this handoff yet.
 
 ## What to use
 
@@ -17,8 +18,11 @@ multi-sphere expansion remains Stage 2.
 |---|---|
 | pretrained checkpoint | [`checkpoints/hp100_t128_d3.pt`](checkpoints/hp100_t128_d3.pt) |
 | checkpoint SHA-256 | `cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff` |
-| selected expanded checkpoint | [`checkpoints/stage1_default_v0_best_r3.pt`](checkpoints/stage1_default_v0_best_r3.pt), SHA-256 `dfa4b72a...fd69c` |
-| terminal expanded checkpoint | [`checkpoints/stage1_default_v0_terminal_r5.pt`](checkpoints/stage1_default_v0_terminal_r5.pt), SHA-256 `e58b81e0...84ed4` |
+| **current deployment checkpoint** | [`checkpoints/stage1_lamd7e4_terminal_r5.pt`](checkpoints/stage1_lamd7e4_terminal_r5.pt), SHA-256 `115a50e38b9f1c52819649663853d0699568bd07a00df3f4c6ef899262243d99` |
+| raw final expansion state | [`default_v0_mppicost_lamd7e4/checkpoint_005.pt`](default_v0_mppicost_lamd7e4/checkpoint_005.pt), SHA-256 `81d73de001b2080387459a72436069f8b39dc44788ea43c50f732d637f6630cc` |
+| current run and evaluation | [`default_v0_mppicost_lamd7e4/README.md`](default_v0_mppicost_lamd7e4/README.md) |
+| previous selected checkpoint | [`checkpoints/stage1_default_v0_best_r3.pt`](checkpoints/stage1_default_v0_best_r3.pt), SHA-256 `dfa4b72a...fd69c` |
+| previous terminal checkpoint | [`checkpoints/stage1_default_v0_terminal_r5.pt`](checkpoints/stage1_default_v0_terminal_r5.pt), SHA-256 `e58b81e0...84ed4` |
 | expansion and evaluation contract | [`expanded_default_v0_contract.json`](expanded_default_v0_contract.json) |
 | exact raw M=20/gamma metrics | [`default_v0/raw_eval_m20.json`](default_v0/raw_eval_m20.json) |
 | architecture and command contract | [`model_contract.json`](model_contract.json) |
@@ -92,6 +96,30 @@ that BLUE nominal polytope and its ten gamma-dependent horizon level sets.
 The checkpoint's training provenance remains the original randomized `4--8`
 cylinder distribution. The exact-five config and E/F scenes are deployment
 evidence only; they do not rewrite how the checkpoint was trained.
+
+### Stage 1 current result: `lamd7e4`
+
+`lamd7e4` keeps the same fixed single-sphere OOD task and raw temperature-one
+evaluation bank as `default_v0`. It uses `min_cost` execution with
+`J_native - 70000 * first_step_nominal_H_P_margin`; the configured proximity
+cost remains zero. Only the final expanded model is shipped.
+
+| checkpoint | SR | CR | OOB | Validity | successful clearance | time-to-goal |
+|---|---:|---:|---:|---:|---:|---:|
+| pretrained r0 | 13.75% | 80.0% | 6.25% | 75.64% | 0.0155 m | 8.45 s |
+| **expanded r5** | **98.75%** | **0%** | 1.25% | **99.77%** | **0.3882 m** | 10.23 s |
+
+These are the same raw temperature-one `M=20/gamma` policy rollouts at every
+checkpoint: no uncertainty tilt, verifier controller, fallback, or curated
+seed selection enters the aggregate. The result is not yet a coverage win:
+all 79 r5 successes use the left route, so route coverage is only `1/4`.
+
+![Current Stage-1 raw gallery](default_v0_mppicost_lamd7e4/eval/raw_gallery.png)
+
+The exact metrics, curves, mechanism video, and manifests are under
+[`default_v0_mppicost_lamd7e4/`](default_v0_mppicost_lamd7e4/). A follow-up handoff will add explicitly selected
+four-way successful references and paired pretrained failures after their
+seeds and trajectories are regenerated and authenticated.
 
 ### Stage 1: pretrained raw policy before expansion
 

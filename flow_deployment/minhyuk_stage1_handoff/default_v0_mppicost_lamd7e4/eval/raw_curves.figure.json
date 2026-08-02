@@ -1,0 +1,20 @@
+{
+  "status": "LAB_RAW_TEMPERATURE1_B1_STYLE_COMPLETE",
+  "rounds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "gammas": [
+    0.1,
+    0.3,
+    0.5,
+    1.0
+  ],
+  "raw_rollouts_per_gamma_round": 20,
+  "claim": "fixed raw temperature-1 rollouts; Validity is mean executed window validity; acquisition tilt and execution-time verifier are not used in this evaluation; Collision rate means physical sphere collision only, while taskspace/geofence OOB is reported separately in raw_eval.json and raw_sr_coverage",
+  "confidence_bands": "95% Wilson for collision rate; trajectory-level mean +/- 1.96 SE for validity, successful clearance, and time-to-goal"
+}
