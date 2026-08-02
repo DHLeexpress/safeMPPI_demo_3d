@@ -17,6 +17,7 @@ hashes, reproducible trajectory archives, and exact commands are in
 | fixed three-sphere OOD screen | [`lab_clutter_spheres_stage2_three_v2.json`](configs/lab_clutter_spheres_stage2_three_v2.json) |
 | today's fixed midpoint-sphere expansion task | [`lab_ball_stage1_t128.json`](configs/lab_ball_stage1_t128.json) |
 | pretrained cylinder-ID policy | [`hp100_t128_d3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt), SHA-256 `cc87b65f...e28ff` |
+| Stage-1 `default_v0` selected checkpoint | [`stage1_default_v0_best_r3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_default_v0_best_r3.pt), SHA-256 `dfa4b72a...fd69c` |
 
 The physical lab has five cylinders. Two paired-seed, exact-five SafeMPPI
 candidates are therefore packaged: E (`cylinders_00317`, seed `729853`) and F
@@ -44,13 +45,20 @@ uncertainty tilt, no verifier controller, and no fallback.
 
 ![HP100 T128 D3 pretrained policy on the fixed midpoint sphere](flow_deployment/minhyuk_stage1_handoff/assets/single_sphere_pretrained_r0_overlay.png)
 
-Today Stage 1 uses that fixed sphere with
-[`run_ball_expansion.py`](scripts/run_ball_expansion.py) and
-[`evaluate_ball_expansion.py`](scripts/evaluate_ball_expansion.py). An expanded
-checkpoint will be handed over only after raw metrics and route coverage are
-qualified. The randomized three-sphere failure screen is already packaged as
-an additional handoff asset, while full randomized-sphere expansion remains
-Stage 2.
+Stage-1 `default_v0` is now packaged. On the same raw temperature-one
+`M=20/gamma` bank, pretrained r0 had `SR=13.75%`, `CR=80.0%`, and
+`Validity=75.64%`; the screening-selected r3 reached `SR=92.5%`, `CR=2.5%`,
+and `Validity=98.87%`. Terminal r5 reached zero collision and 99.37% validity,
+but its 70 successes all used one route. This is therefore a strong
+success/safety improvement—not full 3-D coverage or a flight-safety claim.
+
+![Stage-1 paired pretrained failure and expanded success](flow_deployment/minhyuk_stage1_handoff/assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png)
+
+The aggregate r0/r3/r5 gallery, metric curves, exact trajectories, raw metrics,
+recipe, and both r3/r5 packaged checkpoints are in
+[`flow_deployment/minhyuk_stage1_handoff/`](flow_deployment/minhyuk_stage1_handoff/).
+Round 3 was selected on the same M=20 screen, not a disjoint confirmation.
+Randomized multi-sphere expansion remains Stage 2.
 
 A small, standalone reference for collecting 3D SafeMPPI rollouts from a point-mass double
 integrator. The package exposes the taskspace and controller recipe in one JSON file, runs the full

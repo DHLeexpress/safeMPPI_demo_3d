@@ -1,14 +1,15 @@
-# Minhyuk handoff: HP100-T128-D3 pretraining and Stage 1
+# Minhyuk handoff: HP100-T128-D3 and Stage-1 `default_v0`
 
 This folder is the 2026-08-01 pretrained-policy handoff. It sits on top of
 Minhyuk and Claude's trajectory-following commit
 `5bcd05d197eb46ef9282c12b83291ae19a2ea928`. No executable file under
 `deploy_sim/` was changed by this integration.
 
-The handoff contains the cylinder-ID policy and reproducible evidence only.
-It does **not** contain a promoted expanded checkpoint and does not claim a
-flight-safety guarantee. Stage 1 expansion uses one fixed midpoint sphere;
-randomized multi-sphere expansion is Stage 2.
+The handoff now contains the cylinder-ID pretrained policy and the completed
+five-round fixed-sphere `default_v0` expansion. Round 3 is packaged as the
+M=20/gamma screening-selected performance checkpoint; round 5 is retained as
+the terminal checkpoint. Neither is a flight-safety guarantee. Randomized
+multi-sphere expansion remains Stage 2.
 
 ## What to use
 
@@ -16,6 +17,10 @@ randomized multi-sphere expansion is Stage 2.
 |---|---|
 | pretrained checkpoint | [`checkpoints/hp100_t128_d3.pt`](checkpoints/hp100_t128_d3.pt) |
 | checkpoint SHA-256 | `cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff` |
+| selected expanded checkpoint | [`checkpoints/stage1_default_v0_best_r3.pt`](checkpoints/stage1_default_v0_best_r3.pt), SHA-256 `dfa4b72a...fd69c` |
+| terminal expanded checkpoint | [`checkpoints/stage1_default_v0_terminal_r5.pt`](checkpoints/stage1_default_v0_terminal_r5.pt), SHA-256 `e58b81e0...84ed4` |
+| expansion and evaluation contract | [`expanded_default_v0_contract.json`](expanded_default_v0_contract.json) |
+| exact raw M=20/gamma metrics | [`default_v0/raw_eval_m20.json`](default_v0/raw_eval_m20.json) |
 | architecture and command contract | [`model_contract.json`](model_contract.json) |
 | pretraining provenance | [`checkpoints/pretrain_manifest.json`](checkpoints/pretrain_manifest.json) |
 | independent M=100/gamma audit | [`checkpoints/pretrain_audit_m100.json`](checkpoints/pretrain_audit_m100.json) |
@@ -110,6 +115,37 @@ reference archives are packaged as
 deployment team can reproduce or track a concrete candidate. This selected
 seed is not representative of the aggregate rate.
 
+### Stage 1: `default_v0` after expansion
+
+The evaluator reloaded every saved checkpoint and replayed the **same** raw
+temperature-one `M=20/gamma` bank (`91000 + 37 * episode`). These are policy
+metrics—not sigma-tilted gathering trajectories—and use no verifier controller
+or fallback.
+
+| checkpoint | SR | CR | OOB | Validity | successful clearance | time-to-goal | route coverage |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| pretrained r0 | 13.75% | 80.0% | 6.25% | 75.64% | 0.0155 m | 8.45 s | 1/4 |
+| **r3, best screened SR** | **92.5%** | **2.5%** | 5.0% | **98.87%** | 0.2185 m | 11.44 s | 2/4 |
+| r5, terminal | 87.5% | **0%** | 7.5% | 99.37% | **0.4106 m** | 12.23 s | 1/4 |
+
+![Raw r0/r3/r5 population gallery](assets/single_sphere_default_v0_m20_r0_r3_r5_gallery.png)
+
+The next overlay is a qualitative paired example from the declared bank:
+episode 2 (`seed=91074`) collides at all four gammas under r0 and succeeds at
+all four under r3. The low-gamma paths are slower and have larger clearance;
+gamma 1 takes the other in-plane homotopy. Its eight exact trajectories are in
+`trajectory_archives/stage1_default_v0_r{0,3}_g*_s91074_*.npz`.
+
+![Paired pretrained failure and expanded success](assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png)
+
+![Raw metric trends across all six checkpoints](assets/single_sphere_default_v0_raw_curves.png)
+
+This is a strong Stage-1 success/safety result, but not a full coverage result.
+At r3, successful routes are left/right `68/6` with no above/below success. At
+r5, all 70 successes use the left route. Round 3 was selected on the same M=20
+screen rather than a disjoint confirmation, so it remains an experimental
+handoff checkpoint.
+
 ### Stage 2 preview: fixed three-sphere OOD failure
 
 ![Pretrained policy on a fixed three-sphere OOD scene](assets/three_sphere_ood_failure_overlay.png)
@@ -180,38 +216,54 @@ that modeled clearance. Treat it as an interface/tracking candidate, not as a
 flight-ready safety certificate. Minhyuk should first replay the frozen
 reference and then validate closed-loop clearance in the native simulator.
 
-## Today's expansion scope
+## Reproduce and deploy `default_v0`
 
 The research-side source is
 [`../../scripts/run_ball_expansion.py`](../../scripts/run_ball_expansion.py)
 plus
 [`../../scripts/evaluate_ball_expansion.py`](../../scripts/evaluate_ball_expansion.py).
-The current local pretraining bundle is
-`results/stage1_single_ball_t128/pretrain_hp100_t128_d3_e52`. It is intentionally
-not duplicated here because expansion also needs the original demo/calibration
-artifacts referenced by its manifest.
+The full local pretraining bundle remains
+`results/stage1_single_ball_t128/pretrain_hp100_t128_d3_e52`; the standalone
+pretrained and packaged expanded checkpoints are both included here.
 
 ```bash
 PRE=results/stage1_single_ball_t128/pretrain_hp100_t128_d3_e52
-OUT=results/stage1_single_ball_t128/<new-expansion-run>
+OUT=results/stage1_single_ball_t128/default_v0
 
 python scripts/run_ball_expansion.py \
   --pretrain-dir "$PRE" \
-  --output "$OUT" \
-  <frozen Stage-1 expansion recipe>
+  --lab-task-config configs/lab_ball_stage1_t128.json \
+  --output "$OUT" --device mps --rounds 5 \
+  --head-only-expansion --flow-base-std 1.0 --learning-rate 1e-5 \
+  --freeze-visual-encoder-during-expansion \
+  --adaptive-beta --ess-target 0.1 \
+  --parallel-episodes 4 --verifier-workers 8 --max-retry-batches 32 \
+  --successful-trajectories-per-gamma 2 --K 16 --B 4 \
+  --inner-steps 10 --batch-size 64 --replay-top-fraction 1.0 \
+  --replay-selector uniform --replay-rounds 3 --gp-buffer-cap 768 \
+  --gp-reference-mode sliding_success_per_gamma_current_phi \
+  --gp-sliding-row-selector trajectory_uniform \
+  --candidate-perturb-std 0 --candidate-perturb-scope coherent_horizon \
+  --negative-alpha 0 --archive-rule successful_executed_windows \
+  --successful-trajectory-selector lowest_episode_id \
+  --replay-acceptance execution_eligible --execution-rule max_step_margin \
+  --acquisition-feature learned_phi --coverage-replay none \
+  --replay-augmentation none --execution-z-bias-mode none \
+  --tight-corridor --verifier-mode full_polytope \
+  --verifier-solver analytic --event-log full \
+  --paired-noised-representation --seed 1
 
 python scripts/evaluate_ball_expansion.py \
   --pretrain-dir "$PRE" \
   --expansion "$OUT" \
-  --episodes 20 \
-  --probe-samples 16 \
-  --stride 1 \
-  --seed 91000 \
-  --raw-tight-corridor \
-  --video-gamma 0.5
+  --device mps --episodes 20 --probe-samples 16 --stride 1 \
+  --seed 91000 --video-gamma 0.5 --video-rounds 1 2 3 4 5
 ```
 
-No expanded checkpoint is promoted by this handoff. It will be added only
-after the fixed single-sphere policy improves raw SR, collision rate, validity,
-clearance, and route coverage under a fixed evaluation bank. Randomized sphere
-expansion follows only after that Stage-1 qualification.
+The raw evaluator currently executes these policy rollouts on CPU even when
+the CLI carries `--device mps`; the delivered metrics and selected trajectories
+were replayed on CPU for exact agreement. To load the selected checkpoint in
+the existing deployment commands, replace `CKPT` with
+`flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_default_v0_best_r3.pt`
+and use its SHA-256 above. The input/output contract is identical to the
+pretrained checkpoint; only the flow head changed.

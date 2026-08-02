@@ -1,0 +1,102 @@
+{
+  "status": "EXPERIMENTAL_DEFAULT_V0_HANDOFF",
+  "scope": "fixed single-sphere Stage-1 expansion; not flight-safety qualified and not full 3-D coverage qualified",
+  "pretrained_checkpoint": {
+    "path": "checkpoints/hp100_t128_d3.pt",
+    "sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff"
+  },
+  "selected_checkpoint": {
+    "selection": "highest pooled SR observed on the declared M=20/gamma raw screening bank",
+    "round": 3,
+    "path": "checkpoints/stage1_default_v0_best_r3.pt",
+    "packaged_sha256": "dfa4b72a04e3b892bbbe7ea152b1f24a1c4a086a4ccd653f0bf67183027fd69c",
+    "source_expansion_checkpoint_sha256": "ead92fe5744880a24cb07837192e8c7a534a46f571f91fea20dda13687788978",
+    "independent_selection_bank": false
+  },
+  "terminal_checkpoint": {
+    "round": 5,
+    "path": "checkpoints/stage1_default_v0_terminal_r5.pt",
+    "packaged_sha256": "e58b81e03f9276d0e6118ff0f0451bea5bec9b5e5c13da3d4ff957d74ce84ed4",
+    "source_expansion_checkpoint_sha256": "88ee702eabe81765e3e77d779af904218a5b2dd4f66a9f0ef3b09a39e719810d"
+  },
+  "raw_evaluation_contract": {
+    "episodes_per_gamma": 20,
+    "gammas": [0.1, 0.3, 0.5, 1.0],
+    "seed_formula": "91000 + 37 * episode",
+    "sampling_temperature": 1.0,
+    "uncertainty_tilting": false,
+    "verifier_controller": false,
+    "fallback": false,
+    "device_used_by_evaluator": "cpu",
+    "metrics": "default_v0/raw_eval_m20.json"
+  },
+  "pooled_results": {
+    "r0": {
+      "SR": 0.1375,
+      "CR": 0.8,
+      "OOB": 0.0625,
+      "timeout": 0.0,
+      "window_validity": 0.7564390066739075,
+      "successful_min_clearance_m": 0.015534809738731094,
+      "successful_time_to_goal_s": 8.445454545454545,
+      "route_counts": {"below": 0, "above": 0, "left": 11, "right": 0},
+      "route_coverage": 0.25
+    },
+    "r3": {
+      "SR": 0.925,
+      "CR": 0.025,
+      "OOB": 0.05,
+      "timeout": 0.0,
+      "window_validity": 0.9887076380006172,
+      "successful_min_clearance_m": 0.2184951202962107,
+      "successful_time_to_goal_s": 11.439189189189191,
+      "route_counts": {"below": 0, "above": 0, "left": 68, "right": 6},
+      "route_coverage": 0.5
+    },
+    "r5": {
+      "SR": 0.875,
+      "CR": 0.0,
+      "OOB": 0.075,
+      "timeout": 0.05,
+      "window_validity": 0.9936677333490127,
+      "successful_min_clearance_m": 0.410641433579614,
+      "successful_time_to_goal_s": 12.232857142857146,
+      "route_counts": {"below": 0, "above": 0, "left": 70, "right": 0},
+      "route_coverage": 0.25
+    }
+  },
+  "expansion_recipe": {
+    "rounds": 5,
+    "head_only_expansion": true,
+    "flow_base_std": 1.0,
+    "learning_rate": 1e-5,
+    "visual_encoder_frozen": true,
+    "adaptive_beta": true,
+    "ess_target": 0.1,
+    "parallel_episodes": 4,
+    "successful_trajectories_per_gamma": 2,
+    "K": 16,
+    "B": 4,
+    "microbatch_repeats": 10,
+    "batch_size": 64,
+    "replay_rounds": 3,
+    "gp_buffer_cap": 768,
+    "gp_reference_mode": "sliding_success_per_gamma_current_phi",
+    "gp_sliding_row_selector": "trajectory_uniform",
+    "paired_noised_representation": true,
+    "negative_alpha": 0.0,
+    "archive_rule": "successful_executed_windows",
+    "successful_trajectory_selector": "lowest_episode_id",
+    "replay_acceptance": "execution_eligible",
+    "execution_rule": "max_step_margin",
+    "acquisition_feature": "learned_phi",
+    "verifier_mode": "full_polytope",
+    "verifier_solver": "analytic",
+    "seed": 1
+  },
+  "limitations": [
+    "r3 was selected on the same M=20/gamma bank used for reporting; it is not a disjoint confirmation.",
+    "r3 contains two in-plane route families but no above/below success; r5 collapses to the left route.",
+    "The result demonstrates task success, collision reduction, validity, and clearance improvement, not full multimodal coverage or a hardware safety guarantee."
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "status": "DEFAULT_V0_PAIRED_OVERLAY_COMPLETE",
+  "scientific_scope": "Selected qualitative paired seed; aggregate claims come from default_v0/raw_eval_m20.json.",
+  "contract": {
+    "seed": 91074,
+    "episode": 2,
+    "sampling_temperature": 1.0,
+    "raw_sampling": true,
+    "uncertainty_tilting": false,
+    "verifier_controller": false,
+    "fallback": false,
+    "device": "cpu"
+  },
+  "inputs": {
+    "pretrained_checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
+    "pretrained_checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+    "expanded_r3_checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/stage1_default_v0_best_r3.pt",
+    "expanded_r3_checkpoint_sha256": "dfa4b72a04e3b892bbbe7ea152b1f24a1c4a086a4ccd653f0bf67183027fd69c",
+    "config": "configs/lab_ball_stage1_t128.json",
+    "config_sha256": "31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38"
+  },
+  "figure": {
+    "png": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png",
+    "png_sha256": "4e1211b5bef5fcce6a1b3d3b2ea0b5fb7d638b5c856370a9a57e28fe0280fe49",
+    "pdf": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.pdf",
+    "pdf_sha256": "7c3e52eaca6cd6d8fe421e05e0cb0fd07ef030f94a4fefd72468827c72871f22"
+  },
+  "rows": [
+    {
+      "checkpoint": "r0",
+      "gamma": 0.1,
+      "seed": 91074,
+      "status": "COLLISION",
+      "route_mode": "none",
+      "minimum_clearance_m": -0.009647240266533907,
+      "time_to_goal_s": null,
+      "window_validity": 0.5853658536585366,
+      "archive": "trajectory_archives/stage1_default_v0_r0_g0.1_s91074_collision.npz",
+      "archive_sha256": "b082fb6137693a0b35c95d92aac5c4320c6748cf61a96fb7dd84a6078d41ee14"
+    },
+    {
+      "checkpoint": "r0",
+      "gamma": 0.3,
+      "seed": 91074,
+      "status": "COLLISION",
+      "route_mode": "none",
+      "minimum_clearance_m": -0.029850485303663132,
+      "time_to_goal_s": null,
+      "window_validity": 0.7317073170731707,
+      "archive": "trajectory_archives/stage1_default_v0_r0_g0.3_s91074_collision.npz",
+      "archive_sha256": "4076aa73dd9787bc415c666fdb3165639c764f9c9c9874704cdd9c6c5469d0ad"
+    },
+    {
+      "checkpoint": "r0",
+      "gamma": 0.5,
+      "seed": 91074,
+      "status": "COLLISION",
+      "route_mode": "none",
+      "minimum_clearance_m": -0.011252335577619954,
+      "time_to_goal_s": null,
+      "window_validity": 0.75,
+      "archive": "trajectory_archives/stage1_default_v0_r0_g0.5_s91074_collision.npz",
+      "archive_sha256": "63801a2e400f992466dafb1eabd2964fbabac8e0e537a9121d3df0781e3ece43"
+    },
+    {
+      "checkpoint": "r0",
+      "gamma": 1.0,
+      "seed": 91074,
+      "status": "COLLISION",
+      "route_mode": "none",
+      "minimum_clearance_m": -0.004169662221318593,
+      "time_to_goal_s": null,
+      "window_validity": 0.7435897435897436,
+      "archive": "trajectory_archives/stage1_default_v0_r0_g1_s91074_collision.npz",
+      "archive_sha256": "e24fe745d1f6d18b3b341a917bcda8607e62f6a53159439c577e41424827a054"
+    },
+    {
+      "checkpoint": "r3",
+      "gamma": 0.1,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "route_mode": "right",
+      "minimum_clearance_m": 0.11577147430463358,
+      "time_to_goal_s": 17.400000000000002,
+      "window_validity": 1.0,
+      "archive": "trajectory_archives/stage1_default_v0_r3_g0.1_s91074_success.npz",
+      "archive_sha256": "b7bf919d477e9f012ae8f03d092641cdb18a4dd594580cf98b232fdc8fde33a4"
+    },
+    {
+      "checkpoint": "r3",
+      "gamma": 0.3,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "route_mode": "right",
+      "minimum_clearance_m": 0.09796638786054723,
+      "time_to_goal_s": 17.3,
+      "window_validity": 1.0,
+      "archive": "trajectory_archives/stage1_default_v0_r3_g0.3_s91074_success.npz",
+      "archive_sha256": "1e571201dae32fd429f4648df4b108dbe27a7d18d6f301f0d3f3629fc0931011"
+    },
+    {
+      "checkpoint": "r3",
+      "gamma": 0.5,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "route_mode": "right",
+      "minimum_clearance_m": 0.08722637283149992,
+      "time_to_goal_s": 15.8,
+      "window_validity": 1.0,
+      "archive": "trajectory_archives/stage1_default_v0_r3_g0.5_s91074_success.npz",
+      "archive_sha256": "5a119b5df8ad8134fd41b5b2c20ee2297dcf40f98edabe8e475d51a25c1f6b38"
+    },
+    {
+      "checkpoint": "r3",
+      "gamma": 1.0,
+      "seed": 91074,
+      "status": "SUCCESS",
+      "route_mode": "left",
+      "minimum_clearance_m": 0.05725556353718059,
+      "time_to_goal_s": 13.8,
+      "window_validity": 1.0,
+      "archive": "trajectory_archives/stage1_default_v0_r3_g1_s91074_success.npz",
+      "archive_sha256": "3cbf7cf9393bd667bd1b81132f43619ca8e615043d8ee8a20440860183f935de"
+    }
+  ]
+}

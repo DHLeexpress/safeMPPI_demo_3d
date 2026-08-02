@@ -1,6 +1,6 @@
 {
-  "status": "MINHYUK_STAGE1_HANDOFF_ASSETS_COMPLETE",
-  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated. Exact-five candidates E/F are declared qualitative route-diversity selections, not rate estimates.",
+  "status": "MINHYUK_STAGE1_DEFAULT_V0_HANDOFF_ASSETS_COMPLETE",
+  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated. Exact-five candidates E/F and the default_v0 paired seed are declared qualitative selections, while aggregate claims use their explicit evaluation banks. No flight-safety guarantee is claimed.",
   "source": {
     "repository_head": "9be6211a05d79ae01df51fc116bc298e947bb5c8",
     "path_focused_source_commit": "5c8a57779f165c583b297b73ab6d8bf90e3f59f5",
@@ -16,6 +16,7 @@
     }
   },
   "command": "python scripts/build_minhyuk_stage1_handoff_assets.py --device cpu --cylinder-only",
+  "default_v0_overlay_command": "python scripts/build_default_v0_handoff_assets.py",
   "id_cylinder_safemppi": {
     "evidence_contract": {
       "training_obstacle_count_range": [
@@ -1674,6 +1675,70 @@
       }
     ]
   },
+  "stage1_single_sphere_default_v0": {
+    "status": "EXPERIMENTAL_DEFAULT_V0_HANDOFF",
+    "contract": "expanded_default_v0_contract.json",
+    "raw_evaluation": {
+      "path": "default_v0/raw_eval_m20.json",
+      "sha256": "b3348b1e2edc7d7c8695c7ac262278d497a3b1dc0e473322dd0731d690d6fa72",
+      "episodes_per_gamma": 20,
+      "seed_formula": "91000 + 37 * episode",
+      "sampling_temperature": 1.0,
+      "uncertainty_tilting": false,
+      "verifier_controller": false,
+      "fallback": false
+    },
+    "selected_checkpoint": {
+      "round": 3,
+      "selection": "highest pooled SR on the declared M=20/gamma screening bank",
+      "path": "checkpoints/stage1_default_v0_best_r3.pt",
+      "sha256": "dfa4b72a04e3b892bbbe7ea152b1f24a1c4a086a4ccd653f0bf67183027fd69c",
+      "SR": 0.925,
+      "CR": 0.025,
+      "OOB": 0.05,
+      "window_validity": 0.9887076380006172,
+      "successful_min_clearance_m": 0.2184951202962107,
+      "route_counts": {"below": 0, "above": 0, "left": 68, "right": 6}
+    },
+    "terminal_checkpoint": {
+      "round": 5,
+      "path": "checkpoints/stage1_default_v0_terminal_r5.pt",
+      "sha256": "e58b81e03f9276d0e6118ff0f0451bea5bec9b5e5c13da3d4ff957d74ce84ed4",
+      "SR": 0.875,
+      "CR": 0.0,
+      "OOB": 0.075,
+      "window_validity": 0.9936677333490127,
+      "successful_min_clearance_m": 0.410641433579614,
+      "route_counts": {"below": 0, "above": 0, "left": 70, "right": 0}
+    },
+    "paired_overlay": {
+      "seed": 91074,
+      "episode": 2,
+      "scope": "selected qualitative paired seed; r0 all collision and r3 all success",
+      "record": "default_v0/paired_overlay_seed91074.json",
+      "png": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png",
+      "png_sha256": "4e1211b5bef5fcce6a1b3d3b2ea0b5fb7d638b5c856370a9a57e28fe0280fe49",
+      "pdf": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.pdf",
+      "pdf_sha256": "7c3e52eaca6cd6d8fe421e05e0cb0fd07ef030f94a4fefd72468827c72871f22"
+    },
+    "aggregate_gallery": {
+      "png": "assets/single_sphere_default_v0_m20_r0_r3_r5_gallery.png",
+      "png_sha256": "3653680dab20be7af498c22f3eff8e53b05cd6fb177fbf83b4faacf9096860b0",
+      "pdf": "assets/single_sphere_default_v0_m20_r0_r3_r5_gallery.pdf",
+      "pdf_sha256": "87c48254b325daf1b2ed613882d5c9bd2a050c44501f11ade40611184b409ab3"
+    },
+    "raw_curves": {
+      "png": "assets/single_sphere_default_v0_raw_curves.png",
+      "png_sha256": "1dd004c3931d40fc414eb8f7eab6a4f7180baf8f10285919ff81c8b1cefd8293",
+      "pdf": "assets/single_sphere_default_v0_raw_curves.pdf",
+      "pdf_sha256": "dbfea0410ad72904cd91f1171850f446280f55c8f95fdb2b769ed3c1d076ac94"
+    },
+    "limitations": [
+      "Round 3 was selected on the same M=20/gamma bank used for reporting.",
+      "No above/below terminal success was observed; round 5 collapsed to one route.",
+      "No flight-safety guarantee is claimed."
+    ]
+  },
   "three_sphere_ood_pretrained": {
     "contract": {
       "scene_bank_seed": 191000,
@@ -1787,6 +1852,36 @@
     ]
   },
   "generated_files": [
+    {
+      "path": "assets/single_sphere_default_v0_m20_r0_r3_r5_gallery.pdf",
+      "bytes": 228047,
+      "sha256": "87c48254b325daf1b2ed613882d5c9bd2a050c44501f11ade40611184b409ab3"
+    },
+    {
+      "path": "assets/single_sphere_default_v0_m20_r0_r3_r5_gallery.png",
+      "bytes": 495666,
+      "sha256": "3653680dab20be7af498c22f3eff8e53b05cd6fb177fbf83b4faacf9096860b0"
+    },
+    {
+      "path": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.pdf",
+      "bytes": 103812,
+      "sha256": "7c3e52eaca6cd6d8fe421e05e0cb0fd07ef030f94a4fefd72468827c72871f22"
+    },
+    {
+      "path": "assets/single_sphere_default_v0_r0_r3_seed91074_gamma_overlay.png",
+      "bytes": 601648,
+      "sha256": "4e1211b5bef5fcce6a1b3d3b2ea0b5fb7d638b5c856370a9a57e28fe0280fe49"
+    },
+    {
+      "path": "assets/single_sphere_default_v0_raw_curves.pdf",
+      "bytes": 26650,
+      "sha256": "dbfea0410ad72904cd91f1171850f446280f55c8f95fdb2b769ed3c1d076ac94"
+    },
+    {
+      "path": "assets/single_sphere_default_v0_raw_curves.png",
+      "bytes": 546681,
+      "sha256": "1dd004c3931d40fc414eb8f7eab6a4f7180baf8f10285919ff81c8b1cefd8293"
+    },
     {
       "path": "assets/cylinder_id_exact5_candidate_e_gamma_overlay.pdf",
       "bytes": 43780,
