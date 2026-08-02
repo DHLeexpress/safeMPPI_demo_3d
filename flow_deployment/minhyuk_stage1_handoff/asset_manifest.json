@@ -1,158 +1,357 @@
 {
   "status": "MINHYUK_STAGE1_HANDOFF_ASSETS_COMPLETE",
-  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated. The exact-six cylinder panel is a declared qualitative selection, not a success-rate estimate.",
+  "scientific_scope": "Actual trajectory visualization and raw-policy qualification; no trajectory was fabricated. Exact-five candidates E/F are declared qualitative route-diversity selections, not rate estimates.",
   "source": {
-    "repository_head": "ef271a8d3e4df4eb01194265162e77af8249aa31",
+    "repository_head": "9be6211a05d79ae01df51fc116bc298e947bb5c8",
     "path_focused_source_commit": "5c8a57779f165c583b297b73ab6d8bf90e3f59f5",
     "builder": "scripts/build_minhyuk_stage1_handoff_assets.py",
-    "builder_sha256": "17dad2c0012112337283ba9088edac9dba640074d92f34ce2bb24dcfc97e0347",
+    "builder_sha256": "5b3b373d02dfac3762a69d4fec24d2d2668e2121f089bc8d242f4ec1e9d6ae00",
     "checkpoint": "flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
     "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
     "configs": {
       "configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json": "9336bc73ff6d18e2cfafe8f96db455ae9c7614a8c981906d196da7c385591429",
-      "configs/lab_clutter_cylinders_lab_six_v2.json": "bef69e2111deb017b1b19ad59904f4b00be8c972cc23a2d5fe3b39a37fa0652d",
+      "configs/lab_clutter_cylinders_lab_five_v2.json": "774e1c9bb2e2636b75e3ef46253dd612bdb903070026b05a4b888adb51e6d989",
       "configs/lab_ball_stage1_t128.json": "31e64eeb9dd9a4fa00f738340ef36035517044c78e62b5e0ec45cb3e92a2fc38",
       "configs/lab_clutter_spheres_path_midpoint_uniform_v2.json": "6727e70afbee4f8da37aba211b9aaba79156f7ee7932ad137a62480f9df9992c"
     }
   },
-  "command": "python scripts/build_minhyuk_stage1_handoff_assets.py --device cpu",
+  "command": "python scripts/build_minhyuk_stage1_handoff_assets.py --device cpu --cylinder-only",
   "id_cylinder_safemppi": {
     "evidence_contract": {
       "training_obstacle_count_range": [
         4,
         8
       ],
-      "physical_lab_obstacle_count": 6,
-      "paired_scene_and_rollout_seed": true,
-      "selection_scope": "144 exact-six, all-four-gamma-success scenes in the canonical 2000-successes-per-gamma archive",
+      "physical_lab_obstacle_count": 5,
+      "paired_scene_and_rollout_seed_within_candidate": true,
+      "selection_scope": "184 exact-five, all-four-gamma-success scenes in the canonical 2000-successes-per-gamma archive",
       "source_commit": "c46ae2fff7f77b920d38c2e249c43267f68504ca",
       "source_scene_bank_seed": 20260731,
-      "selection_rule": "strictly decreasing horizontal transverse RMS detour and larger low-vs-high time-to-goal; then maximize visible low-vs-high route contrast",
+      "selection_rule": "maximize distinct obstacle-relative route signatures and cross-gamma route spread; retain only all-gamma terminal successes",
       "rate_estimate": false
     },
-    "scene_id": "cylinders_00697",
-    "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-    "scene_bank_seed": 20260731,
-    "scene_seed": 2096909582,
-    "rollout_seed": 1113273,
-    "cylinder_count": 6,
-    "cross_gamma_rms_spread_m": 0.22996679181388993,
-    "low_vs_high_detour_rms_gap_m": 0.13648449285741598,
-    "all_success": true,
-    "rows": [
+    "candidates": [
       {
-        "gamma": 0.1,
-        "status": "SUCCESS",
-        "seed": 1113273,
-        "scene_id": "cylinders_00697",
-        "scene_seed": 2096909582,
-        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-        "steps": 113,
-        "time_to_goal_s": 11.3,
-        "goal_distance_m": 0.18467359473120779,
-        "min_clearance_m": 0.11846078406750693,
-        "horizontal_transverse_rms_m": 0.2258302047303245,
-        "horizontal_max_abs_cross_track_m": 0.36041101903155137,
-        "horizontal_path_length_m": 4.802814726544587,
-        "horizontal_path_inefficiency_m": 0.5608817078967956,
-        "mean_signed_cross_track_m": -0.02684377530641845,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.1_cylinders_00697_s1113273.npz",
-        "archive_sha256": "68f7473e21ef1489fc662da7160a2e01f231d113fb803eedce1a6ef5e11d4efd"
+        "candidate": "E",
+        "scene_id": "cylinders_00317",
+        "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+        "scene_bank_seed": 20260731,
+        "scene_seed": 640760290,
+        "rollout_seed": 729853,
+        "cylinder_count": 5,
+        "route_signature_count": 3,
+        "route_signatures": [
+          [
+            1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          [
+            1,
+            -1,
+            -1,
+            1,
+            1
+          ],
+          [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        ],
+        "cross_gamma_rms_spread_m": 0.6754654751567655,
+        "minimum_clearance_m": 0.013093722406888608,
+        "all_success": true,
+        "overlay_png": "assets/cylinder_id_exact5_candidate_e_gamma_overlay.png",
+        "overlay_pdf": "assets/cylinder_id_exact5_candidate_e_gamma_overlay.pdf",
+        "rows": [
+          {
+            "gamma": 0.1,
+            "status": "SUCCESS",
+            "seed": 729853,
+            "scene_id": "cylinders_00317",
+            "scene_seed": 640760290,
+            "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+            "steps": 116,
+            "time_to_goal_s": 11.600000000000001,
+            "goal_distance_m": 0.19059388344770484,
+            "min_clearance_m": 0.07976692558589354,
+            "horizontal_transverse_rms_m": 0.3388403354058141,
+            "horizontal_max_abs_cross_track_m": 0.5585915141547915,
+            "horizontal_path_length_m": 4.400329452706943,
+            "horizontal_path_inefficiency_m": 0.42023971057018406,
+            "mean_signed_cross_track_m": -0.29362472533999,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.1_cylinders_00317_s729853.npz",
+            "archive_sha256": "66de78c63b9c99dc7ec0e63da397e11e98ba05f562aca85850fcd562967f4217"
+          },
+          {
+            "gamma": 0.3,
+            "status": "SUCCESS",
+            "seed": 729853,
+            "scene_id": "cylinders_00317",
+            "scene_seed": 640760290,
+            "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+            "steps": 101,
+            "time_to_goal_s": 10.100000000000001,
+            "goal_distance_m": 0.16270482195126487,
+            "min_clearance_m": 0.026413738299681078,
+            "horizontal_transverse_rms_m": 0.5600992293433602,
+            "horizontal_max_abs_cross_track_m": 0.9543093086702872,
+            "horizontal_path_length_m": 4.474789161756624,
+            "horizontal_path_inefficiency_m": 0.5183670465224504,
+            "mean_signed_cross_track_m": -0.4549686061761983,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.3_cylinders_00317_s729853.npz",
+            "archive_sha256": "9701bdd245db4360951318bac805a83050bceea38f41dbb6084f7c47bff0b7f7"
+          },
+          {
+            "gamma": 0.5,
+            "status": "SUCCESS",
+            "seed": 729853,
+            "scene_id": "cylinders_00317",
+            "scene_seed": 640760290,
+            "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+            "steps": 98,
+            "time_to_goal_s": 9.8,
+            "goal_distance_m": 0.19341770209664877,
+            "min_clearance_m": 0.01825386462724976,
+            "horizontal_transverse_rms_m": 0.35847903752062593,
+            "horizontal_max_abs_cross_track_m": 0.6889224452167354,
+            "horizontal_path_length_m": 4.511901939266961,
+            "horizontal_path_inefficiency_m": 0.47677284105296813,
+            "mean_signed_cross_track_m": 0.22063681800707663,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.5_cylinders_00317_s729853.npz",
+            "archive_sha256": "66e9293efacec049bfbbba8d91449d64643d6b93d28877d0a26e1bdbd3d4e6c1"
+          },
+          {
+            "gamma": 1.0,
+            "status": "SUCCESS",
+            "seed": 729853,
+            "scene_id": "cylinders_00317",
+            "scene_seed": 640760290,
+            "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+            "steps": 99,
+            "time_to_goal_s": 9.9,
+            "goal_distance_m": 0.15737924887324517,
+            "min_clearance_m": 0.013093722406888608,
+            "horizontal_transverse_rms_m": 0.5980109055300983,
+            "horizontal_max_abs_cross_track_m": 1.0564662791465114,
+            "horizontal_path_length_m": 4.644843352197064,
+            "horizontal_path_inefficiency_m": 0.647412022845014,
+            "mean_signed_cross_track_m": -0.4665113369846565,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g1_cylinders_00317_s729853.npz",
+            "archive_sha256": "80ff0f6b4f375efd8ef18aea8de28799ba9209e8731c88fc48bbaae906128ba8"
+          }
+        ],
+        "nominal_polytope_gifs": [
+          {
+            "gamma": 0.1,
+            "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p1.gif",
+            "frames": 40,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 625736,
+            "sha256": "0ab702175cbbed92efd65beb3c313a886c5f0ba0deeec04fe6973b687cd7114d"
+          },
+          {
+            "gamma": 0.3,
+            "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p3.gif",
+            "frames": 35,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 556192,
+            "sha256": "806d46300decad129b3721bc1b0fc5a6a9cca6a3ab4d73518be99414e3f667ef"
+          },
+          {
+            "gamma": 0.5,
+            "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p5.gif",
+            "frames": 34,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 507707,
+            "sha256": "b1f81f18b696ade5022e138ab5b4077caa167a00580f95783e31ec6cc47ff565"
+          },
+          {
+            "gamma": 1.0,
+            "path": "assets/cylinder_id_exact5_candidate_e_nominal_g1p0.gif",
+            "frames": 34,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 570007,
+            "sha256": "98157585868b30e6e30a2af35df968b97685cd1220071d5a15ce353417cad31e"
+          }
+        ]
       },
       {
-        "gamma": 0.3,
-        "status": "SUCCESS",
-        "seed": 1113273,
-        "scene_id": "cylinders_00697",
-        "scene_seed": 2096909582,
-        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-        "steps": 72,
-        "time_to_goal_s": 7.2,
-        "goal_distance_m": 0.1567770455729654,
-        "min_clearance_m": 0.1533462267485351,
-        "horizontal_transverse_rms_m": 0.12523489881425734,
-        "horizontal_max_abs_cross_track_m": 0.23312014269275363,
-        "horizontal_path_length_m": 4.063787676843802,
-        "horizontal_path_inefficiency_m": 0.07700622858466932,
-        "mean_signed_cross_track_m": -0.055258197599404715,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.3_cylinders_00697_s1113273.npz",
-        "archive_sha256": "2dbe5d0283a4da2da4c71dbf3df8d0ea5fe5be5ffc24b80e4abbbb1a56c66836"
-      },
-      {
-        "gamma": 0.5,
-        "status": "SUCCESS",
-        "seed": 1113273,
-        "scene_id": "cylinders_00697",
-        "scene_seed": 2096909582,
-        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-        "steps": 69,
-        "time_to_goal_s": 6.9,
-        "goal_distance_m": 0.16745131382311612,
-        "min_clearance_m": 0.23668922958590116,
-        "horizontal_transverse_rms_m": 0.10713261059145857,
-        "horizontal_max_abs_cross_track_m": 0.19216594537432735,
-        "horizontal_path_length_m": 4.023540965755295,
-        "horizontal_path_inefficiency_m": 0.07803969576126146,
-        "mean_signed_cross_track_m": -0.032963070608035466,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.5_cylinders_00697_s1113273.npz",
-        "archive_sha256": "19337aaac49df69525cb80cafd1acf50008a3c23216ccd991dbef5d393419bc3"
-      },
-      {
-        "gamma": 1.0,
-        "status": "SUCCESS",
-        "seed": 1113273,
-        "scene_id": "cylinders_00697",
-        "scene_seed": 2096909582,
-        "scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-        "steps": 71,
-        "time_to_goal_s": 7.1000000000000005,
-        "goal_distance_m": 0.16664524204156875,
-        "min_clearance_m": 0.11886869930894106,
-        "horizontal_transverse_rms_m": 0.08934571187290852,
-        "horizontal_max_abs_cross_track_m": 0.1821014762393698,
-        "horizontal_path_length_m": 4.003055120568441,
-        "horizontal_path_inefficiency_m": 0.046942604492641316,
-        "mean_signed_cross_track_m": -0.04476660378229259,
-        "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g1_cylinders_00697_s1113273.npz",
-        "archive_sha256": "63f512ed10cf32623395d1f92c4585ce89ec9c46ae32d3719f39fbd6db78afe4"
-      }
-    ],
-    "nominal_polytope_gifs": [
-      {
-        "gamma": 0.1,
-        "path": "assets/cylinder_id_safemppi_nominal_g0p1.gif",
-        "frames": 39,
-        "fps": 8,
-        "dense_substeps_per_control": 10,
-        "bytes": 699596,
-        "sha256": "a6cae6168e4e5126086eaa5c0ca5e0c17749d0e7f1a4d6b2f35c3d0a78fc6708"
-      },
-      {
-        "gamma": 0.3,
-        "path": "assets/cylinder_id_safemppi_nominal_g0p3.gif",
-        "frames": 37,
-        "fps": 8,
-        "dense_substeps_per_control": 10,
-        "bytes": 582581,
-        "sha256": "e8918eccd56c69b895bb0f9044af55a0eff2217c4b00a41497286760fb67dcab"
-      },
-      {
-        "gamma": 0.5,
-        "path": "assets/cylinder_id_safemppi_nominal_g0p5.gif",
-        "frames": 36,
-        "fps": 8,
-        "dense_substeps_per_control": 10,
-        "bytes": 454173,
-        "sha256": "88b152ee9a44cb8620bbf8f366f73006384ebe7f3b2bc58bd6ba6a775e2b2da2"
-      },
-      {
-        "gamma": 1.0,
-        "path": "assets/cylinder_id_safemppi_nominal_g1p0.gif",
-        "frames": 37,
-        "fps": 8,
-        "dense_substeps_per_control": 10,
-        "bytes": 599743,
-        "sha256": "e133398021341c8c96d9e08a53f58f645eb35975a153141252bd254f61791ee7"
+        "candidate": "F",
+        "scene_id": "cylinders_01652",
+        "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+        "scene_bank_seed": 20260731,
+        "scene_seed": 650346658,
+        "rollout_seed": 2076868,
+        "cylinder_count": 5,
+        "route_signature_count": 3,
+        "route_signatures": [
+          [
+            -1,
+            -1,
+            -1,
+            1,
+            -1
+          ],
+          [
+            -1,
+            1,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ],
+        "cross_gamma_rms_spread_m": 0.588504235199817,
+        "minimum_clearance_m": 0.00749894022391287,
+        "all_success": true,
+        "overlay_png": "assets/cylinder_id_exact5_candidate_f_gamma_overlay.png",
+        "overlay_pdf": "assets/cylinder_id_exact5_candidate_f_gamma_overlay.pdf",
+        "rows": [
+          {
+            "gamma": 0.1,
+            "status": "SUCCESS",
+            "seed": 2076868,
+            "scene_id": "cylinders_01652",
+            "scene_seed": 650346658,
+            "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+            "steps": 126,
+            "time_to_goal_s": 12.600000000000001,
+            "goal_distance_m": 0.1730746600009723,
+            "min_clearance_m": 0.10179265901847967,
+            "horizontal_transverse_rms_m": 0.2847129785423314,
+            "horizontal_max_abs_cross_track_m": 0.5673669635718803,
+            "horizontal_path_length_m": 4.621052981211923,
+            "horizontal_path_inefficiency_m": 0.6340393396052382,
+            "mean_signed_cross_track_m": -0.18030041844411673,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.1_cylinders_01652_s2076868.npz",
+            "archive_sha256": "6f8e37a40ec71128f6bd477e029d7ccdf57df3f6c3e2b1e91af988551a914b4e"
+          },
+          {
+            "gamma": 0.3,
+            "status": "SUCCESS",
+            "seed": 2076868,
+            "scene_id": "cylinders_01652",
+            "scene_seed": 650346658,
+            "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+            "steps": 152,
+            "time_to_goal_s": 15.200000000000001,
+            "goal_distance_m": 0.18763481485942615,
+            "min_clearance_m": 0.00983877689803539,
+            "horizontal_transverse_rms_m": 0.48383892555736907,
+            "horizontal_max_abs_cross_track_m": 0.8586175652002372,
+            "horizontal_path_length_m": 4.829711335532892,
+            "horizontal_path_inefficiency_m": 0.8203837474451747,
+            "mean_signed_cross_track_m": 0.39238785339138144,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.3_cylinders_01652_s2076868.npz",
+            "archive_sha256": "280f711a1f30a693ac27f8b2dd86b94a5e327ef191a0d78753eaaa6474da70ea"
+          },
+          {
+            "gamma": 0.5,
+            "status": "SUCCESS",
+            "seed": 2076868,
+            "scene_id": "cylinders_01652",
+            "scene_seed": 650346658,
+            "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+            "steps": 121,
+            "time_to_goal_s": 12.100000000000001,
+            "goal_distance_m": 0.15126689197996626,
+            "min_clearance_m": 0.00749894022391287,
+            "horizontal_transverse_rms_m": 0.739562928604552,
+            "horizontal_max_abs_cross_track_m": 1.154515970494371,
+            "horizontal_path_length_m": 4.791549345432274,
+            "horizontal_path_inefficiency_m": 0.7641942752743551,
+            "mean_signed_cross_track_m": 0.6154674166512211,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g0.5_cylinders_01652_s2076868.npz",
+            "archive_sha256": "25cc3ff94fba1f0b69a81867bb221a5b02b3b2ced0e65e3ba9e9900a48b130e2"
+          },
+          {
+            "gamma": 1.0,
+            "status": "SUCCESS",
+            "seed": 2076868,
+            "scene_id": "cylinders_01652",
+            "scene_seed": 650346658,
+            "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+            "steps": 97,
+            "time_to_goal_s": 9.700000000000001,
+            "goal_distance_m": 0.19953357721368525,
+            "min_clearance_m": 0.058610476146494894,
+            "horizontal_transverse_rms_m": 0.733445036101396,
+            "horizontal_max_abs_cross_track_m": 1.2391401022269697,
+            "horizontal_path_length_m": 4.90322895094899,
+            "horizontal_path_inefficiency_m": 0.8199658598189501,
+            "mean_signed_cross_track_m": 0.5826863398608335,
+            "archive": "flow_deployment/minhyuk_stage1_handoff/trajectory_archives/run_g1_cylinders_01652_s2076868.npz",
+            "archive_sha256": "a79f15c40d9590483644ab57883775ce088753da69e1b4d32d066651be770ccb"
+          }
+        ],
+        "nominal_polytope_gifs": [
+          {
+            "gamma": 0.1,
+            "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p1.gif",
+            "frames": 33,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 578018,
+            "sha256": "1959a70087aabbfa4fa54261a3e977788420e6113d6ad2c43ff690974a08a6cb"
+          },
+          {
+            "gamma": 0.3,
+            "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p3.gif",
+            "frames": 39,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 640678,
+            "sha256": "4837d4ddeb566b5c0377e2277be53730a6bda2fe7d28c1279aada84b19838472"
+          },
+          {
+            "gamma": 0.5,
+            "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p5.gif",
+            "frames": 32,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 479045,
+            "sha256": "f6d724cd1fc04d7e54267b31c548b375a6f7e4d237329de386675e8e250ca502"
+          },
+          {
+            "gamma": 1.0,
+            "path": "assets/cylinder_id_exact5_candidate_f_nominal_g1p0.gif",
+            "frames": 34,
+            "fps": 8,
+            "dense_substeps_per_control": 10,
+            "bytes": 563008,
+            "sha256": "a0b9d49281ffb8af2905b329a75627aa359a26b02b9c853b382c1a13084bcd2b"
+          }
+        ]
       }
     ]
   },
@@ -1589,34 +1788,64 @@
   },
   "generated_files": [
     {
-      "path": "assets/cylinder_id_safemppi_gamma_overlay.pdf",
-      "bytes": 44448,
-      "sha256": "a3ed21f63506ccaa436c1e7f93887e47c371b3cb7b9b40cdabda5e75d71076c4"
+      "path": "assets/cylinder_id_exact5_candidate_e_gamma_overlay.pdf",
+      "bytes": 43780,
+      "sha256": "ea0840e9ad03b13da035d7c8aec1fd1f68881c7f17579acbe536b24675070cb0"
     },
     {
-      "path": "assets/cylinder_id_safemppi_gamma_overlay.png",
-      "bytes": 468127,
-      "sha256": "a840c3fbc97f95402d846c3bf2672673306b377d385a252fc1b0626ee3a4217c"
+      "path": "assets/cylinder_id_exact5_candidate_e_gamma_overlay.png",
+      "bytes": 450337,
+      "sha256": "3958be5543baa0b81b2130f1f22d9950385be0806cea801798b4fad00e6cfa81"
     },
     {
-      "path": "assets/cylinder_id_safemppi_nominal_g0p1.gif",
-      "bytes": 699596,
-      "sha256": "a6cae6168e4e5126086eaa5c0ca5e0c17749d0e7f1a4d6b2f35c3d0a78fc6708"
+      "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p1.gif",
+      "bytes": 625736,
+      "sha256": "0ab702175cbbed92efd65beb3c313a886c5f0ba0deeec04fe6973b687cd7114d"
     },
     {
-      "path": "assets/cylinder_id_safemppi_nominal_g0p3.gif",
-      "bytes": 582581,
-      "sha256": "e8918eccd56c69b895bb0f9044af55a0eff2217c4b00a41497286760fb67dcab"
+      "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p3.gif",
+      "bytes": 556192,
+      "sha256": "806d46300decad129b3721bc1b0fc5a6a9cca6a3ab4d73518be99414e3f667ef"
     },
     {
-      "path": "assets/cylinder_id_safemppi_nominal_g0p5.gif",
-      "bytes": 454173,
-      "sha256": "88b152ee9a44cb8620bbf8f366f73006384ebe7f3b2bc58bd6ba6a775e2b2da2"
+      "path": "assets/cylinder_id_exact5_candidate_e_nominal_g0p5.gif",
+      "bytes": 507707,
+      "sha256": "b1f81f18b696ade5022e138ab5b4077caa167a00580f95783e31ec6cc47ff565"
     },
     {
-      "path": "assets/cylinder_id_safemppi_nominal_g1p0.gif",
-      "bytes": 599743,
-      "sha256": "e133398021341c8c96d9e08a53f58f645eb35975a153141252bd254f61791ee7"
+      "path": "assets/cylinder_id_exact5_candidate_e_nominal_g1p0.gif",
+      "bytes": 570007,
+      "sha256": "98157585868b30e6e30a2af35df968b97685cd1220071d5a15ce353417cad31e"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_gamma_overlay.pdf",
+      "bytes": 44370,
+      "sha256": "1412c2061948650e3fbf50bc7c1cdf682c92f4cda9d46e87e2dab6fe0dab8248"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_gamma_overlay.png",
+      "bytes": 458628,
+      "sha256": "e58a53db898041ab6933bf57172b586150681977b85c2fefbaad18f9a3b302d5"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p1.gif",
+      "bytes": 578018,
+      "sha256": "1959a70087aabbfa4fa54261a3e977788420e6113d6ad2c43ff690974a08a6cb"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p3.gif",
+      "bytes": 640678,
+      "sha256": "4837d4ddeb566b5c0377e2277be53730a6bda2fe7d28c1279aada84b19838472"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_nominal_g0p5.gif",
+      "bytes": 479045,
+      "sha256": "f6d724cd1fc04d7e54267b31c548b375a6f7e4d237329de386675e8e250ca502"
+    },
+    {
+      "path": "assets/cylinder_id_exact5_candidate_f_nominal_g1p0.gif",
+      "bytes": 563008,
+      "sha256": "a0b9d49281ffb8af2905b329a75627aa359a26b02b9c853b382c1a13084bcd2b"
     },
     {
       "path": "assets/single_sphere_pretrained_r0_overlay.pdf",
@@ -1639,24 +1868,44 @@
       "sha256": "c1023def5c3da36f9190002b50374c68d6d817c9f7b8567f14e21da6fa6f05fe"
     },
     {
-      "path": "trajectory_archives/run_g0.1_cylinders_00697_s1113273.npz",
-      "bytes": 62337,
-      "sha256": "68f7473e21ef1489fc662da7160a2e01f231d113fb803eedce1a6ef5e11d4efd"
+      "path": "trajectory_archives/run_g0.1_cylinders_00317_s729853.npz",
+      "bytes": 63570,
+      "sha256": "66de78c63b9c99dc7ec0e63da397e11e98ba05f562aca85850fcd562967f4217"
     },
     {
-      "path": "trajectory_archives/run_g0.3_cylinders_00697_s1113273.npz",
-      "bytes": 41943,
-      "sha256": "2dbe5d0283a4da2da4c71dbf3df8d0ea5fe5be5ffc24b80e4abbbb1a56c66836"
+      "path": "trajectory_archives/run_g0.1_cylinders_01652_s2076868.npz",
+      "bytes": 68509,
+      "sha256": "6f8e37a40ec71128f6bd477e029d7ccdf57df3f6c3e2b1e91af988551a914b4e"
     },
     {
-      "path": "trajectory_archives/run_g0.5_cylinders_00697_s1113273.npz",
-      "bytes": 40480,
-      "sha256": "19337aaac49df69525cb80cafd1acf50008a3c23216ccd991dbef5d393419bc3"
+      "path": "trajectory_archives/run_g0.3_cylinders_00317_s729853.npz",
+      "bytes": 55856,
+      "sha256": "9701bdd245db4360951318bac805a83050bceea38f41dbb6084f7c47bff0b7f7"
     },
     {
-      "path": "trajectory_archives/run_g1_cylinders_00697_s1113273.npz",
-      "bytes": 41515,
-      "sha256": "63f512ed10cf32623395d1f92c4585ce89ec9c46ae32d3719f39fbd6db78afe4"
+      "path": "trajectory_archives/run_g0.3_cylinders_01652_s2076868.npz",
+      "bytes": 81690,
+      "sha256": "280f711a1f30a693ac27f8b2dd86b94a5e327ef191a0d78753eaaa6474da70ea"
+    },
+    {
+      "path": "trajectory_archives/run_g0.5_cylinders_00317_s729853.npz",
+      "bytes": 54265,
+      "sha256": "66e9293efacec049bfbbba8d91449d64643d6b93d28877d0a26e1bdbd3d4e6c1"
+    },
+    {
+      "path": "trajectory_archives/run_g0.5_cylinders_01652_s2076868.npz",
+      "bytes": 65768,
+      "sha256": "25cc3ff94fba1f0b69a81867bb221a5b02b3b2ced0e65e3ba9e9900a48b130e2"
+    },
+    {
+      "path": "trajectory_archives/run_g1_cylinders_00317_s729853.npz",
+      "bytes": 54732,
+      "sha256": "80ff0f6b4f375efd8ef18aea8de28799ba9209e8731c88fc48bbaae906128ba8"
+    },
+    {
+      "path": "trajectory_archives/run_g1_cylinders_01652_s2076868.npz",
+      "bytes": 53367,
+      "sha256": "a79f15c40d9590483644ab57883775ce088753da69e1b4d32d066651be770ccb"
     },
     {
       "path": "trajectory_archives/stage1_single_sphere_raw_g0.1_s91000_success.npz",

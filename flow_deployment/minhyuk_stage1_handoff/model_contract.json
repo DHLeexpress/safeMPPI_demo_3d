@@ -36,12 +36,27 @@
     "selected_validation_loss": 0.3372768461704254
   },
   "physical_lab_evidence": {
-    "distribution_config": "configs/lab_clutter_cylinders_lab_six_v2.json",
-    "distribution_config_sha256": "bef69e2111deb017b1b19ad59904f4b00be8c972cc23a2d5fe3b39a37fa0652d",
-    "obstacle_count": 6,
-    "selected_scene_id": "cylinders_00697",
-    "selected_scene_hash": "92fc7644d3b60b074ce7870bb0cfa9afc417839a0a9a86ad03175e29d4401f7b",
-    "paired_rollout_seed": 1113273,
+    "distribution_config": "configs/lab_clutter_cylinders_lab_five_v2.json",
+    "distribution_config_sha256": "774e1c9bb2e2636b75e3ef46253dd612bdb903070026b05a4b888adb51e6d989",
+    "obstacle_count": 5,
+    "selected_candidates": [
+      {
+        "candidate": "E",
+        "scene_id": "cylinders_00317",
+        "scene_hash": "eaf81f1e663f5f88604940a208b002ad609021e4d9d365e6b5781e3a6dcafb81",
+        "scene_seed": 640760290,
+        "paired_rollout_seed": 729853,
+        "route_signature_count": 3
+      },
+      {
+        "candidate": "F",
+        "scene_id": "cylinders_01652",
+        "scene_hash": "b125cea117babdf4966ca8b1e131ef7f424914127a385ba8736c68bd05c05097",
+        "scene_seed": 650346658,
+        "paired_rollout_seed": 2076868,
+        "route_signature_count": 3
+      }
+    ],
     "qualitative_only": true
   },
   "scope": "pretrained cylinder-ID policy only; no expanded checkpoint and no flight-safety guarantee"

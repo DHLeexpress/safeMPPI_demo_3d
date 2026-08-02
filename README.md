@@ -12,25 +12,27 @@ hashes, reproducible trajectory archives, and exact commands are in
 | deliverable | authoritative location |
 |---|---|
 | cylinder-ID distribution, 4–8 vertical cylinders | [`lab_clutter_cylinders_path_midpoint_uniform_v2.json`](configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json) |
-| physical-lab evidence, exactly 6 vertical cylinders | [`lab_clutter_cylinders_lab_six_v2.json`](configs/lab_clutter_cylinders_lab_six_v2.json) |
+| physical-lab evidence, exactly 5 vertical cylinders | [`lab_clutter_cylinders_lab_five_v2.json`](configs/lab_clutter_cylinders_lab_five_v2.json) |
 | sphere-OOD distribution, 3–6 spheres | [`lab_clutter_spheres_path_midpoint_uniform_v2.json`](configs/lab_clutter_spheres_path_midpoint_uniform_v2.json) |
 | fixed three-sphere OOD screen | [`lab_clutter_spheres_stage2_three_v2.json`](configs/lab_clutter_spheres_stage2_three_v2.json) |
 | today's fixed midpoint-sphere expansion task | [`lab_ball_stage1_t128.json`](configs/lab_ball_stage1_t128.json) |
 | pretrained cylinder-ID policy | [`hp100_t128_d3.pt`](flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt), SHA-256 `cc87b65f...e28ff` |
 
-The first figure is one exact-six-cylinder SafeMPPI scene matching the physical
-lab inventory. The left panel is perspective and the right panel is an upper
-view. All four gamma trajectories use the same scene and rollout seed and are
-genuine successes: conservative gamma `0.1` makes the large detour, while
-gamma `1.0` is goal-directed. This is qualitative evidence, not a rate estimate.
+The physical lab has five cylinders. Two paired-seed, exact-five SafeMPPI
+candidates are therefore packaged: E (`cylinders_00317`, seed `729853`) and F
+(`cylinders_01652`, seed `2076868`). Every shown gamma rollout is a genuine
+terminal success. Both candidates realize three obstacle-relative route
+signatures, rather than showing only one goal-seeking corridor. Their large
+cross-gamma spreads (`0.675 m` and `0.589 m`) make them useful tracking choices,
+but their minimum clearances (`0.013 m` and `0.007 m`) also make this qualitative
+evidence—not a flight-safety certificate.
 
-![SafeMPPI cylinder-ID trajectories with visible gamma-dependent variation](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_gamma_overlay.png)
+| Candidate E | Candidate F |
+|---|---|
+| ![Exact-five candidate E](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_exact5_candidate_e_gamma_overlay.png) | ![Exact-five candidate F](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_exact5_candidate_f_gamma_overlay.png) |
 
-The four per-gamma animations replay the stored evolving nominal polytope and
-its ten horizon level sets: [gamma 0.1](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_nominal_g0p1.gif),
-[gamma 0.3](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_nominal_g0p3.gif),
-[gamma 0.5](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_nominal_g0p5.gif), and
-[gamma 1.0](flow_deployment/minhyuk_stage1_handoff/assets/cylinder_id_safemppi_nominal_g1p0.gif).
+The handoff folder includes all eight source NPZs and eight per-gamma nominal-
+polytope animations, with hashes and exact scene identities.
 
 The second figure is the honest fixed single-sphere round-zero screen of the
 pretrained policy: raw temperature-one sampling on the same

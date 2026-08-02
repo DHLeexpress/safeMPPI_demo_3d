@@ -44,7 +44,7 @@ All tasks use the lab geofence
 | stage | authoritative config | obstacle law |
 |---|---|---|
 | cylinder ID / pretraining | [`../../configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json`](../../configs/lab_clutter_cylinders_path_midpoint_uniform_v2.json) | 4--8 vertical cylinders; physical radius 0.10 m plus 0.10 m robot inflation |
-| physical lab cylinder evidence | [`../../configs/lab_clutter_cylinders_lab_six_v2.json`](../../configs/lab_clutter_cylinders_lab_six_v2.json) | exactly 6 vertical cylinders, matching the available lab inventory |
+| physical lab cylinder evidence | [`../../configs/lab_clutter_cylinders_lab_five_v2.json`](../../configs/lab_clutter_cylinders_lab_five_v2.json) | exactly 5 vertical cylinders, matching the available lab inventory |
 | randomized sphere OOD | [`../../configs/lab_clutter_spheres_path_midpoint_uniform_v2.json`](../../configs/lab_clutter_spheres_path_midpoint_uniform_v2.json) | 3--6 spheres; physical radius 0.254 m plus 0.10 m robot inflation |
 | fixed three-sphere OOD screen | [`../../configs/lab_clutter_spheres_stage2_three_v2.json`](../../configs/lab_clutter_spheres_stage2_three_v2.json) | exactly three spheres from the same OOD law |
 | Stage 1 | [`../../configs/lab_ball_stage1_t128.json`](../../configs/lab_ball_stage1_t128.json) | one fixed modeled sphere at `(-0.7,0,0.9)`, radius 0.354 m |
@@ -59,35 +59,34 @@ no soft-clearance cost.
 
 ### Cylinder ID: SafeMPPI expert
 
-![SafeMPPI cylinder-ID gamma overlay](assets/cylinder_id_safemppi_gamma_overlay.png)
+The lab inventory is exactly five cylinders. We package two branch-rich
+paired-seed candidates so the tracking team can choose between concrete
+successful references rather than relying on one curated route.
 
-This is one fixed **exact-six-cylinder**, paired-seed qualitative scene, not a
-success-rate estimate. It was selected from 144 exact-six scenes for a clear
-low-vs-high safety/feasibility contrast. All four gamma rollouts are genuine
-SafeMPPI successes from scene `cylinders_00697`, common rollout seed `1113273`.
-The horizontal RMS detour decreases from `0.2258 m` at gamma `0.1` to
-`0.0893 m` at gamma `1.0`; time-to-goal changes from `11.3 s` to `7.1 s`.
-The 1x2 figure shows the same trajectories in perspective and top view. The
-exact archives are the four
-`trajectory_archives/run_g*_cylinders_00697_s1113273.npz` files. Gray surfaces
-are physical cylinders and blue outlines are robot-inflated models.
-
-Each animation below uses the archive's actual evolving `poly_A/poly_b` at the
-executed state. The BLUE volume is the nominal polytope and the nested BLUE
-sets are its ten gamma-dependent horizon level sets.
-
-| gamma 0.1 | gamma 0.3 |
+| candidate E | candidate F |
 |---|---|
-| ![gamma 0.1 nominal polytope](assets/cylinder_id_safemppi_nominal_g0p1.gif) | ![gamma 0.3 nominal polytope](assets/cylinder_id_safemppi_nominal_g0p3.gif) |
-| gamma 0.5 | gamma 1.0 |
-| ![gamma 0.5 nominal polytope](assets/cylinder_id_safemppi_nominal_g0p5.gif) | ![gamma 1.0 nominal polytope](assets/cylinder_id_safemppi_nominal_g1p0.gif) |
+| ![Candidate E](assets/cylinder_id_exact5_candidate_e_gamma_overlay.png) | ![Candidate F](assets/cylinder_id_exact5_candidate_f_gamma_overlay.png) |
+
+| candidate | scene / common rollout seed | distinct route signatures | cross-gamma spread | minimum clearance |
+|---|---|---:|---:|---:|
+| E | `cylinders_00317` / `729853` | 3 | 0.675 m | 0.013 m |
+| F | `cylinders_01652` / `2076868` | 3 | 0.589 m | 0.007 m |
+
+All eight gamma rollouts are genuine terminal SafeMPPI successes. The physical
+cylinder is gray and the dashed blue outline is the robot-inflated model. The
+large route separation is the reason these candidates were selected; the tight
+reported clearances mean they remain qualitative tracking evidence, not a
+flight-safety certificate or a success-rate estimate.
+
+The source archives are
+`trajectory_archives/run_g*_cylinders_00317_s729853.npz` and
+`trajectory_archives/run_g*_cylinders_01652_s2076868.npz`. Each archive stores
+the actual evolving `poly_A/poly_b`. Candidate-scoped GIFs in `assets/` replay
+that BLUE nominal polytope and its ten gamma-dependent horizon level sets.
 
 The checkpoint's training provenance remains the original randomized `4--8`
-cylinder distribution. The exact-six config and selected scene are deployment
+cylinder distribution. The exact-five config and E/F scenes are deployment
 evidence only; they do not rewrite how the checkpoint was trained.
-The selected scene was a six-cylinder member of that original bank, so its four
-packaged NPZ archives—not a fresh draw from the exact-six config—are the
-authoritative fixed-scene replay.
 
 ### Stage 1: pretrained raw policy before expansion
 
@@ -121,10 +120,12 @@ and has SHA-256-like scene identity
 With raw seed `192554`, every gamma collides. The scene JSON and all four exact
 trajectory archives are in `trajectory_archives/`.
 
-Rebuild all figures and archives without editing source:
+Revalidate and rebuild the exact-five E/F evidence without rerunning the raw
+policy screens:
 
 ```bash
-python scripts/build_minhyuk_stage1_handoff_assets.py --device cpu
+python scripts/build_minhyuk_stage1_handoff_assets.py \
+  --device cpu --cylinder-only
 ```
 
 The builder fails if the Stage-1 aggregate differs from
