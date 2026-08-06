@@ -1,0 +1,4 @@
+scenario_id,generation_seed,concrete_config_relpath,config_sha256,safemppi_trajectory_root,safemppi_manifest_sha256,pretrained_trajectory_root,pretrained_manifest_sha256,planned_gamma_values,as_built_vicon_config_relpath,as_built_sha256,status
+scenario_01,TBD,TBD,TBD,TBD,TBD,TBD,TBD,"0.1;0.3;0.5;1.0",TBD,TBD,PREPARING
+scenario_02,TBD,TBD,TBD,TBD,TBD,TBD,TBD,"0.1;0.3;0.5;1.0",TBD,TBD,PREPARING
+scenario_03,TBD,TBD,TBD,TBD,TBD,TBD,TBD,"0.1;0.3;0.5;1.0",TBD,TBD,PREPARING

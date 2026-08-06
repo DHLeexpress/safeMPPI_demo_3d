@@ -1,5 +1,11 @@
 # safeMPPI demo in 3D
 
+## Paper-ready flight campaigns
+
+Date-scoped plans, frozen-input rules, exact source/checkpoint hashes, and
+operator log templates live in [`paper_ready/`](paper_ready/). The
+2026-08-06 five-cylinder campaign setup is [`paper_ready/0806/`](paper_ready/0806/).
+
 ## 2026-08-01 handoff — HP100 cylinder pretraining, sphere OOD, and Stage 1
 
 This is the current handoff for Minhyuk's unchanged native `deploy_sim`

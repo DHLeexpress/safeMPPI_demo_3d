@@ -1,0 +1,36 @@
+{
+  "campaign_id": "2026-08-06",
+  "status": "PREPARING_INPUTS",
+  "repository": "https://github.com/DHLeexpress/safeMPPI_demo_3d",
+  "source_snapshot_git_sha": "dabb5011dfc674864e1de275a1e1c2adab58f4af",
+  "previous_hardware_drive": "https://drive.google.com/drive/u/1/folders/1EjEM4SaClhyBJ4mKbveiexoWvCKFV8vn",
+  "input_owner": "Dohyun",
+  "operators": ["Minhyuk", "Claude"],
+  "objective": "Fly frozen SafeMPPI and pretrained-policy trajectories in three random five-cylinder scenarios.",
+  "task": {
+    "scenario_count": 3,
+    "obstacle_family": "vertical_cylinders",
+    "obstacle_count_per_scenario": 5,
+    "scenario_generator_snapshot": "../common/configs/cylinder_five_generator.json",
+    "training_distribution_snapshot": "../common/configs/cylinder_id_4to8.json",
+    "gammas": [0.1, 0.3, 0.5, 1.0],
+    "policies": ["SafeMPPI", "pretrained_flow"],
+    "planned_flight_cells": 24
+  },
+  "pretrained_policy": {
+    "checkpoint": "../../flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
+    "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+    "sampling_temperature": 1.0
+  },
+  "excluded_inputs": [
+    "lab_pillars_asbuilt.json",
+    "unapproved single-sphere config",
+    "unapproved multiple-sphere config"
+  ],
+  "freeze_contract": {
+    "shared_plan_manifest": "LOCKED_SHARED.sha256",
+    "campaign_inputs_directory": "inputs",
+    "campaign_inputs_manifest": "inputs/SHA256SUMS",
+    "mutation_policy": "append-only operator run directories; never overwrite frozen inputs or existing runs"
+  }
+}

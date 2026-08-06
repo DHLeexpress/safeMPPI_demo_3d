@@ -1,0 +1,17 @@
+{
+  "frame": "lab/Vicon world frame used by the current reference configs",
+  "position_bounds_m": {
+    "x": [-2.5, 1.3],
+    "y": [-1.7, 1.8],
+    "z": [0.4, 2.0]
+  },
+  "start_state": [-2.1, 1.5, 0.9, 0.0, 0.0, 0.0],
+  "goal_position_m": [0.7, -1.5, 0.9],
+  "reach_radius_m": 0.2,
+  "maximum_closed_loop_steps": 250,
+  "planner_horizon": 10,
+  "planner_dt_s": 0.1,
+  "command_acceleration_cap_m_per_s2": 0.3,
+  "speed_cap_m_per_s": 0.7,
+  "vertical_speed_cap_m_per_s": 0.3
+}

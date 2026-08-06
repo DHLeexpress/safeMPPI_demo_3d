@@ -1,0 +1,37 @@
+{
+  "source_snapshot_git_sha": "dabb5011dfc674864e1de275a1e1c2adab58f4af",
+  "controller_path": "safe_mppi/controller.py",
+  "controller_sha256": "dfc91a26ccac2818c902215bf4d9a06e405d5878e5c6af0be2f75c4f68106dad",
+  "horizon": 10,
+  "dt_s": 0.1,
+  "samples": 512,
+  "temperature": 0.02,
+  "gaussian_noise_std": [0.5, 0.5, 0.5],
+  "command_acceleration_cap_m_per_s2": 0.3,
+  "speed_cap_m_per_s": 0.7,
+  "vertical_speed_cap_m_per_s": 0.3,
+  "nominal_polytope": {
+    "faces": 80,
+    "sensing_range_m": 2.0
+  },
+  "proposal": {
+    "centroid_gain": 0.0,
+    "centroid_smooth": 0.0,
+    "anisotropic_sigma_ratio": 1.0,
+    "urgency_floor": 0.0,
+    "initial_control_m_per_s2": [0.0, 0.0, 0.0]
+  },
+  "cost": {
+    "running_goal_weight": 0.25,
+    "terminal_goal_weight": 80.0,
+    "control_weight": 0.05,
+    "smoothness_weight": 0.35,
+    "soft_clearance_weight": 0.0,
+    "soft_clearance_target_m": 0.3,
+    "progress_weight": 2.0,
+    "z_bias_weight": 0.0,
+    "taskspace_exponential_weight": 5.0,
+    "taskspace_exponential_temperature": 0.05
+  },
+  "safety_levels": [0.1, 0.3, 0.5, 1.0]
+}
