@@ -26,6 +26,22 @@ These are curated paper demonstrations, not an unbiased SR evaluation. The
 layouts were constructed directly and were not produced by the randomized
 path-focused scene generator.
 
+## Today's target trajectories
+
+Each figure overlays the four frozen `gamma = 0.1, 0.3, 0.5, 1.0`
+trajectories. The left column is SafeMPPI and the right column is the
+pretrained policy; the lower panels show altitude over time. Red crosses and
+dashed trajectories preserve the simulated collision or out-of-bounds
+outcome rather than hiding it.
+
+### Symmetric outer scene
+
+![SafeMPPI and pretrained target trajectories in the symmetric outer scene](assets/target_trajectories/symmetric_scene_outer_trajectory_overlay.png)
+
+### Symmetric inner scene
+
+![SafeMPPI and pretrained target trajectories in the symmetric inner scene](assets/target_trajectories/symmetric_scene_inner_trajectory_overlay.png)
+
 ## Common physical contract
 
 - task space: `x=[-2.5,1.3]`, `y=[-1.7,1.8]`, `z=[0.4,2.0]` m;
