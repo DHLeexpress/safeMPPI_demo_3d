@@ -1,0 +1,64 @@
+{
+  "role": "second selected demonstration: wide inner gate + first obstacle near the centreline",
+  "family": "hand_designed_symmetric_1_2_2_v1",
+  "grid_version": "sym_1_2_2_grid_v6",
+  "scene_index": 3,
+  "parameters": {
+    "lam1": 0.22,
+    "e0": 0.08,
+    "lam2": 0.5,
+    "d1": 0.95,
+    "lam3": 0.72,
+    "d2": 0.4
+  },
+  "derived_from": "scene 71 of grid v5 (identical pairs); only e0 moved 0.14 -> 0.08",
+  "gate_free_widths_m": {
+    "gate1": 1.5,
+    "gate2": 0.4
+  },
+  "cylinders_xyr": [
+    [
+      -1.4255155324935913,
+      0.8945854306221008,
+      0.20000000298023224
+    ],
+    [
+      -0.005497495178133249,
+      0.6482023596763611,
+      0.20000000298023224
+    ],
+    [
+      -1.3945025205612183,
+      -0.6482023596763611,
+      0.20000000298023224
+    ],
+    [
+      0.20842210948467255,
+      -0.38707271218299866,
+      0.20000000298023224
+    ],
+    [
+      -0.37642210721969604,
+      -0.9329273104667664,
+      0.20000000298023224
+    ]
+  ],
+  "concrete_config_sha256": "2c22ce1de40096710c9a08f6ba2d20d3cbf1520d0ceabe5d35883c3de5af7c3a",
+  "safemppi_seed": 0,
+  "pretrained_seed": 91015,
+  "pretrained_sampling_temperature": 1.0,
+  "gammas": [
+    0.1,
+    0.3,
+    0.5,
+    1.0
+  ],
+  "route_signature_convention": "[single, +d1, -d1, +d2, -d2]; (-1,+1) on a pair means the path passed BETWEEN its two members",
+  "demonstration_cell": {
+    "safemppi": "all four gammas SUCCESS, single class [-1,-1,1,-1,1] (inner route)",
+    "pretrained": "gamma 0.1 and 0.3 SUCCESS on [1,-1,1,-1,1] (above the first obstacle), gamma 0.5 SUCCESS on [-1,-1,1,-1,1] (below it), gamma 1.0 OOB -- divergence occurs at the FIRST obstacle"
+  },
+  "source_commit": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+  "gpu": "physical GPU 3, NVIDIA H100 NVL, GPU-b5993142-760d-a6fe-9430-3d0e65203b6d",
+  "provenance_note": "hand-designed symmetric layout; NOT a sample of path_focused_midpoint_uniform_v2; same frozen geometry contract"
+}

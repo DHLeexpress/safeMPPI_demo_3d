@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CAMPAIGN = ROOT / "paper_ready" / "0806"
@@ -21,26 +23,63 @@ def test_locked_shared_manifest() -> None:
 def test_0806_campaign_contract() -> None:
     manifest = json.loads((CAMPAIGN / "campaign_manifest.json").read_text())
     assert manifest["campaign_id"] == "2026-08-06"
-    assert manifest["status"] == "PREPARING_INPUTS"
+    assert manifest["status"] == "FROZEN_INPUTS_READY"
     assert manifest["source_snapshot_git_sha"] == (
-        "dabb5011dfc674864e1de275a1e1c2adab58f4af"
+        "9cafc00551e4964b9dbe559b1a4ba95104e9c88a"
     )
-    assert manifest["task"]["scenario_count"] == 3
+    assert manifest["task"]["scenario_count"] == 2
+    assert manifest["task"]["scenario_ids"] == [
+        "symmetric_scene_outer",
+        "symmetric_scene_inner",
+    ]
     assert manifest["task"]["obstacle_count_per_scenario"] == 5
-    assert manifest["task"]["policies"] == ["SafeMPPI", "pretrained_flow"]
+    assert manifest["task"]["policies"] == ["safemppi", "pretrained"]
     assert manifest["task"]["gammas"] == [0.1, 0.3, 0.5, 1.0]
-    assert manifest["task"]["planned_flight_cells"] == 24
+    assert manifest["task"]["planned_flight_cells"] == 16
     assert "lab_pillars_asbuilt.json" in manifest["excluded_inputs"]
 
     with (CAMPAIGN / "FLIGHT_INDEX_TEMPLATE.csv").open(newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert len(rows) == manifest["task"]["planned_flight_cells"]
-    assert {row["scenario_id"] for row in rows} == {
-        "scenario_01",
-        "scenario_02",
-        "scenario_03",
+    assert {row["scene_id"] for row in rows} == {
+        "symmetric_scene_outer",
+        "symmetric_scene_inner",
     }
-    assert {row["policy"] for row in rows} == {"SafeMPPI", "pretrained_flow"}
+    assert {row["policy"] for row in rows} == {"safemppi", "pretrained"}
+    assert {row["simulated_outcome"] for row in rows} == {
+        "SUCCESS",
+        "COLLISION",
+        "OOB",
+    }
+    for row in rows:
+        assert (CAMPAIGN / row["planned_trajectory_relpath"]).is_file()
+
+
+def test_frozen_0806_suite() -> None:
+    suite = CAMPAIGN / "inputs" / "0806_flight_demonstration_suite"
+    lines = (suite / "FROZEN.sha256").read_text().splitlines()
+    for line in lines:
+        expected, relative = line.split("  ", 1)
+        path = suite / relative
+        assert path.is_file(), relative
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
+
+    reproduction = json.loads(
+        (suite / "renderer" / "BYTE_IDENTICAL_REPRODUCTION.json").read_text()
+    )
+    assert reproduction["status"] == "PASS"
+    assert reproduction["count"] == 16
+    assert all(row["byte_identical"] for row in reproduction["videos"])
+
+    references = sorted(suite.glob("scenes/*/flight_references/*_100hz.npz"))
+    assert len(references) == 16
+    for path in references:
+        with np.load(path, allow_pickle=False) as data:
+            count = len(data["time_s"])
+            assert data["position_ref"].shape == (count, 3)
+            assert data["velocity_ref"].shape == (count, 3)
+            assert data["acceleration_ref"].shape == (count, 3)
+            np.testing.assert_allclose(np.diff(data["time_s"]), 0.01, atol=1e-9)
 
 
 def test_cylinder_snapshots_match_pinned_contract() -> None:

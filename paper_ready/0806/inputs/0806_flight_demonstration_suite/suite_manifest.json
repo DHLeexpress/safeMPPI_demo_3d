@@ -1,0 +1,41 @@
+{
+  "status": "P0806_FLIGHT_DEMONSTRATION_SUITE_FROZEN",
+  "campaign_date": "2026-08-06",
+  "source_git_sha": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+  "pretrained_checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+  "scope": "two final hand-designed symmetric five-cylinder layouts; no A/B/C candidates and no randomized-scene evaluation",
+  "scene_count": 2,
+  "policy_count": 2,
+  "gammas": [0.1, 0.3, 0.5, 1.0],
+  "trajectory_cells": 16,
+  "scenes": [
+    {
+      "scene_id": "symmetric_scene_outer",
+      "config": "scenes/symmetric_scene_outer/concrete_config.json",
+      "config_sha256": "549e47bb70542a1bcce345bb8556c1b8d5aede050ddb6afc3acc3ab099e48a02",
+      "safemppi_seed": 0,
+      "pretrained_seed": 91884,
+      "outcomes": {
+        "safemppi": ["SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"],
+        "pretrained": ["SUCCESS", "SUCCESS", "SUCCESS", "COLLISION"]
+      }
+    },
+    {
+      "scene_id": "symmetric_scene_inner",
+      "config": "scenes/symmetric_scene_inner/concrete_config.json",
+      "config_sha256": "2c22ce1de40096710c9a08f6ba2d20d3cbf1520d0ceabe5d35883c3de5af7c3a",
+      "safemppi_seed": 0,
+      "pretrained_seed": 91015,
+      "outcomes": {
+        "safemppi": ["SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS"],
+        "pretrained": ["SUCCESS", "SUCCESS", "SUCCESS", "OOB"]
+      }
+    }
+  ],
+  "immutability": {
+    "manifest": "FROZEN.sha256",
+    "operator_outputs": "../../minhyuk/runs/<run_id>/",
+    "analysis_outputs": "../../claude/runs/<run_id>/",
+    "overwrite_allowed": false
+  }
+}

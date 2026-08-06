@@ -1,0 +1,54 @@
+{
+  "role": "primary",
+  "family": "hand_designed_symmetric_1_2_2_v1",
+  "grid_version": "sym_1_2_2_grid_v2",
+  "scene_index": 3,
+  "parameters": {
+    "lam1": 0.22,
+    "e0": 0.1,
+    "lam2": 0.5,
+    "d1": 0.36,
+    "lam3": 0.72,
+    "d2": 0.28
+  },
+  "cylinders_xyr": [
+    [
+      -1.410894513130188,
+      0.9082318544387817,
+      0.20000000298023224
+    ],
+    [
+      -0.4368200898170471,
+      0.24563457071781158,
+      0.20000000298023224
+    ],
+    [
+      -0.963179886341095,
+      -0.24563457071781158,
+      0.20000000298023224
+    ],
+    [
+      0.12069547176361084,
+      -0.46895089745521545,
+      0.20000000298023224
+    ],
+    [
+      -0.28869548439979553,
+      -0.8510491251945496,
+      0.20000000298023224
+    ]
+  ],
+  "concrete_config_sha256": "549e47bb70542a1bcce345bb8556c1b8d5aede050ddb6afc3acc3ab099e48a02",
+  "safemppi_seed": 0,
+  "pretrained_seed": 91884,
+  "pretrained_sampling_temperature": 1.0,
+  "gammas": [
+    0.1,
+    0.3,
+    0.5,
+    1.0
+  ],
+  "source_commit": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+  "gpu": "physical GPU 3, NVIDIA H100 NVL, GPU-b5993142-760d-a6fe-9430-3d0e65203b6d",
+  "provenance_note": "hand-designed symmetric layout; NOT a sample of path_focused_midpoint_uniform_v2; same frozen geometry contract (physical 0.10 m, inflation 0.10 m, modeled 0.20 m)"
+}

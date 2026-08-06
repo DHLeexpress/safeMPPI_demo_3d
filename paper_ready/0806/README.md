@@ -1,139 +1,96 @@
-# 2026-08-06 paper-ready flight plan
+# 2026-08-06 paper-ready flight demonstration
 
-Status: **PREPARING_INPUTS**. Dohyun will add and approve the concrete scenes
-and trajectories before flight. Minhyuk and Claude must not change shared
-files or pre-generated trajectories.
+Status: **FROZEN_INPUTS_READY**. The final inputs are two hand-designed
+symmetric five-cylinder layouts, `symmetric_scene_outer` and
+`symmetric_scene_inner`. They replace the earlier three-random-scene/A-B-C
+plan. Minhyuk and Claude must not modify shared files or frozen trajectories.
 
 Previous hardware evidence is stored in the
 [Drive campaign](https://drive.google.com/drive/u/1/folders/1EjEM4SaClhyBJ4mKbveiexoWvCKFV8vn).
-It is context, not an authenticated source snapshot, because its flight
-metadata omitted the repository Git SHA.
+It is context rather than authenticated source provenance because those logs
+did not record the repository Git SHA.
 
-## Objective
+## Objective and matrix
 
-Create three randomly generated five-cylinder scenarios, then fly both:
+Fly the frozen SafeMPPI and cylinder-ID pretrained-policy trajectories at
+`gamma = 0.1, 0.3, 0.5, 1.0` in both final layouts:
 
-1. frozen SafeMPPI reference trajectories; and
-2. the cylinder-ID pretrained generative policy.
+`2 scenes x 2 policies x 4 gammas = 16 trajectory cells`.
 
-The planned safety levels are `gamma = 0.1, 0.3, 0.5, 1.0`. If all cells are
-kept, the matrix is `3 scenarios x 2 policies x 4 gammas = 24 flights`.
-Dohyun may remove a cell only before freezing the inputs; the final matrix must
-be explicit in `inputs/scenario_registry.csv`.
+The frozen bundle is
+[`inputs/0806_flight_demonstration_suite/`](inputs/0806_flight_demonstration_suite/).
+Its README explains the simulation outcomes, exact sources, 100 Hz playback
+contract, camera calibration and sim/real rendering workflow.
 
-This date does **not** include a sphere experiment. Both the multiple-sphere
-and single-sphere paper configs remain TBD.
+These are curated paper demonstrations, not an unbiased SR evaluation. The
+layouts were constructed directly and were not produced by the randomized
+path-focused scene generator.
 
-## Frozen common contract
+## Common physical contract
 
-- task space: `x=[-2.5,1.3]`, `y=[-1.7,1.8]`, `z=[0.4,2.0]` m
-- start: `(-2.1, 1.5, 0.9)` m, zero velocity
-- goal: `(0.7, -1.5, 0.9)` m; reach radius `0.2 m`
-- five vertical cylinders, sampled from the same geometry law as the 4--8
-  cylinder pretrained domain
-- physical cylinder radius `0.10 m`; robot inflation `0.10 m`; modeled radius
-  `0.20 m`
-- no extra obstacle/wall gap; geometry-only admission
-- SafeMPPI and policy contracts: [`../common/`](../common/)
-- source snapshot: `dabb5011dfc674864e1de275a1e1c2adab58f4af`
+- task space: `x=[-2.5,1.3]`, `y=[-1.7,1.8]`, `z=[0.4,2.0]` m;
+- start: `(-2.1, 1.5, 0.9)` m, zero velocity;
+- goal: `(0.7, -1.5, 0.9)` m, reach radius `0.2 m`;
+- five vertical cylinders per layout;
+- physical cylinder radius `0.10 m`, robot inflation `0.10 m`, modeled radius
+  `0.20 m`;
+- source snapshot:
+  `9cafc00551e4964b9dbe559b1a4ba95104e9c88a`;
 - pretrained checkpoint SHA-256:
-  `cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff`
+  `cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff`.
 
-`lab_pillars_asbuilt.json` is excluded from scene generation. After physically
-placing each scenario, the measured Vicon geometry is a new per-run artifact
-and must be hashed in the run log.
+The exact common SafeMPPI and task-space specifications remain under
+[`../common/`](../common/). `lab_pillars_asbuilt.json` is not a source input.
+Each physical setup receives a new Vicon-measured as-built geometry file under
+the corresponding Minhyuk run.
 
-## Reproduction entry points during preparation
+## Frozen playback
 
-Generate three deterministic five-cylinder candidate episodes with explicitly
-chosen seeds. This is a preparation command; its output is not approved until
-Dohyun selects the concrete scenes and copies them into `inputs/`.
+Every planned trajectory has a checked 100 Hz reference containing time,
+position, velocity and acceleration. SafeMPPI/the policy and the stateful
+reference governor have already run. The flight player must not rerun a
+planner, resample the policy, or apply governor/smoothing/interpolation again.
 
-```bash
-python scripts/collect_path_focused_success_quota.py \
-  --config paper_ready/common/configs/cylinder_five_generator.json \
-  --output outputs/0806_candidate_scenes \
-  --fixed-scenes 3 \
-  --gammas 0.1 0.3 0.5 1.0 \
-  --domain-seed <freeze-me> \
-  --rollout-seed-start <freeze-me> \
-  --device cuda
-```
+The actual hardware runner is not in this repository. Before flight, Minhyuk
+must record its path, repository SHA and exact invocation. The observed 2026-08-02
+workflow used measured Vicon state and 100 Hz `cmdFullState`; that prior workflow
+is evidence, not authorization to silently reconstruct today's runner.
 
-For each resulting concrete scene, the existing entry points are:
+## Immutable and operator boundaries
 
-```bash
-# Native SafeMPPI offline check for one fixed gamma/seed.
-python deploy_sim/run_offline.py \
-  --config paper_ready/0806/inputs/scenario_01/concrete_config.json \
-  --gamma 0.1 --seed <frozen-seed> --device cpu --gif
+- Dohyun-owned frozen inputs:
+  [`inputs/0806_flight_demonstration_suite/`](inputs/0806_flight_demonstration_suite/)
+- Minhyuk output only: [`minhyuk/runs/<run_id>/`](minhyuk/)
+- Claude output only: [`claude/runs/<run_id>/`](claude/)
+- camera/composition tools: [`tools/`](tools/)
 
-# Frozen pretrained-policy references for all gamma values.
-python scripts/export_lab_flow_frozen_references.py \
-  --config paper_ready/0806/inputs/scenario_01/concrete_config.json \
-  --expected-config-sha256 <frozen-config-sha256> \
-  --checkpoint flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt \
-  --expected-checkpoint-sha256 cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff \
-  --sampling-temperature 1 \
-  --gammas 0.1 0.3 0.5 1.0 \
-  --seeds <frozen-seed> \
-  --device cpu \
-  --output outputs/0806_scenario_01_pretrained
-```
+Never overwrite an existing run. A retry receives a new `run_id`; a correction
+adds `supersedes` while preserving the original. Raw telemetry is written and
+hashed before any derived analysis or video.
 
-Do not pass the randomized template directly to `run.py`: its obstacle arrays
-are empty until the path-focused generator materializes a concrete scene.
-
-## Preparation boundary
-
-Dohyun places the final material only in [`inputs/`](inputs/):
-
-- three concrete scene JSON files with exact cylinder centers;
-- selected SafeMPPI trajectories and seeds;
-- selected pretrained-policy trajectories and seeds;
-- `scenario_registry.csv` copied from the template;
-- `SHA256SUMS` covering every input.
-
-The randomized template cannot be passed directly to `python run.py` because
-its obstacle arrays are empty; use the path-focused generator, then freeze the
-resulting concrete config. Likewise, the deployment scripts require a
-concrete config.
-
-## Operator boundary
-
-- Minhyuk adds flight outputs only under
-  [`minhyuk/runs/<run_id>/`](minhyuk/).
-- Claude adds analyses only under
-  [`claude/runs/<run_id>/`](claude/).
-- Never overwrite an existing run. Corrections receive a new `run_id` and an
-  explicit `supersedes` field.
-- Copy [`RUN_LOG_TEMPLATE.md`](RUN_LOG_TEMPLATE.md) into each run and complete
-  it. Hash the raw log before producing derived figures.
-- Minhyuk copies [`FLIGHT_INDEX_TEMPLATE.csv`](FLIGHT_INDEX_TEMPLATE.csv) into
-  his workspace and updates only that operator-owned copy.
-
-Before and after a run, verify the frozen shared plan:
+Verify before and after work:
 
 ```bash
 cd paper_ready/0806
 shasum -a 256 -c LOCKED_SHARED.sha256
+cd inputs/0806_flight_demonstration_suite
+shasum -a 256 -c FROZEN.sha256
 ```
 
-After Dohyun freezes `inputs/`, also verify its `SHA256SUMS`. A failed hash is
-a stop condition, not permission to regenerate or overwrite a trajectory.
+A hash failure is a stop condition. It is never permission to regenerate or
+overwrite a trajectory.
 
-## Required artifacts per flight
+## Required record per flight
 
 - raw Vicon/state telemetry and controller/setpoint log;
-- exact trajectory/control archive actually sent;
-- source Git SHA and `git status --porcelain` result;
-- config, checkpoint, and trajectory SHA-256;
-- policy, gamma, sampling temperature, seed, Crazyflie ID, operator, start/end
-  timestamp and time zone;
-- planned and measured/as-built obstacle geometry;
-- terminal status, collision/OOB/timeout flags, clearance and time-to-goal;
-- external Drive path and hashes of every uploaded file.
+- exact frozen reference file actually sent;
+- repository and actual hardware-runner SHAs plus clean/dirty status;
+- scene config, checkpoint, trajectory and camera-calibration hashes;
+- policy, gamma, seed, sampling temperature, Crazyflie ID, operator and time;
+- planned and Vicon-measured cylinder geometry;
+- outcome, manual intervention, collision/OOB/timeout, clearance and time;
+- Drive destination and hashes of every uploaded artifact.
 
-The existing `deploy_sim/` directory is an offline harness, not proof of the
-hardware runner used for flight. Record the actual hardware runner path and
-commit explicitly.
+Copy [`RUN_LOG_TEMPLATE.md`](RUN_LOG_TEMPLATE.md) into each new run. Minhyuk
+copies [`FLIGHT_INDEX_TEMPLATE.csv`](FLIGHT_INDEX_TEMPLATE.csv) into his run
+workspace and updates only the copy.

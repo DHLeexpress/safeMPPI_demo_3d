@@ -1,0 +1,17 @@
+{
+  "status": "P0806_PINNED_RENDERING_ENVIRONMENT",
+  "verified_platform": "Ubuntu Linux on Helios, OSMesa off-screen rendering",
+  "python": "3.11.15",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "torch": "2.6.0+cu124",
+  "pyvista": "0.48.4",
+  "ffmpeg": "4.4.2-0ubuntu0.22.04.1",
+  "video_contract": {
+    "codec": "h264",
+    "pixel_format": "yuv420p",
+    "resolution": [1440, 720],
+    "fps": 10
+  },
+  "note": "The 591 MB private pylibs directory is intentionally not vendored. Reproduce inside an environment matching these exact versions."
+}

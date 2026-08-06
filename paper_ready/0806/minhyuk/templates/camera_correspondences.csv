@@ -1,0 +1,7 @@
+point_id,world_x_m,world_y_m,world_z_m,pixel_u,pixel_v,source_frame,notes
+start,TBD,TBD,TBD,TBD,TBD,TBD,required
+goal,TBD,TBD,TBD,TBD,TBD,TBD,required
+outer_cylinder_1_floor,TBD,TBD,TBD,TBD,TBD,TBD,required for outer scene
+outer_cylinder_2_floor,TBD,TBD,TBD,TBD,TBD,TBD,required for outer scene
+inner_cylinder_1_floor,TBD,TBD,TBD,TBD,TBD,TBD,required for inner scene
+inner_cylinder_2_floor,TBD,TBD,TBD,TBD,TBD,TBD,required for inner scene

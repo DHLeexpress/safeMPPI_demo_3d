@@ -1,21 +1,10 @@
 # Dohyun-owned frozen inputs
 
-Only Dohyun prepares this directory. Before flight it must contain:
+The approved input is
+[`0806_flight_demonstration_suite/`](0806_flight_demonstration_suite/): two
+final hand-designed symmetric scenes and 16 frozen trajectory cells.
 
-```text
-scenario_registry.csv
-scenario_01/
-  concrete_config.json
-  safemppi/
-  pretrained/
-scenario_02/
-  ...
-scenario_03/
-  ...
-SHA256SUMS
-```
-
-Each policy directory stores the exact trajectory/control files, seeds, and a
-manifest for all approved gamma values. After `SHA256SUMS` is committed, this
-directory is immutable. Minhyuk and Claude consume it read-only and put all
-new logs in their own `runs/<run_id>/` directories.
+Only Dohyun may promote a new version here. Minhyuk and Claude have read-only
+access. They place raw flights and derived analysis exclusively in their own
+dated run directories. Any replacement requires a new suite directory and a
+new manifest; never edit this suite in place.

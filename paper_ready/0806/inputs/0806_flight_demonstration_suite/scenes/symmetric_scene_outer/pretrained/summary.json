@@ -1,0 +1,103 @@
+{
+  "kind": "0806 pretrained-policy recording with expansion-verifier certification",
+  "config": "/data3/research1/paper_ready_0806_private/phase2/scenes/scene_symmetric_v2_0003/concrete_config.json",
+  "config_sha256": "549e47bb70542a1bcce345bb8556c1b8d5aede050ddb6afc3acc3ab099e48a02",
+  "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+  "sampling_temperature": 1.0,
+  "seed": 91884,
+  "device": "cpu",
+  "verifier": {
+    "mode": "full_polytope_fit_verifier_polytope",
+    "face_solver": "analytic"
+  },
+  "runs": [
+    {
+      "gamma": 0.1,
+      "seed": 91884,
+      "status": "SUCCESS",
+      "steps": 124,
+      "min_clearance_m": 0.023449642610939153,
+      "candidate_windows": 124,
+      "verifier_positive_windows": 105,
+      "file": "run_g0.1_s91884.npz",
+      "events": "events_run_g0.1_s91884.pt",
+      "reference_check": {
+        "file": "/data3/research1/paper_ready_0806_private/phase2/scenes/scene_symmetric_v2_0003/pretrained_frozen/gamma_0p1_seed_91884.npz",
+        "bit_identical": true
+      },
+      "z_departure": {
+        "plane_z_m": 0.9,
+        "max_abs_dz_dense_m": 0.13808882236480713,
+        "mean_abs_dz_dense_m": 0.0638934001326561,
+        "max_abs_dz_knots_m": 0.13799917697906494,
+        "mean_abs_dz_knots_m": 0.06373891234397888
+      }
+    },
+    {
+      "gamma": 0.3,
+      "seed": 91884,
+      "status": "SUCCESS",
+      "steps": 147,
+      "min_clearance_m": 0.0194452981971035,
+      "candidate_windows": 147,
+      "verifier_positive_windows": 142,
+      "file": "run_g0.3_s91884.npz",
+      "events": "events_run_g0.3_s91884.pt",
+      "reference_check": {
+        "file": "/data3/research1/paper_ready_0806_private/phase2/scenes/scene_symmetric_v2_0003/pretrained_frozen/gamma_0p3_seed_91884.npz",
+        "bit_identical": true
+      },
+      "z_departure": {
+        "plane_z_m": 0.9,
+        "max_abs_dz_dense_m": 0.16500675678253174,
+        "mean_abs_dz_dense_m": 0.07091324776411057,
+        "max_abs_dz_knots_m": 0.1648855209350586,
+        "mean_abs_dz_knots_m": 0.07066266983747482
+      }
+    },
+    {
+      "gamma": 0.5,
+      "seed": 91884,
+      "status": "SUCCESS",
+      "steps": 122,
+      "min_clearance_m": 0.01731631805860548,
+      "candidate_windows": 122,
+      "verifier_positive_windows": 118,
+      "file": "run_g0.5_s91884.npz",
+      "events": "events_run_g0.5_s91884.pt",
+      "reference_check": {
+        "file": "/data3/research1/paper_ready_0806_private/phase2/scenes/scene_symmetric_v2_0003/pretrained_frozen/gamma_0p5_seed_91884.npz",
+        "bit_identical": true
+      },
+      "z_departure": {
+        "plane_z_m": 0.9,
+        "max_abs_dz_dense_m": 0.14981400966644287,
+        "mean_abs_dz_dense_m": 0.08619731664657593,
+        "max_abs_dz_knots_m": 0.14963066577911377,
+        "mean_abs_dz_knots_m": 0.08593157678842545
+      }
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91884,
+      "status": "COLLISION",
+      "steps": 30,
+      "min_clearance_m": -0.002909446778926017,
+      "candidate_windows": 30,
+      "verifier_positive_windows": 19,
+      "file": "run_g1_s91884.npz",
+      "events": "events_run_g1_s91884.pt",
+      "reference_check": {
+        "file": "/data3/research1/paper_ready_0806_private/phase2/scenes/scene_symmetric_v2_0003/pretrained_frozen/gamma_1_seed_91884.npz",
+        "bit_identical": true
+      },
+      "z_departure": {
+        "plane_z_m": 0.9,
+        "max_abs_dz_dense_m": 0.11528623104095459,
+        "mean_abs_dz_dense_m": 0.07255827635526657,
+        "max_abs_dz_knots_m": 0.11527848243713379,
+        "mean_abs_dz_knots_m": 0.0720164030790329
+      }
+    }
+  ]
+}
