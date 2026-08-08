@@ -1,0 +1,16 @@
+{
+  "verification_date": "2026-08-08",
+  "bundle": "paper_ready/0808",
+  "helios_reproduction_output": "/data3/research1/safeMPPI_remote_cli/reproductions/0808_bundle_verification_c1a3_001",
+  "command": "bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_bundle_verification_c1a3_001",
+  "result": "PASS",
+  "checks": {
+    "expanded_trajectory_count": 16,
+    "pretrained_success_count": 4,
+    "pretrained_collision_count": 2,
+    "all_22_npz_checksum_identical_to_frozen_bundle": true,
+    "repeat_2_array_comparison": "BIT_IDENTICAL",
+    "expanded_quality_validation": "PASS"
+  },
+  "quality_summary_note": "Two max_turn_angle_deg JSON values differed only in their final 1-2 floating-point decimal representation digits; all trajectory NPZ checksums were identical."
+}

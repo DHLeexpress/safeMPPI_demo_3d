@@ -1,0 +1,20 @@
+{
+  "schema": "paper_ready_0808_environment_v1",
+  "source_snapshot_id": "5c8a57779f16-008acd883e14",
+  "base_git_sha": "5c8a57779f165c583b297b73ab6d8bf90e3f59f5",
+  "source_snapshot_original_path": "/home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-008acd883e14",
+  "helios_python": "/home/dohyun/miniforge3/envs/cfm_mppi/bin/python",
+  "python": "3.11.15",
+  "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
+  "numpy": "2.4.6",
+  "torch": "2.6.0+cu124",
+  "torch_cuda": "12.4",
+  "cudnn": 90100,
+  "gpu": "NVIDIA H100 NVL",
+  "gpu_compute_capability": [9, 0],
+  "physical_gpu_contract": {
+    "expanded_quality_v2": 2,
+    "pretrained_success": 3,
+    "pretrained_collisions": 2
+  }
+}

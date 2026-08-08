@@ -1,0 +1,19 @@
+{
+  "schema": "paper_ready_ball_collision_selection_v1",
+  "policy": "pretrained_p0806",
+  "selection_rule": "two strongly penetrating sphere collisions from the fixed fair 480-rollout bank, at separated gamma values",
+  "trajectories": [
+    {
+      "gamma": 0.3,
+      "seed": 94184,
+      "expected_status": "COLLISION",
+      "physical_gpu": 2
+    },
+    {
+      "gamma": 1.0,
+      "seed": 93814,
+      "expected_status": "COLLISION",
+      "physical_gpu": 2
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "paper_ready_pretrained_collision_rollouts_v1",
+  "policy_label": "pretrained_p0806",
+  "checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+  "packaged_nfe": 16,
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "source_id": "5c8a57779f16-008acd883e14",
+  "physical_gpu": 2,
+  "sampling_temperature": 1.0,
+  "records": [
+    {
+      "file": "gamma_0p3_collision_seed_94184.npz",
+      "sha256": "325bd7180a2c299905ba6d4209bbfc60c16148b546b79b2408cc8d7c33d73ba5",
+      "gamma": 0.3,
+      "seed": 94184,
+      "status": "COLLISION",
+      "min_clearance_m": -0.03717424727681584,
+      "steps": 41,
+      "physical_gpu": 2,
+      "repeat_count": 2,
+      "repeat_verification": "BIT_IDENTICAL"
+    },
+    {
+      "file": "gamma_1_collision_seed_93814.npz",
+      "sha256": "7d0b7b9b24ab4b46223ae69c697c9cdfa6c2c27249477a44161d58c5105465f4",
+      "gamma": 1.0,
+      "seed": 93814,
+      "status": "COLLISION",
+      "min_clearance_m": -0.031391589561082456,
+      "steps": 41,
+      "physical_gpu": 2,
+      "repeat_count": 2,
+      "repeat_verification": "BIT_IDENTICAL"
+    }
+  ]
+}

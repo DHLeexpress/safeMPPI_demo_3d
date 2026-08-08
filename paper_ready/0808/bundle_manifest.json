@@ -1,0 +1,60 @@
+{
+  "schema": "paper_ready_0808_single_sphere_handoff_v1",
+  "status": "APPROVED",
+  "approved_composition": "16 expanded success / 4 pretrained success + 2 pretrained collision",
+  "safemppi_status": "ON_HOLD_NOT_INCLUDED",
+  "counts": {
+    "expanded_quality_v2_success": 16,
+    "pretrained_success": 4,
+    "pretrained_collision": 2,
+    "total_trajectories": 22,
+    "frozen_100hz_references": 22
+  },
+  "flight_references": {
+    "manifest": "flight_references/manifest.json",
+    "operator_index": "flight_references/FLIGHT_INDEX.csv",
+    "policy_or_planner_called_by_exporter": false,
+    "governor_application_count": 1,
+    "known_collision_references": 2,
+    "known_collision_hardware_eligibility": "SIMULATION_ONLY_KNOWN_COLLISION"
+  },
+  "expanded_policy": {
+    "file": "checkpoints/expanded_v1_reserve_G_nfe12.pt",
+    "sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+    "packaged_nfe": 12,
+    "selection": "selections/expanded_quality_v2.json",
+    "trajectories": "trajectories/expanded_quality_v2",
+    "physical_gpu": 2,
+    "repeat_verification": "BIT_IDENTICAL"
+  },
+  "pretrained_policy": {
+    "file": "checkpoints/pretrained_p0806_nfe16.pt",
+    "sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+    "packaged_nfe": 16,
+    "p0806_source_git_sha": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+    "p0806_git_path": "flow_deployment/minhyuk_stage1_handoff/checkpoints/hp100_t128_d3.pt",
+    "success_selection": "selections/pretrained.json",
+    "success_trajectories": "trajectories/pretrained_success",
+    "success_physical_gpu": 3,
+    "collision_selection": "selections/pretrained_collisions.json",
+    "collision_trajectories": "trajectories/pretrained_collisions",
+    "collision_physical_gpu": 2,
+    "repeat_verification": "BIT_IDENTICAL"
+  },
+  "rollout_contract": {
+    "config": "config/task_config_resolved.json",
+    "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+    "source_snapshot_id": "5c8a57779f16-008acd883e14",
+    "sampling_temperature": 1.0,
+    "governor": "ReferenceGovernor, exactly once",
+    "rollout_seed_formula": "episode_seed * 100000 + closed_loop_step",
+    "controller_dt_s": 0.1,
+    "integration_substeps": 10
+  },
+  "operator_boundaries": {
+    "minhyuk": "minhyuk/runs/<run_id>/",
+    "claude": "claude/runs/<run_id>/",
+    "shared_inputs_are_read_only": true,
+    "deploy_sim_must_not_be_modified": true
+  }
+}

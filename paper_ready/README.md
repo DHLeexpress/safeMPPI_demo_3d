@@ -22,8 +22,8 @@ or video may remain in Drive, but its exact Drive path, byte count, and SHA-256
 must be recorded in the run-local manifest.
 
 The shared mathematical and software contracts are pinned in
-[`common/`](common/). The first campaign is [`0806/`](0806/), meaning
-2026-08-06.
+[`common/`](common/). Frozen campaigns are [`0806/`](0806/) and
+[`0808/`](0808/).
 
 ## Why the repository SHA is mandatory
 

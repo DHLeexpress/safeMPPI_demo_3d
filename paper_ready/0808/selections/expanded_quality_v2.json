@@ -1,0 +1,25 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v2",
+  "policy": "expanded_reserve_G_nfe12",
+  "status": "APPROVED",
+  "selection_rule": "One success per gamma-mode stratum; strict positive Euclidean goal progress at every executed 0.1 s state knot; low turn-angle and terminal-jiggle metrics; jointly chosen so mean clearance decreases from gamma 0.1 to 1.0 and mean time-to-goal is similar for gamma 0.5 and 1.0.",
+  "physical_gpu": 2,
+  "trajectories": [
+    {"gamma": 0.1, "seed": 105625, "expected_mode": "below", "expected_theta_deg": -74.85441471667274, "physical_gpu": 2},
+    {"gamma": 0.1, "seed": 108992, "expected_mode": "above", "expected_theta_deg": 93.35257480114144, "physical_gpu": 2},
+    {"gamma": 0.1, "seed": 104626, "expected_mode": "left", "expected_theta_deg": 31.167760956957753, "physical_gpu": 2},
+    {"gamma": 0.1, "seed": 104108, "expected_mode": "right", "expected_theta_deg": 167.47934947709518, "physical_gpu": 2},
+    {"gamma": 0.3, "seed": 118918, "expected_mode": "below", "expected_theta_deg": -66.71044235485334, "physical_gpu": 2},
+    {"gamma": 0.3, "seed": 115588, "expected_mode": "above", "expected_theta_deg": 131.89719183465033, "physical_gpu": 2},
+    {"gamma": 0.3, "seed": 92369, "expected_mode": "left", "expected_theta_deg": -14.53923104272936, "physical_gpu": 2},
+    {"gamma": 0.3, "seed": 124542, "expected_mode": "right", "expected_theta_deg": 164.06388673680252, "physical_gpu": 2},
+    {"gamma": 0.5, "seed": 132470, "expected_mode": "below", "expected_theta_deg": -129.00757849644395, "physical_gpu": 2},
+    {"gamma": 0.5, "seed": 130398, "expected_mode": "above", "expected_theta_deg": 110.40723914408574, "physical_gpu": 2},
+    {"gamma": 0.5, "seed": 91777, "expected_mode": "left", "expected_theta_deg": -16.970757759218554, "physical_gpu": 2},
+    {"gamma": 0.5, "seed": 123368, "expected_mode": "right", "expected_theta_deg": 139.19701181247186, "physical_gpu": 2},
+    {"gamma": 1.0, "seed": 138437, "expected_mode": "below", "expected_theta_deg": -46.06016627103667, "physical_gpu": 2},
+    {"gamma": 1.0, "seed": 141175, "expected_mode": "above", "expected_theta_deg": 120.56390067783855, "physical_gpu": 2},
+    {"gamma": 1.0, "seed": 144135, "expected_mode": "left", "expected_theta_deg": 10.46250084106704, "physical_gpu": 2},
+    {"gamma": 1.0, "seed": 142692, "expected_mode": "right", "expected_theta_deg": 144.40307789453544, "physical_gpu": 2}
+  ]
+}

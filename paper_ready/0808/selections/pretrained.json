@@ -1,0 +1,35 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v1",
+  "policy": "pretrained_p0806",
+  "selection_rule": "same successful seed for all four gammas; slight-above route nearest the left/above boundary",
+  "trajectories": [
+    {
+      "gamma": 0.1,
+      "seed": 91074,
+      "expected_mode": "above",
+      "expected_theta_deg": 49.9176737347243,
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 0.3,
+      "seed": 91074,
+      "expected_mode": "above",
+      "expected_theta_deg": 48.7304095335306,
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 0.5,
+      "seed": 91074,
+      "expected_mode": "above",
+      "expected_theta_deg": 47.5085214893508,
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91074,
+      "expected_mode": "above",
+      "expected_theta_deg": 45.0652245931499,
+      "physical_gpu": 3
+    }
+  ]
+}
