@@ -1,9 +1,10 @@
 # 0808 single-sphere OOD coverage handoff
 
-This directory is the approved, self-contained 32-reference handoff:
+This directory is the approved, self-contained 33-reference handoff:
 
 - expanded policy v1: 16 successful trajectories (`4 gamma x 4 modes`)
 - expanded policy v1 supplement: 4 additional gamma-1 octants and 2 gamma-0.1 side-above trajectories
+- expanded policy v1 string-safe supplement: 1 gamma-1 side-above trajectory
 - P0806 pretrained policy: 4 successful slight-above/left-boundary trajectories
 - P0806 pretrained policy: 2 reproducible sphere-collision trajectories
 - 0806 SafeMPPI: 4 successful prominent-class representatives (`1/gamma`)
@@ -105,6 +106,23 @@ distance at every 10 Hz state knot and every stored 100 Hz dense knot. Two
 fresh runs per trajectory were array-level bit-identical. The exact audit is
 `quality/expanded_angular_supplement_v1_summary.json`.
 
+#### Gamma-1 suspension-line replacement
+
+Do not use straight-above seed `137364` when the ball is suspended from a
+vertical line. Its closest horizontal approach to the line above the physical
+sphere is only `0.0454 m`. The added frozen replacement is:
+
+| gamma | seed | crossing angle | section | min. obstacle clearance | min. horizontal string separation |
+|---:|---:|---:|---:|---:|---:|
+| 1.0 | 131629 | 50.452 deg | S5 | 0.13528 m | 0.31159 m |
+
+The replacement is a terminal success, has window validity `1.0`, strictly
+positive goal progress at every stored state and dense knot, terminal path
+efficiency `0.9996`, and repeat-2 array-level identity. It is frozen under
+`trajectories/expanded_string_safe_v1/`; the exact 100 Hz reference is under
+`flight_references/expanded_string_safe_v1/`. The string separation is a
+geometric centerline screen, not hardware safety certification.
+
 ### P0806 pretrained successes
 
 The selection is stored in `selections/pretrained.json`; arrays are in
@@ -163,6 +181,10 @@ logic, candidate-level recorder events, and reproduction instructions are in
 
 ![Expanded gamma-1 eight-section coverage and gamma-0.1 above alternatives](figures/expanded_angular_supplement_headon.png)
 
+### Gamma-1 side-above suspension-line replacement
+
+![Expanded gamma-1 side-above replacement](figures/expanded_gamma1_string_safe_headon.png)
+
 ### Pretrained policy: four successes and two collisions
 
 ![Pretrained successful and collision trajectories](figures/pretrained_4_success_2_collision_review_3d.png)
@@ -174,7 +196,7 @@ logic, candidate-level recorder events, and reproduction instructions are in
 ## Frozen 100 Hz flight playback
 
 [`FLIGHT_INDEX_ALL.csv`](FLIGHT_INDEX_ALL.csv) is the authoritative map across
-all 32 frozen reference files. The 28 policy references are under
+all 33 frozen reference files. The 29 policy references are under
 [`flight_references/`](flight_references/); the four SafeMPPI references and
 their separate manifest are under
 [`safemppi/flight_references/`](safemppi/flight_references/).
@@ -186,7 +208,7 @@ first verifies the stored governed recurrence and then exports:
 time_s, position_ref, velocity_ref, acceleration_ref
 ```
 
-The maximum reconstruction error over the 28 policy references is
+The maximum reconstruction error over the 29 policy references is
 `2.39e-7 m`. Maximum speed, vertical speed, and applied acceleration are
 `0.7000002 m/s`, `0.288648 m/s`, and `0.292304 m/s^2`, respectively.
 The four SafeMPPI references independently pass the same governed-recurrence,
@@ -207,7 +229,7 @@ their own `runs/<run_id>/` directories.
 checkpoints/       exact NFE-12 expanded and NFE-16 pretrained checkpoints
 config/            resolved canonical single-sphere task
 selections/        seeds, gamma/mode labels, expected first-crossing angles
-trajectories/      authoritative 16 + 6 expanded / 4 + 2 pretrained NPZ files
+trajectories/      authoritative 16 + 6 + 1 expanded / 4 + 2 pretrained NPZ files
 flight_references/  verified 100 Hz references and authoritative flight index
 figures/           approved 3D and head-on PNG/PDF galleries
 quality/           full search rows and strict progress/smoothness audit
@@ -228,12 +250,12 @@ Choose a new output directory that does not already exist:
 
 ```bash
 cd paper_ready/0808
-bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_32_reference_bundle
+bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_33_reference_bundle
 ```
 
 The script regenerates 16 original expanded successes on physical GPU 2, six
-expanded supplemental successes on physical GPU 3, four pretrained successes
-on physical GPU 3, and two pretrained collisions on physical GPU 2. It
+angular supplemental successes and one string-safe success on physical GPU 3,
+four pretrained successes on physical GPU 3, and two pretrained collisions on physical GPU 2. It
 requires two bit-identical runs for each policy trajectory, then reruns both
 expanded validators and all galleries.
 

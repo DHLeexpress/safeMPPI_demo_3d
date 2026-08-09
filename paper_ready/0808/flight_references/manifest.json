@@ -1,7 +1,7 @@
 {
-  "schema": "paper_ready_0808_frozen_100hz_references_v2",
+  "schema": "paper_ready_0808_frozen_100hz_references_v3",
   "status": "COMPLETE",
-  "count": 28,
+  "count": 29,
   "contract": {
     "policy_or_planner_called_by_exporter": false,
     "governor_application_count": 1,
@@ -562,6 +562,31 @@
       "max_speed_mps": 0.6352524161338806,
       "max_vertical_speed_mps": 0.08042196929454803,
       "max_applied_acceleration_component_mps2": 0.2779574990272522
+    },
+    {
+      "flight_id": "0808_expanded_string_safe_v1_gamma_1_mode_above_seed_131629",
+      "group": "expanded_string_safe_v1",
+      "policy": "expanded_reserve_G_nfe12",
+      "gamma": 1.0,
+      "mode": "above",
+      "seed": 131629,
+      "simulated_status": "SUCCESS",
+      "hardware_eligibility": "REQUIRES_OPERATOR_AND_HARDWARE_SAFETY_APPROVAL",
+      "source_archive": "trajectories/expanded_string_safe_v1/gamma_1_mode_above_seed_131629.npz",
+      "source_archive_sha256": "e8a101d05c9a1b917b708ba03beea2aea61981404b4f07f75f19348c701fb942",
+      "flight_reference": "flight_references/expanded_string_safe_v1/gamma_1_mode_above_seed_131629_100hz.npz",
+      "flight_reference_sha256": "e84d252e378cf3be457ae7a39b675d3d1435ed2708504610caa39771d47b2996",
+      "status": "SUCCESS",
+      "checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+      "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+      "samples": 1091,
+      "duration_s": 10.9,
+      "max_dense_position_reconstruction_error_m": 0.0,
+      "max_knot_position_reconstruction_error_m": 0.0,
+      "max_knot_velocity_reconstruction_error_mps": 0.0,
+      "max_speed_mps": 0.6416478157043457,
+      "max_vertical_speed_mps": 0.1496574878692627,
+      "max_applied_acceleration_component_mps2": 0.2944071292877197
     },
     {
       "flight_id": "0808_pretrained_success_gamma_0p1_mode_above_seed_91074",

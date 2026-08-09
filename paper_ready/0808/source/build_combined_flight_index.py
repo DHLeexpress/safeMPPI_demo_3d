@@ -26,8 +26,8 @@ def main() -> int:
             elif list(reader.fieldnames or []) != columns:
                 raise ValueError(f"index columns differ in {source}")
             rows.extend(reader)
-    if len(rows) != 32 or len({row["flight_id"] for row in rows}) != 32:
-        raise ValueError("expected 32 unique 0808 flight references")
+    if len(rows) != 33 or len({row["flight_id"] for row in rows}) != 33:
+        raise ValueError("expected 33 unique 0808 flight references")
     target = bundle / "FLIGHT_INDEX_ALL.csv"
     with target.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")

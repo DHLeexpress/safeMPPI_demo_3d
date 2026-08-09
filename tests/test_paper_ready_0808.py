@@ -23,11 +23,12 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
     assert manifest["counts"] == {
         "expanded_quality_v2_success": 16,
         "expanded_supplement_v1_success": 6,
+        "expanded_string_safe_v1_success": 1,
         "pretrained_success": 4,
         "pretrained_collision": 2,
         "safemppi_success": 4,
-        "total_trajectories": 32,
-        "frozen_100hz_references": 32,
+        "total_trajectories": 33,
+        "frozen_100hz_references": 33,
     }
     assert manifest["safemppi_status"] == "INCLUDED_AS_0806_SOURCE_SUPPLEMENT"
     assert manifest["expanded_policy"]["packaged_nfe"] == 12
@@ -37,6 +38,7 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
     groups = {
         "expanded_quality_v2": (16, {"SUCCESS"}),
         "expanded_supplement_v1": (6, {"SUCCESS"}),
+        "expanded_string_safe_v1": (1, {"SUCCESS"}),
         "pretrained_success": (4, {"SUCCESS"}),
         "pretrained_collisions": (2, {"COLLISION"}),
     }
@@ -54,15 +56,15 @@ def test_0808_flight_reference_contract() -> None:
     manifest = json.loads(
         (BUNDLE / "flight_references" / "manifest.json").read_text()
     )
-    assert manifest["count"] == 28
+    assert manifest["count"] == 29
     assert not manifest["contract"]["policy_or_planner_called_by_exporter"]
     assert manifest["contract"]["governor_application_count"] == 1
     assert manifest["contract"]["player_must_not_reapply_governor"]
 
     with (BUNDLE / "flight_references" / "FLIGHT_INDEX.csv").open(newline="") as handle:
         index = list(csv.DictReader(handle))
-    assert len(index) == 28
-    assert len({row["flight_id"] for row in index}) == 28
+    assert len(index) == 29
+    assert len({row["flight_id"] for row in index}) == 29
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"
         for row in index
@@ -113,6 +115,18 @@ def test_0808_expanded_angular_supplement() -> None:
     assert [int(row["seed"]) for row in side] == [92851, 91555]
     assert 45.0 <= float(side[0]["theta_deg"]) < 90.0
     assert 90.0 < float(side[1]["theta_deg"]) < 135.0
+
+
+def test_0808_expanded_string_safe_reference() -> None:
+    summary = json.loads(
+        (BUNDLE / "quality" / "expanded_string_safe_v1_summary.json").read_text()
+    )
+    assert summary["status"] == "PASS"
+    assert summary["gamma"] == 1.0
+    assert summary["seed"] == 131629
+    assert 45.0 <= summary["theta_deg"] < 65.0
+    assert summary["minimum_horizontal_distance_to_vertical_string_centerline_m"] > 0.25
+    assert summary["repeat_verification"] == "BIT_IDENTICAL"
 
 
 def test_0808_safemppi_supplement() -> None:
@@ -167,8 +181,8 @@ def test_0808_safemppi_supplement() -> None:
 
     with (BUNDLE / "FLIGHT_INDEX_ALL.csv").open(newline="") as handle:
         combined = list(csv.DictReader(handle))
-    assert len(combined) == 32
-    assert len({row["flight_id"] for row in combined}) == 32
+    assert len(combined) == 33
+    assert len({row["flight_id"] for row in combined}) == 33
     assert sum(row["group"] == "safemppi_prominent_modes" for row in combined) == 4
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"

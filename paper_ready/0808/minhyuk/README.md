@@ -8,7 +8,7 @@ paper_ready/0808/minhyuk/runs/<run_id>/
 
 The authoritative operator index is
 [`../FLIGHT_INDEX_ALL.csv`](../FLIGHT_INDEX_ALL.csv).
-It contains 30 simulated successes and two known pretrained collisions. The
+It contains 31 simulated successes and two known pretrained collisions. The
 collision references are simulation-only negative controls and must not be
 sent to hardware unchanged.
 
@@ -35,8 +35,8 @@ sent to hardware unchanged.
 - `expanded_v1_reserve_G_nfe12.pt` is the only expanded checkpoint in this
   campaign. It was sampled with packaged **NFE 12**, not the pretrained
   checkpoint's NFE 16.
-- The original 16 modes plus the six-trajectory angular supplement are
-  **22 frozen seed trajectories**, not a discrete mode input
+- The original 16 modes plus the six-trajectory angular supplement and one
+  string-safe supplement are **23 frozen seed trajectories**, not a discrete mode input
   accepted by the network. To fly a named `below/above/left/right` mode, use
   the corresponding frozen 100 Hz reference. Re-inference does not guarantee
   that mode.
@@ -61,6 +61,11 @@ sent to hardware unchanged.
   checkpoint, resample their seeds, or interpolate them during playback.
 - Every new reference remains subject to operator and hardware safety
   approval; the geometric side label does not itself certify the real flight.
+- For gamma 1.0, do **not** fly straight-above seed `137364` when the physical
+  suspension line is present. Use frozen side-above seed `131629` from group
+  `expanded_string_safe_v1`; its simulated minimum horizontal separation from
+  the vertical string centerline is `0.31159 m` versus `0.04537 m` for
+  `137364`. This is still not a hardware safety certificate.
 
 ## SafeMPPI supplement
 

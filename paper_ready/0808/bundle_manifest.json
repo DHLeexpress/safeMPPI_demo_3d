@@ -1,16 +1,17 @@
 {
-  "schema": "paper_ready_0808_single_sphere_handoff_v2",
+  "schema": "paper_ready_0808_single_sphere_handoff_v3",
   "status": "APPROVED",
-  "approved_composition": "16 original expanded success + 6 expanded angular supplement / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
+  "approved_composition": "16 original expanded success + 6 expanded angular supplement + 1 expanded string-safe supplement / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
   "safemppi_status": "INCLUDED_AS_0806_SOURCE_SUPPLEMENT",
   "counts": {
     "expanded_quality_v2_success": 16,
     "expanded_supplement_v1_success": 6,
+    "expanded_string_safe_v1_success": 1,
     "pretrained_success": 4,
     "pretrained_collision": 2,
     "safemppi_success": 4,
-    "total_trajectories": 32,
-    "frozen_100hz_references": 32
+    "total_trajectories": 33,
+    "frozen_100hz_references": 33
   },
   "flight_references": {
     "manifest": "flight_references/manifest.json",
@@ -34,6 +35,11 @@
     "supplement_physical_gpu": 3,
     "supplement_gamma1_sector_count": 8,
     "supplement_gamma0p1_side_above_count": 2,
+    "string_safe_selection": "selections/expanded_gamma1_side_above_string_safe_v1.json",
+    "string_safe_trajectories": "trajectories/expanded_string_safe_v1",
+    "string_safe_physical_gpu": 3,
+    "string_safe_seed": 131629,
+    "string_safe_minimum_horizontal_separation_m": 0.31159349680719217,
     "repeat_verification": "BIT_IDENTICAL"
   },
   "pretrained_policy": {

@@ -1,0 +1,17 @@
+{
+  "schema": "paper_ready_0808_expanded_string_safe_v1",
+  "status": "PASS",
+  "file": "gamma_1_mode_above_seed_131629.npz",
+  "sha256": "e8a101d05c9a1b917b708ba03beea2aea61981404b4f07f75f19348c701fb942",
+  "checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "gamma": 1.0,
+  "seed": 131629,
+  "theta_deg": 50.45230069390237,
+  "sector_8": 5,
+  "minimum_horizontal_distance_to_vertical_string_centerline_m": 0.31159349680719217,
+  "minimum_goal_progress_m": 0.0007220478553255916,
+  "minimum_dense_goal_progress_m": 1.310131688381233e-05,
+  "repeat_verification": "BIT_IDENTICAL",
+  "note": "Centerline separation is a geometric screen, not hardware safety certification."
+}

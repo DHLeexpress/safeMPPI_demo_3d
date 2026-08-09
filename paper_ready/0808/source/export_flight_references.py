@@ -20,6 +20,7 @@ import numpy as np
 GROUPS = (
     ("expanded_quality_v2", "expanded_reserve_G_nfe12"),
     ("expanded_supplement_v1", "expanded_reserve_G_nfe12"),
+    ("expanded_string_safe_v1", "expanded_reserve_G_nfe12"),
     ("pretrained_success", "pretrained_p0806_nfe16"),
     ("pretrained_collisions", "pretrained_p0806_nfe16"),
 )
@@ -27,6 +28,7 @@ GROUPS = (
 EXPECTED_COUNTS = {
     "expanded_quality_v2": 16,
     "expanded_supplement_v1": 6,
+    "expanded_string_safe_v1": 1,
     "pretrained_success": 4,
     "pretrained_collisions": 2,
 }
@@ -232,10 +234,10 @@ def main() -> int:
                 **diagnostics,
             })
 
-    if len(rows) != 28:
-        raise ValueError(f"expected 28 flight references, got {len(rows)}")
+    if len(rows) != 29:
+        raise ValueError(f"expected 29 flight references, got {len(rows)}")
     manifest = {
-        "schema": "paper_ready_0808_frozen_100hz_references_v2",
+        "schema": "paper_ready_0808_frozen_100hz_references_v3",
         "status": "COMPLETE",
         "count": len(rows),
         "contract": {

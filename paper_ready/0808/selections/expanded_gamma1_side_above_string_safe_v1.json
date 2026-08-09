@@ -1,0 +1,19 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v2",
+  "policy": "expanded_reserve_G_nfe12",
+  "status": "APPROVED",
+  "purpose": "Add a gamma=1.0 side-above frozen reference that avoids the nearly straight overhead route and its physical suspension line.",
+  "selection_rule": "Terminal SUCCESS, full window validity, strict positive Euclidean goal progress at every executed state knot, terminal path efficiency above 0.99, positive clearance, and a smooth S5 crossing close to the 45-degree side-above boundary.",
+  "physical_gpu": 3,
+  "trajectories": [
+    {
+      "gamma": 1.0,
+      "seed": 131629,
+      "expected_mode": "above",
+      "expected_theta_deg": 50.45230069390238,
+      "expected_sector_8": 5,
+      "role": "gamma1_left_side_above_string_safe",
+      "physical_gpu": 3
+    }
+  ]
+}

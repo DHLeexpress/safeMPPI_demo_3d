@@ -1,0 +1,35 @@
+{
+  "schema": "paper_ready_selected_ball_rollouts_v1",
+  "policy_label": "expanded_reserve_G_string_safe_v1",
+  "checkpoint": "paper_ready/0808/checkpoints/expanded_v1_reserve_G_nfe12.pt",
+  "checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+  "packaged_nfe": 12,
+  "config": "paper_ready/0808/config/task_config_resolved.json",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "source_id": "5c8a57779f16-008acd883e14",
+  "device": "cuda:0",
+  "physical_gpu": 3,
+  "sampling_temperature": 1.0,
+  "governor": "ReferenceGovernor, exactly once",
+  "seed_formula": "episode_seed * 100000 + closed_loop_step",
+  "records": [
+    {
+      "file": "gamma_1_mode_above_seed_131629.npz",
+      "sha256": "e8a101d05c9a1b917b708ba03beea2aea61981404b4f07f75f19348c701fb942",
+      "gamma": 1.0,
+      "seed": 131629,
+      "status": "SUCCESS",
+      "mode": "above",
+      "theta_deg": 50.45230069390237,
+      "theta_error_from_selection_deg": 7.105427357601002e-15,
+      "sector_16": 10,
+      "sector_8": 5,
+      "min_clearance_m": 0.1352824796840174,
+      "time_to_goal_s": 10.9,
+      "steps": 109,
+      "physical_gpu": 3,
+      "repeat_count": 2,
+      "repeat_verification": "BIT_IDENTICAL"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "verification_date": "2026-08-08",
+  "bundle": "paper_ready/0808",
+  "base_git_commit": "c356990cd7081d66ed4671fbc7c68f31f4f77983",
+  "helios_worktree": "/data3/research1/p0808_octants_3bc8eb9",
+  "helios_output": "/data3/research1/safeMPPI_remote_cli/audits/0808_gamma1_string_safe_v1",
+  "result": "PASS",
+  "physical_gpu": 3,
+  "checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "sampling_temperature": 1.0,
+  "governor_application_count": 1,
+  "checks": {
+    "trajectory_count": 1,
+    "terminal_success_count": 1,
+    "repeat_count": 2,
+    "repeat_array_comparison": "BIT_IDENTICAL",
+    "gamma": 1.0,
+    "seed": 131629,
+    "theta_deg": 50.45230069390237,
+    "minimum_horizontal_distance_to_vertical_string_centerline_m": 0.31159349680719217,
+    "all_strictly_monotone_goal_progress": true,
+    "all_strictly_monotone_dense_goal_progress": true
+  }
+}
