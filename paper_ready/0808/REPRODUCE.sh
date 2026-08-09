@@ -23,7 +23,9 @@ mkdir -p \
   "${OUTPUT_ROOT}/trajectories/expanded_quality_v2" \
   "${OUTPUT_ROOT}/trajectories/expanded_supplement_v1" \
   "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1" \
+  "${OUTPUT_ROOT}/trajectories/expanded_mirrored_above_v1" \
   "${OUTPUT_ROOT}/trajectories/pretrained_success" \
+  "${OUTPUT_ROOT}/trajectories/pretrained_gamma1_biased_left_v1" \
   "${OUTPUT_ROOT}/trajectories/pretrained_collisions" \
   "${OUTPUT_ROOT}/figures" \
   "${OUTPUT_ROOT}/quality"
@@ -71,9 +73,43 @@ CUDA_VISIBLE_DEVICES=3 "${PYTHON_BIN}" \
   --expected-nfe 12 \
   --config "${BUNDLE_ROOT}/config/task_config_resolved.json" \
   --expected-config-sha256 7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2 \
+  --selections "${BUNDLE_ROOT}/selections/expanded_gamma1_mirrored_above_v1.json" \
+  --policy-label expanded_reserve_G_mirrored_above_v1 \
+  --output "${OUTPUT_ROOT}/trajectories/expanded_mirrored_above_v1" \
+  --device cuda:0 \
+  --physical-gpu 3 \
+  --source-id 5c8a57779f16-008acd883e14 \
+  --sampling-temperature 1.0 \
+  --repeat 2 \
+  --theta-tolerance-deg 0.05
+
+CUDA_VISIBLE_DEVICES=3 "${PYTHON_BIN}" \
+  "${BUNDLE_ROOT}/source/export_selected_ball_rollouts.py" \
+  --checkpoint "${BUNDLE_ROOT}/checkpoints/expanded_v1_reserve_G_nfe12.pt" \
+  --expected-checkpoint-sha256 c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056 \
+  --expected-nfe 12 \
+  --config "${BUNDLE_ROOT}/config/task_config_resolved.json" \
+  --expected-config-sha256 7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2 \
   --selections "${BUNDLE_ROOT}/selections/expanded_gamma1_side_above_string_safe_v1.json" \
   --policy-label expanded_reserve_G_string_safe_v1 \
   --output "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1" \
+  --device cuda:0 \
+  --physical-gpu 3 \
+  --source-id 5c8a57779f16-008acd883e14 \
+  --sampling-temperature 1.0 \
+  --repeat 2 \
+  --theta-tolerance-deg 0.05
+
+CUDA_VISIBLE_DEVICES=3 "${PYTHON_BIN}" \
+  "${BUNDLE_ROOT}/source/export_selected_ball_rollouts.py" \
+  --checkpoint "${BUNDLE_ROOT}/checkpoints/pretrained_p0806_nfe16.pt" \
+  --expected-checkpoint-sha256 cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff \
+  --expected-nfe 16 \
+  --config "${BUNDLE_ROOT}/config/task_config_resolved.json" \
+  --expected-config-sha256 7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2 \
+  --selections "${BUNDLE_ROOT}/selections/pretrained_gamma1_biased_left_v1.json" \
+  --policy-label pretrained_p0806_gamma1_biased_left_v1 \
+  --output "${OUTPUT_ROOT}/trajectories/pretrained_gamma1_biased_left_v1" \
   --device cuda:0 \
   --physical-gpu 3 \
   --source-id 5c8a57779f16-008acd883e14 \
@@ -129,6 +165,13 @@ CUDA_VISIBLE_DEVICES=2 "${PYTHON_BIN}" \
   --trajectory "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1/gamma_1_mode_above_seed_131629.npz" \
   --output "${OUTPUT_ROOT}/quality/expanded_string_safe_v1_summary.json"
 
+"${PYTHON_BIN}" "${BUNDLE_ROOT}/source/validate_gamma1_expanded_pair_pretrained_bias.py" \
+  --bundle "${BUNDLE_ROOT}" \
+  --expanded-string-safe "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1" \
+  --expanded-mirrored "${OUTPUT_ROOT}/trajectories/expanded_mirrored_above_v1" \
+  --pretrained-biased "${OUTPUT_ROOT}/trajectories/pretrained_gamma1_biased_left_v1" \
+  --output "${OUTPUT_ROOT}/quality/gamma1_expanded_pair_pretrained_bias_v1.json"
+
 "${PYTHON_BIN}" "${BUNDLE_ROOT}/source/export_flight_references.py" \
   --bundle "${BUNDLE_ROOT}" \
   --trajectories "${OUTPUT_ROOT}/trajectories" \
@@ -151,6 +194,13 @@ CUDA_VISIBLE_DEVICES=2 "${PYTHON_BIN}" \
 "${PYTHON_BIN}" "${BUNDLE_ROOT}/source/plot_expanded_string_safe.py" \
   --bundle "${BUNDLE_ROOT}" \
   --replacement "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1/gamma_1_mode_above_seed_131629.npz" \
+  --output "${OUTPUT_ROOT}/figures"
+
+"${PYTHON_BIN}" "${BUNDLE_ROOT}/source/plot_gamma1_expanded_pair_pretrained_bias.py" \
+  --bundle "${BUNDLE_ROOT}" \
+  --expanded-string-safe "${OUTPUT_ROOT}/trajectories/expanded_string_safe_v1" \
+  --expanded-mirrored "${OUTPUT_ROOT}/trajectories/expanded_mirrored_above_v1" \
+  --pretrained-biased "${OUTPUT_ROOT}/trajectories/pretrained_gamma1_biased_left_v1" \
   --output "${OUTPUT_ROOT}/figures"
 
 echo "reproduction complete: ${OUTPUT_ROOT}"

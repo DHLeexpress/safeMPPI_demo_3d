@@ -8,7 +8,7 @@ paper_ready/0808/minhyuk/runs/<run_id>/
 
 The authoritative operator index is
 [`../FLIGHT_INDEX_ALL.csv`](../FLIGHT_INDEX_ALL.csv).
-It contains 31 simulated successes and two known pretrained collisions. The
+It contains 40 simulated successes and two known pretrained collisions. The
 collision references are simulation-only negative controls and must not be
 sent to hardware unchanged.
 
@@ -35,8 +35,8 @@ sent to hardware unchanged.
 - `expanded_v1_reserve_G_nfe12.pt` is the only expanded checkpoint in this
   campaign. It was sampled with packaged **NFE 12**, not the pretrained
   checkpoint's NFE 16.
-- The original 16 modes plus the six-trajectory angular supplement and one
-  string-safe supplement are **23 frozen seed trajectories**, not a discrete mode input
+- The original 16 modes plus the six-trajectory angular supplement, one
+  string-safe supplement, and one mirrored-above supplement are **24 frozen seed trajectories**, not a discrete mode input
   accepted by the network. To fly a named `below/above/left/right` mode, use
   the corresponding frozen 100 Hz reference. Re-inference does not guarantee
   that mode.
@@ -66,6 +66,12 @@ sent to hardware unchanged.
   `expanded_string_safe_v1`; its simulated minimum horizontal separation from
   the vertical string centerline is `0.31159 m` versus `0.04537 m` for
   `137364`. This is still not a hardware safety certificate.
+- The additional gamma-1 expanded seed `135403` is frozen under group
+  `expanded_mirrored_above_v1`; it complements `131629` on the other side of
+  the old S6/above-axis reflection target.
+- Group `pretrained_gamma1_biased_left_v1` contains eight frozen gamma-1
+  successes selected to demonstrate pretrained left-route bias. It is a
+  qualitative presentation set, not an unbiased success-rate sample.
 
 ## SafeMPPI supplement
 

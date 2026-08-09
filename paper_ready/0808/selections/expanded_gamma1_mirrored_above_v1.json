@@ -1,0 +1,19 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v2",
+  "policy": "expanded_reserve_G_nfe12",
+  "status": "APPROVED",
+  "purpose": "Add the smooth terminal-success gamma=1.0 S5 trajectory closest to the reflection of old S6 about the 90-degree above axis.",
+  "selection_rule": "Reflect old S6 theta=120.56390067783855 degrees about 90 degrees, then choose the nearest terminal SUCCESS candidate with full window validity, strictly positive executed-state goal progress, terminal path efficiency above 0.99, and positive clearance.",
+  "physical_gpu": 3,
+  "trajectories": [
+    {
+      "gamma": 1.0,
+      "seed": 135403,
+      "expected_mode": "above",
+      "expected_theta_deg": 63.49773733472282,
+      "expected_sector_8": 5,
+      "role": "gamma1_mirrored_old_s6_about_above_axis",
+      "physical_gpu": 3
+    }
+  ]
+}

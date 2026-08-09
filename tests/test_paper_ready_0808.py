@@ -24,11 +24,13 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
         "expanded_quality_v2_success": 16,
         "expanded_supplement_v1_success": 6,
         "expanded_string_safe_v1_success": 1,
+        "expanded_mirrored_above_v1_success": 1,
         "pretrained_success": 4,
+        "pretrained_gamma1_biased_left_v1_success": 8,
         "pretrained_collision": 2,
         "safemppi_success": 4,
-        "total_trajectories": 33,
-        "frozen_100hz_references": 33,
+        "total_trajectories": 42,
+        "frozen_100hz_references": 42,
     }
     assert manifest["safemppi_status"] == "INCLUDED_AS_0806_SOURCE_SUPPLEMENT"
     assert manifest["expanded_policy"]["packaged_nfe"] == 12
@@ -39,7 +41,9 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
         "expanded_quality_v2": (16, {"SUCCESS"}),
         "expanded_supplement_v1": (6, {"SUCCESS"}),
         "expanded_string_safe_v1": (1, {"SUCCESS"}),
+        "expanded_mirrored_above_v1": (1, {"SUCCESS"}),
         "pretrained_success": (4, {"SUCCESS"}),
+        "pretrained_gamma1_biased_left_v1": (8, {"SUCCESS"}),
         "pretrained_collisions": (2, {"COLLISION"}),
     }
     for group, (count, statuses) in groups.items():
@@ -56,15 +60,15 @@ def test_0808_flight_reference_contract() -> None:
     manifest = json.loads(
         (BUNDLE / "flight_references" / "manifest.json").read_text()
     )
-    assert manifest["count"] == 29
+    assert manifest["count"] == 38
     assert not manifest["contract"]["policy_or_planner_called_by_exporter"]
     assert manifest["contract"]["governor_application_count"] == 1
     assert manifest["contract"]["player_must_not_reapply_governor"]
 
     with (BUNDLE / "flight_references" / "FLIGHT_INDEX.csv").open(newline="") as handle:
         index = list(csv.DictReader(handle))
-    assert len(index) == 29
-    assert len({row["flight_id"] for row in index}) == 29
+    assert len(index) == 38
+    assert len({row["flight_id"] for row in index}) == 38
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"
         for row in index
@@ -129,6 +133,28 @@ def test_0808_expanded_string_safe_reference() -> None:
     assert summary["repeat_verification"] == "BIT_IDENTICAL"
 
 
+def test_0808_gamma1_expanded_pair_and_pretrained_bias() -> None:
+    summary = json.loads(
+        (BUNDLE / "quality" / "gamma1_expanded_pair_pretrained_bias_v1.json").read_text()
+    )
+    assert summary["status"] == "PASS"
+    assert [row["seed"] for row in summary["expanded_pair"]] == [131629, 135403]
+    pretrained = summary["pretrained_biased_left"]
+    assert [row["seed"] for row in pretrained] == [
+        91407, 91703, 91777, 92333, 92369, 92407, 92851, 93888,
+    ]
+    assert {row["mode"] for row in pretrained} == {"left"}
+    assert all(0.0 <= row["theta_deg"] < 45.0 for row in pretrained)
+    assert summary["source_bank_gamma1_counts"] == {
+        "total": 120,
+        "success": 23,
+        "collision": 89,
+        "oob": 8,
+        "successful_left": 21,
+        "successful_above": 2,
+    }
+
+
 def test_0808_safemppi_supplement() -> None:
     selection = json.loads((BUNDLE / "safemppi" / "selection.json").read_text())
     representatives = selection["representatives"]
@@ -181,8 +207,8 @@ def test_0808_safemppi_supplement() -> None:
 
     with (BUNDLE / "FLIGHT_INDEX_ALL.csv").open(newline="") as handle:
         combined = list(csv.DictReader(handle))
-    assert len(combined) == 33
-    assert len({row["flight_id"] for row in combined}) == 33
+    assert len(combined) == 42
+    assert len({row["flight_id"] for row in combined}) == 42
     assert sum(row["group"] == "safemppi_prominent_modes" for row in combined) == 4
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"

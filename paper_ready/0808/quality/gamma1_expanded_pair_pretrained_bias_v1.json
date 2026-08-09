@@ -1,0 +1,142 @@
+{
+  "schema": "paper_ready_0808_gamma1_expanded_pair_pretrained_bias_v1",
+  "status": "PASS",
+  "expanded_pair": [
+    {
+      "file": "gamma_1_mode_above_seed_131629.npz",
+      "sha256": "e8a101d05c9a1b917b708ba03beea2aea61981404b4f07f75f19348c701fb942",
+      "seed": 131629,
+      "mode": "above",
+      "theta_deg": 50.45230069390237,
+      "minimum_clearance_m": 0.1352824796840174,
+      "time_to_goal_s": 10.9,
+      "minimum_state_goal_progress_m": 0.0007220478553255916,
+      "minimum_dense_goal_progress_m": 1.310131688381233e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_above_seed_135403.npz",
+      "sha256": "e06809c6bb1958710ba332f8a3b1fab7944b66beb54736f2c11b3932e45916bc",
+      "seed": 135403,
+      "mode": "above",
+      "theta_deg": 63.497737334722814,
+      "minimum_clearance_m": 0.032442827596753154,
+      "time_to_goal_s": 10.200000000000001,
+      "minimum_state_goal_progress_m": 0.0005854123312367676,
+      "minimum_dense_goal_progress_m": 1.057401236437272e-05,
+      "strictly_goal_monotone": true
+    }
+  ],
+  "old_s6_theta_deg": 120.56390067783855,
+  "mirrored_target_theta_deg": 59.43609932216145,
+  "seed_135403_mirror_error_deg": 4.06163801256136,
+  "pretrained_biased_left": [
+    {
+      "file": "gamma_1_mode_left_seed_91407.npz",
+      "sha256": "46f7eed22019c393909f7d0a894f4e98714c5c4a5231081f5eb993e258b265c8",
+      "seed": 91407,
+      "mode": "left",
+      "theta_deg": 3.3683189134480926,
+      "minimum_clearance_m": 0.20698994788447522,
+      "time_to_goal_s": 7.5,
+      "minimum_state_goal_progress_m": 0.0004550344811731222,
+      "minimum_dense_goal_progress_m": 8.22099957886735e-06,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_91703.npz",
+      "sha256": "819d742540d48de3a55121d80f12e56f3c78a9df63fc177e145a6b3a925ae701",
+      "seed": 91703,
+      "mode": "left",
+      "theta_deg": 6.405470346697399,
+      "minimum_clearance_m": 0.19624768539738702,
+      "time_to_goal_s": 7.6000000000000005,
+      "minimum_state_goal_progress_m": 0.0007314603745971482,
+      "minimum_dense_goal_progress_m": 1.327561406405664e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_91777.npz",
+      "sha256": "3377406f6d11943fae1fb2d1c6ee60b0315a95d14fa6b1cc86f2b6fdd64d8549",
+      "seed": 91777,
+      "mode": "left",
+      "theta_deg": 7.280841087541262,
+      "minimum_clearance_m": 0.10515675345680858,
+      "time_to_goal_s": 7.7,
+      "minimum_state_goal_progress_m": 0.0006214379835665085,
+      "minimum_dense_goal_progress_m": 1.127121204902437e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_92333.npz",
+      "sha256": "61463d9c44f0962778affa1025192ef7979fac4c984c800aa3b8a10778cb9158",
+      "seed": 92333,
+      "mode": "left",
+      "theta_deg": 8.034786731033023,
+      "minimum_clearance_m": 0.10025889786525238,
+      "time_to_goal_s": 8.0,
+      "minimum_state_goal_progress_m": 0.0009328305284332927,
+      "minimum_dense_goal_progress_m": 1.693587323092771e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_92369.npz",
+      "sha256": "1787bdcade55d6b5ac21edbc6a11166a68fddda2fac3e10a42018e63a3ed19ba",
+      "seed": 92369,
+      "mode": "left",
+      "theta_deg": 10.88688219186659,
+      "minimum_clearance_m": 0.12433194330634961,
+      "time_to_goal_s": 7.9,
+      "minimum_state_goal_progress_m": 0.0006675272698393186,
+      "minimum_dense_goal_progress_m": 1.2055545069777907e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_92407.npz",
+      "sha256": "032c5fe48e575c1a24e4bda9135a17e7dad4894700cdb4afeed1fff1cfbdfb20",
+      "seed": 92407,
+      "mode": "left",
+      "theta_deg": 1.653308789796398,
+      "minimum_clearance_m": 0.3180712967950903,
+      "time_to_goal_s": 7.6000000000000005,
+      "minimum_state_goal_progress_m": -0.00029476623103086297,
+      "minimum_dense_goal_progress_m": -5.356742221884758e-05,
+      "strictly_goal_monotone": false
+    },
+    {
+      "file": "gamma_1_mode_left_seed_92851.npz",
+      "sha256": "39d92a735a93aa31f717bd22c3523c59649925fa209ab3c5599c5f9a53fe96ea",
+      "seed": 92851,
+      "mode": "left",
+      "theta_deg": 24.35015546021168,
+      "minimum_clearance_m": 0.20760319731781807,
+      "time_to_goal_s": 7.4,
+      "minimum_state_goal_progress_m": 0.0007250640631095706,
+      "minimum_dense_goal_progress_m": 1.3101334277898502e-05,
+      "strictly_goal_monotone": true
+    },
+    {
+      "file": "gamma_1_mode_left_seed_93888.npz",
+      "sha256": "b1e9c2e391a1b167f61b4a087c63706d0b6e4e5571b7e426cba5d527f6adbdf4",
+      "seed": 93888,
+      "mode": "left",
+      "theta_deg": 36.262864781919745,
+      "minimum_clearance_m": 0.11710242995167047,
+      "time_to_goal_s": 7.5,
+      "minimum_state_goal_progress_m": 0.0006257886308036475,
+      "minimum_dense_goal_progress_m": 1.1300265086333638e-05,
+      "strictly_goal_monotone": true
+    }
+  ],
+  "source_bank": "quality/pretrained_initial_480_rows.json",
+  "source_bank_sha256": "6fe9cfce5a685fabd24aa0e00e074b7aa4fc23dfe73f0abaef5755de1eb19da5",
+  "source_bank_gamma1_counts": {
+    "total": 120,
+    "success": 23,
+    "collision": 89,
+    "oob": 8,
+    "successful_left": 21,
+    "successful_above": 2
+  },
+  "interpretation": "The eight pretrained paths are a disclosed qualitative subset of the fixed bank, selected to show the learned left-route bias; they are not an SR estimate."
+}

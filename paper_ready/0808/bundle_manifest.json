@@ -1,17 +1,19 @@
 {
-  "schema": "paper_ready_0808_single_sphere_handoff_v3",
+  "schema": "paper_ready_0808_single_sphere_handoff_v4",
   "status": "APPROVED",
-  "approved_composition": "16 original expanded success + 6 expanded angular supplement + 1 expanded string-safe supplement / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
+  "approved_composition": "16 original expanded success + 6 expanded angular supplement + 1 expanded string-safe supplement + 1 expanded mirrored-above supplement / 4 pretrained success + 8 pretrained gamma-1 left-bias successes + 2 pretrained collision / 4 SafeMPPI success",
   "safemppi_status": "INCLUDED_AS_0806_SOURCE_SUPPLEMENT",
   "counts": {
     "expanded_quality_v2_success": 16,
     "expanded_supplement_v1_success": 6,
     "expanded_string_safe_v1_success": 1,
+    "expanded_mirrored_above_v1_success": 1,
     "pretrained_success": 4,
+    "pretrained_gamma1_biased_left_v1_success": 8,
     "pretrained_collision": 2,
     "safemppi_success": 4,
-    "total_trajectories": 33,
-    "frozen_100hz_references": 33
+    "total_trajectories": 42,
+    "frozen_100hz_references": 42
   },
   "flight_references": {
     "manifest": "flight_references/manifest.json",
@@ -40,6 +42,10 @@
     "string_safe_physical_gpu": 3,
     "string_safe_seed": 131629,
     "string_safe_minimum_horizontal_separation_m": 0.31159349680719217,
+    "mirrored_above_selection": "selections/expanded_gamma1_mirrored_above_v1.json",
+    "mirrored_above_trajectories": "trajectories/expanded_mirrored_above_v1",
+    "mirrored_above_seed": 135403,
+    "mirrored_above_theta_deg": 63.49773733472282,
     "repeat_verification": "BIT_IDENTICAL"
   },
   "pretrained_policy": {
@@ -51,6 +57,13 @@
     "success_selection": "selections/pretrained.json",
     "success_trajectories": "trajectories/pretrained_success",
     "success_physical_gpu": 3,
+    "gamma1_bias_selection": "selections/pretrained_gamma1_biased_left_v1.json",
+    "gamma1_bias_trajectories": "trajectories/pretrained_gamma1_biased_left_v1",
+    "gamma1_bias_count": 8,
+    "gamma1_fixed_bank_successful_route_counts": {
+      "left": 21,
+      "above": 2
+    },
     "collision_selection": "selections/pretrained_collisions.json",
     "collision_trajectories": "trajectories/pretrained_collisions",
     "collision_physical_gpu": 2,

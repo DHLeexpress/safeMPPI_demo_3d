@@ -1,11 +1,13 @@
 # 0808 single-sphere OOD coverage handoff
 
-This directory is the approved, self-contained 33-reference handoff:
+This directory is the approved, self-contained 42-reference handoff:
 
 - expanded policy v1: 16 successful trajectories (`4 gamma x 4 modes`)
 - expanded policy v1 supplement: 4 additional gamma-1 octants and 2 gamma-0.1 side-above trajectories
 - expanded policy v1 string-safe supplement: 1 gamma-1 side-above trajectory
+- expanded policy v1 mirrored-above supplement: 1 gamma-1 trajectory
 - P0806 pretrained policy: 4 successful slight-above/left-boundary trajectories
+- P0806 pretrained policy: 8 gamma-1 successes exposing its left-route bias
 - P0806 pretrained policy: 2 reproducible sphere-collision trajectories
 - 0806 SafeMPPI: 4 successful prominent-class representatives (`1/gamma`)
 
@@ -123,6 +125,39 @@ efficiency `0.9996`, and repeat-2 array-level identity. It is frozen under
 `flight_references/expanded_string_safe_v1/`. The string separation is a
 geometric centerline screen, not hardware safety certification.
 
+#### Gamma-1 expanded pair and pretrained left bias
+
+The two approved expanded above references are both frozen terminal successes:
+
+| policy | seed | crossing angle | min. clearance | time-to-goal |
+|---|---:|---:|---:|---:|
+| expanded | 131629 | 50.452 deg | 0.13528 m | 10.9 s |
+| expanded | 135403 | 63.498 deg | 0.03244 m | 10.2 s |
+
+Seed `135403` is the closest smooth, full-validity, strictly goal-monotone
+terminal success to the reflection of old S6 (`120.564 deg`) about the
+`90 deg` above axis; its target was `59.436 deg`, for a `4.062 deg` error.
+
+The eight newly frozen pretrained references all use gamma `1.0` and cross in
+the left sector:
+
+| seed | crossing angle | min. clearance | time-to-goal |
+|---:|---:|---:|---:|
+| 91407 | 3.368 deg | 0.20699 m | 7.5 s |
+| 91703 | 6.405 deg | 0.19625 m | 7.6 s |
+| 91777 | 7.281 deg | 0.10516 m | 7.7 s |
+| 92333 | 8.035 deg | 0.10026 m | 8.0 s |
+| 92369 | 10.887 deg | 0.12433 m | 7.9 s |
+| 92407 | 1.653 deg | 0.31807 m | 7.6 s |
+| 92851 | 24.350 deg | 0.20760 m | 7.4 s |
+| 93888 | 36.263 deg | 0.11710 m | 7.5 s |
+
+This is a qualitative bias demonstration, not an unbiased SR estimate. In the
+disclosed fixed gamma-1 bank, 23/120 rollouts succeeded: 21 went left and only
+2 went above. The complete bank is frozen at
+`quality/pretrained_initial_480_rows.json`; the exact audit is
+`quality/gamma1_expanded_pair_pretrained_bias_v1.json`.
+
 ### P0806 pretrained successes
 
 The selection is stored in `selections/pretrained.json`; arrays are in
@@ -185,6 +220,10 @@ logic, candidate-level recorder events, and reproduction instructions are in
 
 ![Expanded gamma-1 side-above replacement](figures/expanded_gamma1_string_safe_headon.png)
 
+### Gamma-1 expanded pair versus pretrained left bias
+
+![Two expanded above trajectories and eight pretrained left-biased trajectories](figures/gamma1_expanded_pair_vs_pretrained_bias8_3d.png)
+
 ### Pretrained policy: four successes and two collisions
 
 ![Pretrained successful and collision trajectories](figures/pretrained_4_success_2_collision_review_3d.png)
@@ -196,7 +235,7 @@ logic, candidate-level recorder events, and reproduction instructions are in
 ## Frozen 100 Hz flight playback
 
 [`FLIGHT_INDEX_ALL.csv`](FLIGHT_INDEX_ALL.csv) is the authoritative map across
-all 33 frozen reference files. The 29 policy references are under
+all 42 frozen reference files. The 38 policy references are under
 [`flight_references/`](flight_references/); the four SafeMPPI references and
 their separate manifest are under
 [`safemppi/flight_references/`](safemppi/flight_references/).
@@ -208,9 +247,9 @@ first verifies the stored governed recurrence and then exports:
 time_s, position_ref, velocity_ref, acceleration_ref
 ```
 
-The maximum reconstruction error over the 29 policy references is
-`2.39e-7 m`. Maximum speed, vertical speed, and applied acceleration are
-`0.7000002 m/s`, `0.288648 m/s`, and `0.292304 m/s^2`, respectively.
+The maximum reconstruction error over the 38 policy references is
+`5.37e-7 m`. Maximum speed, vertical speed, and applied acceleration are
+`0.7000002 m/s`, `0.300001 m/s`, and `0.299091 m/s^2`, respectively.
 The four SafeMPPI references independently pass the same governed-recurrence,
 100 Hz, speed, vertical-speed, and acceleration-cap checks.
 
@@ -229,7 +268,7 @@ their own `runs/<run_id>/` directories.
 checkpoints/       exact NFE-12 expanded and NFE-16 pretrained checkpoints
 config/            resolved canonical single-sphere task
 selections/        seeds, gamma/mode labels, expected first-crossing angles
-trajectories/      authoritative 16 + 6 + 1 expanded / 4 + 2 pretrained NPZ files
+trajectories/      authoritative 16 + 6 + 1 + 1 expanded / 4 + 8 + 2 pretrained NPZ files
 flight_references/  verified 100 Hz references and authoritative flight index
 figures/           approved 3D and head-on PNG/PDF galleries
 quality/           full search rows and strict progress/smoothness audit
@@ -250,12 +289,13 @@ Choose a new output directory that does not already exist:
 
 ```bash
 cd paper_ready/0808
-bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_33_reference_bundle
+bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_42_reference_bundle
 ```
 
 The script regenerates 16 original expanded successes on physical GPU 2, six
-angular supplemental successes and one string-safe success on physical GPU 3,
-four pretrained successes on physical GPU 3, and two pretrained collisions on physical GPU 2. It
+angular supplemental successes, one string-safe success, one mirrored-above
+success, four original pretrained successes, and eight gamma-1 pretrained
+left-bias successes on physical GPU 3, plus two pretrained collisions on physical GPU 2. It
 requires two bit-identical runs for each policy trajectory, then reruns both
 expanded validators and all galleries.
 

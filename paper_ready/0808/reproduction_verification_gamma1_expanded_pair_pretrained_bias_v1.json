@@ -1,0 +1,23 @@
+{
+  "verification_date": "2026-08-08",
+  "bundle": "paper_ready/0808",
+  "base_git_commit": "ab70c7774ad0d8f19138bc78afc8ede0b256b582",
+  "helios_worktree": "/data3/research1/p0808_bias_ab70c77",
+  "helios_output": "/data3/research1/safeMPPI_remote_cli/audits/0808_gamma1_bias_v1",
+  "result": "PASS",
+  "physical_gpu": 3,
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "sampling_temperature": 1.0,
+  "governor_application_count": 1,
+  "checks": {
+    "new_expanded_trajectory_count": 1,
+    "new_pretrained_trajectory_count": 8,
+    "terminal_success_count": 9,
+    "repeat_count_per_trajectory": 2,
+    "repeat_array_comparison": "BIT_IDENTICAL",
+    "expanded_checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+    "pretrained_checkpoint_sha256": "cc87b65f27506254509b7f4cbbe4734aacfc9e50640a3756cfb0b1ed456e28ff",
+    "expanded_seed": 135403,
+    "pretrained_seeds": [91407, 91703, 91777, 92333, 92369, 92407, 92851, 93888]
+  }
+}

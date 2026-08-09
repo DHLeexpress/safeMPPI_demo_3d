@@ -1,0 +1,83 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v2",
+  "policy": "pretrained_p0806_nfe16",
+  "status": "APPROVED",
+  "purpose": "Provide eight frozen gamma=1.0 pretrained successes that expose the policy's strong in-plane left-route bias.",
+  "selection_rule": "From the disclosed fixed 480-rollout bank, select the eight full-window-valid left-mode gamma=1.0 terminal successes with the largest positive minimum clearance. This is a qualitative bias demonstration, not an unbiased success-rate estimate.",
+  "source_bank": "quality/pretrained_initial_480_rows.json",
+  "source_bank_gamma1_counts": {
+    "total": 120,
+    "success": 23,
+    "collision": 89,
+    "oob": 8,
+    "successful_left": 21,
+    "successful_above": 2
+  },
+  "physical_gpu": 3,
+  "trajectories": [
+    {
+      "gamma": 1.0,
+      "seed": 92407,
+      "expected_mode": "left",
+      "expected_theta_deg": 1.6533087897964112,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 92851,
+      "expected_mode": "left",
+      "expected_theta_deg": 24.350155460211692,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91407,
+      "expected_mode": "left",
+      "expected_theta_deg": 3.368318913448089,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91703,
+      "expected_mode": "left",
+      "expected_theta_deg": 6.405470346697411,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 92369,
+      "expected_mode": "left",
+      "expected_theta_deg": 10.886882191866581,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 93888,
+      "expected_mode": "left",
+      "expected_theta_deg": 36.26286478191976,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 91777,
+      "expected_mode": "left",
+      "expected_theta_deg": 7.280841087541271,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 92333,
+      "expected_mode": "left",
+      "expected_theta_deg": 8.034786731033034,
+      "role": "pretrained_gamma1_left_bias",
+      "physical_gpu": 3
+    }
+  ]
+}
