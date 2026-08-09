@@ -1,0 +1,8 @@
+{
+  "platform": "macOS-15.6-arm64-arm-64bit",
+  "python": "3.11.7",
+  "numpy": "1.26.4",
+  "torch": "2.11.0",
+  "device": "mps",
+  "mps_available": true
+}

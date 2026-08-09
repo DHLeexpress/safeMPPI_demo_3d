@@ -1,18 +1,21 @@
 {
   "schema": "paper_ready_0808_single_sphere_handoff_v1",
   "status": "APPROVED",
-  "approved_composition": "16 expanded success / 4 pretrained success + 2 pretrained collision",
-  "safemppi_status": "ON_HOLD_NOT_INCLUDED",
+  "approved_composition": "16 expanded success / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
+  "safemppi_status": "INCLUDED_AS_0806_SOURCE_SUPPLEMENT",
   "counts": {
     "expanded_quality_v2_success": 16,
     "pretrained_success": 4,
     "pretrained_collision": 2,
-    "total_trajectories": 22,
-    "frozen_100hz_references": 22
+    "safemppi_success": 4,
+    "total_trajectories": 26,
+    "frozen_100hz_references": 26
   },
   "flight_references": {
     "manifest": "flight_references/manifest.json",
-    "operator_index": "flight_references/FLIGHT_INDEX.csv",
+    "operator_index": "FLIGHT_INDEX_ALL.csv",
+    "policy_only_manifest": "flight_references/manifest.json",
+    "safemppi_manifest": "safemppi/flight_references/manifest.json",
     "policy_or_planner_called_by_exporter": false,
     "governor_application_count": 1,
     "known_collision_references": 2,
@@ -40,6 +43,17 @@
     "collision_trajectories": "trajectories/pretrained_collisions",
     "collision_physical_gpu": 2,
     "repeat_verification": "BIT_IDENTICAL"
+  },
+  "safemppi": {
+    "source_git_sha": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+    "source_tree_matches_0806_commit": true,
+    "selection": "safemppi/selection.json",
+    "screen": "safemppi/mode_screen/summary.json",
+    "environment": "safemppi/environment.json",
+    "recordings": "safemppi/recordings",
+    "flight_references": "safemppi/flight_references",
+    "representative_count": 4,
+    "recording_verification": "BIT_IDENTICAL_TO_VANILLA"
   },
   "rollout_contract": {
     "config": "config/task_config_resolved.json",

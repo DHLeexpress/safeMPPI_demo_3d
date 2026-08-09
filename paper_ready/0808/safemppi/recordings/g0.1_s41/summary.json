@@ -1,0 +1,48 @@
+{
+  "kind": "0806 SafeMPPI full-candidate recording",
+  "config": "paper_ready/0808/config/task_config_resolved.json",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "device": "mps",
+  "rollout_dynamics": "minhyuk_reference_governor",
+  "seed": 41,
+  "runs": [
+    {
+      "gamma": 0.1,
+      "seed": 41,
+      "success": true,
+      "collision": false,
+      "taskspace_violation": false,
+      "steps": 81,
+      "time_to_goal_s": 8.1,
+      "min_clearance_m": 0.15383859155296287,
+      "mean_feasible_fraction": 0.4798900462962963,
+      "minimum_feasible_fraction": 0.0,
+      "all_infeasible": true,
+      "all_infeasible_steps": 9,
+      "minimum_controller_one_step_slack": -0.0036491751670837402,
+      "minimum_online_one_step_slack": -0.0036491963459047705,
+      "mean_plan_time_ms": 18.342586331943302,
+      "mean_control_variation_mps2": 0.3647744059562683,
+      "mean_applied_control_variation_mps2": 0.131268709897995,
+      "max_abs_control_mps2": 0.30000001192092896,
+      "max_abs_applied_control_mps2": 0.29997727274894714,
+      "peak_speed_mps": 0.7000000476837158,
+      "peak_vertical_speed_mps": 0.18829454481601715,
+      "deployment_speed_compatible": true,
+      "fraction_internal_states_below_z_bias_plane": 1.0,
+      "mean_internal_z_m": 0.7563762664794922,
+      "status": "SUCCESS",
+      "file": "run_g0.1_s41.npz",
+      "events": "events_run_g0.1_s41.pt",
+      "recorded_steps": 81,
+      "verified_bit_identical_to_vanilla": true,
+      "z_departure": {
+        "plane_z_m": 0.9,
+        "max_abs_dz_dense_m": 0.34709811210632324,
+        "mean_abs_dz_dense_m": 0.1418033391237259,
+        "max_abs_dz_knots_m": 0.3470490574836731,
+        "mean_abs_dz_knots_m": 0.14032909274101257
+      }
+    }
+  ]
+}

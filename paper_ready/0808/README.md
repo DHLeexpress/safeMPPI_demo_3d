@@ -1,11 +1,11 @@
 # 0808 single-sphere OOD coverage handoff
 
-This directory is the approved, self-contained `16 / 4 + 2` handoff:
+This directory is the approved, self-contained `16 / 4 + 2 + 4` handoff:
 
 - expanded policy v1: 16 successful trajectories (`4 gamma x 4 modes`)
 - P0806 pretrained policy: 4 successful slight-above/left-boundary trajectories
 - P0806 pretrained policy: 2 reproducible sphere-collision trajectories
-- SafeMPPI: intentionally excluded and still on hold
+- 0806 SafeMPPI: 4 successful prominent-class representatives (`1/gamma`)
 
 The two collision trajectories are simulation-only negative controls. The
 hardware player rejects them, and they must not be flown unchanged.
@@ -92,6 +92,30 @@ Every approved trajectory was run twice in a fresh process on its recorded
 physical GPU. States, raw controls, applied controls, and dense states were
 bit-identical between repeats.
 
+### 0806 SafeMPPI symmetry-breaking supplement
+
+The SafeMPPI supplement is under [`safemppi/`](safemppi/). Its source tree is
+identical to the 0806 source commit
+`9cafc00551e4964b9dbe559b1a4ba95104e9c88a`.
+
+A fixed `M=64/gamma` seed bank found successful route counts of `64, 21, 7,
+1` as gamma increased from `0.1` to `1.0`. Gamma 0.1 covered all four route
+classes, while the only gamma-1.0 success was below. The four bundled
+representatives are therefore a disclosed qualitative selection, not an
+unbiased success-rate estimate:
+
+| gamma | mode | seed |
+|---:|---|---:|
+| 0.1 | left | 41 |
+| 0.3 | above | 52 |
+| 0.5 | below | 12 |
+| 1.0 | below | 48 |
+
+This finite-sample symmetry breaking is the comparison point for the expanded
+model's frozen `4 modes x 4 gammas` coverage. Full counts, exact selection
+logic, candidate-level recorder events, and reproduction instructions are in
+[`safemppi/README.md`](safemppi/README.md).
+
 ## Review figures
 
 ### Expanded Reserve G: 16 trajectories
@@ -102,11 +126,17 @@ bit-identical between repeats.
 
 ![Pretrained successful and collision trajectories](figures/pretrained_4_success_2_collision_review_3d.png)
 
+### SafeMPPI: finite-seed support and four representatives
+
+![SafeMPPI support and representatives](safemppi/figures/safemppi_support_and_representatives.png)
+
 ## Frozen 100 Hz flight playback
 
-The flight-ready files are under [`flight_references/`](flight_references/).
-Its `FLIGHT_INDEX.csv` is the authoritative map from policy, gamma, mode and
-seed to the exact source archive and 100 Hz reference SHA.
+[`FLIGHT_INDEX_ALL.csv`](FLIGHT_INDEX_ALL.csv) is the authoritative map across
+all 26 frozen reference files. The original 22 policy references remain under
+[`flight_references/`](flight_references/); the four SafeMPPI references and
+their separate manifest are under
+[`safemppi/flight_references/`](safemppi/flight_references/).
 
 The conversion does not call either model, SafeMPPI, or ReferenceGovernor. It
 first verifies the stored governed recurrence and then exports:
@@ -115,9 +145,11 @@ first verifies the stored governed recurrence and then exports:
 time_s, position_ref, velocity_ref, acceleration_ref
 ```
 
-The maximum reconstruction error over all 22 references is
+The maximum reconstruction error over the original 22 policy references is
 `2.39e-7 m`. Maximum speed, vertical speed, and applied acceleration are
 `0.7000002 m/s`, `0.288648 m/s`, and `0.292304 m/s^2`, respectively.
+The four SafeMPPI references independently pass the same governed-recurrence,
+100 Hz, speed, vertical-speed, and acceleration-cap checks.
 
 Expanded-model blind spot: the `below/above/left/right` names select frozen
 seeds; they are not inputs to Reserve G. Normal flight therefore plays the
@@ -140,6 +172,7 @@ figures/           approved 3D and head-on PNG/PDF galleries
 quality/           full search rows and strict progress/smoothness audit
 runtime_snapshot/  exact safe_mppi runtime used on Helios
 source/            exporters, validators, search, plotting, integrity checker
+safemppi/          0806-source screen, four recordings, events and 100 Hz refs
 minhyuk/            flight-operator contract and validation-only player
 claude/             append-only analysis contract
 ```
@@ -161,6 +194,13 @@ The script regenerates 16 expanded successes on physical GPU 2, four
 pretrained successes on physical GPU 3, and two pretrained collisions on
 physical GPU 2. It requires two bit-identical runs for each trajectory, then
 reruns the quality validator and both galleries.
+
+The SafeMPPI supplement has a separate deterministic reproduction entrypoint:
+
+```bash
+cd paper_ready/0808/safemppi
+bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_safemppi mps
+```
 
 If the machine exposes different physical GPU numbering, edit only the three
 `CUDA_VISIBLE_DEVICES`/`--physical-gpu` pairs in `REPRODUCE.sh` and the matching

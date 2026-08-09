@@ -1,0 +1,75 @@
+{
+  "schema": "paper_ready_0808_safemppi_mode_screen_v1",
+  "expected_source_git_sha": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+  "safe_mppi_tree_matches_expected_commit": true,
+  "config": "paper_ready/0808/config/task_config_resolved.json",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "device": "mps",
+  "seed_start": 0,
+  "seed_count_per_gamma": 64,
+  "gammas": [
+    0.1,
+    0.3,
+    0.5,
+    1.0
+  ],
+  "wall_time_s": 198.02337283315137,
+  "per_gamma": [
+    {
+      "gamma": 0.1,
+      "attempts": 64,
+      "status_counts": {
+        "SUCCESS": 64
+      },
+      "successful_mode_counts": {
+        "above": 20,
+        "below": 17,
+        "left": 19,
+        "right": 8
+      }
+    },
+    {
+      "gamma": 0.3,
+      "attempts": 64,
+      "status_counts": {
+        "COLLISION": 43,
+        "SUCCESS": 21
+      },
+      "successful_mode_counts": {
+        "above": 9,
+        "below": 9,
+        "left": 3
+      }
+    },
+    {
+      "gamma": 0.5,
+      "attempts": 64,
+      "status_counts": {
+        "COLLISION": 57,
+        "SUCCESS": 7
+      },
+      "successful_mode_counts": {
+        "above": 3,
+        "below": 4
+      }
+    },
+    {
+      "gamma": 1.0,
+      "attempts": 64,
+      "status_counts": {
+        "COLLISION": 63,
+        "SUCCESS": 1
+      },
+      "successful_mode_counts": {
+        "below": 1
+      }
+    }
+  ],
+  "pooled_successful_mode_counts": {
+    "above": 32,
+    "below": 31,
+    "left": 22,
+    "right": 8
+  },
+  "interpretation": "Empirical finite-seed distribution used only to identify prominent SafeMPPI symmetry-broken route classes; not an expansion evaluation."
+}

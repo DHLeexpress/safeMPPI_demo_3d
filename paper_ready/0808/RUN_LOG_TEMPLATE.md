@@ -10,7 +10,7 @@
 - flight_id:
 - frozen reference path and SHA-256:
 - source rollout path and SHA-256:
-- policy/checkpoint SHA/NFE:
+- policy checkpoint SHA/NFE or SafeMPPI source SHA:
 - gamma/mode/seed/sampling temperature:
 - simulated status and hardware eligibility:
 - Vicon/camera calibration identity:

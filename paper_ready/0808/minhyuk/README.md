@@ -7,8 +7,8 @@ paper_ready/0808/minhyuk/runs/<run_id>/
 ```
 
 The authoritative operator index is
-[`../flight_references/FLIGHT_INDEX.csv`](../flight_references/FLIGHT_INDEX.csv).
-It contains 20 simulated successes and two known pretrained collisions. The
+[`../FLIGHT_INDEX_ALL.csv`](../FLIGHT_INDEX_ALL.csv).
+It contains 24 simulated successes and two known pretrained collisions. The
 collision references are simulation-only negative controls and must not be
 sent to hardware unchanged.
 
@@ -47,13 +47,27 @@ sent to hardware unchanged.
 - A future expanded checkpoint receives a new versioned campaign artifact;
   never replace Reserve G in place or alias it to a generic `expanded.pt`.
 
+## SafeMPPI supplement
+
+- The four `safemppi_prominent_modes` references use the exact 0806 SafeMPPI
+  source tree at `9cafc00551e4964b9dbe559b1a4ba95104e9c88a`.
+- They are frozen 100 Hz references like the policy trajectories. Do not run
+  SafeMPPI online, resample a seed, or rebuild a nominal polytope during
+  playback.
+- The four paths are qualitative prominent-class representatives, not an
+  unbiased success-rate result. Their full finite-seed context is in
+  [`../safemppi/README.md`](../safemppi/README.md).
+- Candidate histories and the actual online nominal-polytopes are provenance
+  assets under `../safemppi/recordings/`; hardware playback needs only the
+  indexed 100 Hz reference.
+
 ## Do not
 
 - Do not edit or overwrite checkpoints, selections, source trajectories,
   frozen references, figures, runtime snapshots, manifests, or checksums.
 - Do not modify `deploy_sim/` for this campaign.
-- Do not rerun the policy, change gamma/seed/NFE/temperature, or resample a
-  trajectory during playback.
+- Do not rerun a policy or SafeMPPI, change gamma/seed/NFE/temperature, or
+  resample a trajectory during playback.
 - Do not apply a governor, smoothing, clipping, or interpolation a second
   time.
 - Do not send either `SIMULATION_ONLY_KNOWN_COLLISION` reference to hardware.

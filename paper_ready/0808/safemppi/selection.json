@@ -1,0 +1,68 @@
+{
+  "schema": "paper_ready_0808_safemppi_representatives_v1",
+  "purpose": "Four qualitative SafeMPPI representatives, one per gamma, grounded in the fixed M=64/gamma screen.",
+  "not_an_unbiased_evaluation": true,
+  "source_git_sha": "9cafc00551e4964b9dbe559b1a4ba95104e9c88a",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "screen": {
+    "seed_start": 0,
+    "seed_count_per_gamma": 64,
+    "metrics": "safemppi/mode_screen/metrics.csv",
+    "summary": "safemppi/mode_screen/summary.json"
+  },
+  "selection_rule": [
+    "Require terminal SUCCESS and exactly one representative per gamma.",
+    "Cover the empirically prominent left, above, and below route classes; right is omitted because it is the least-supported pooled class and appears only at gamma 0.1.",
+    "Within each assigned gamma/mode cell, choose the successful trajectory nearest the cell's median first-crossing angle."
+  ],
+  "representatives": [
+    {
+      "gamma": 0.1,
+      "mode": "left",
+      "seed": 41,
+      "theta_deg": -33.4191247319638,
+      "min_clearance_m": 0.15383859155296287,
+      "time_to_goal_s": 8.1,
+      "recording": "safemppi/recordings/g0.1_s41/run_g0.1_s41.npz",
+      "events": "safemppi/recordings/g0.1_s41/events_run_g0.1_s41.pt",
+      "recording_sha256": "4dce8f70da775bce579dd7762680430ef6ccbdd0ca5e901c7afd3bf436ce43e6",
+      "events_sha256": "e72fc025071eea30b779f8705140eaf9cb904d1431d2a224972e714a93d23fd5"
+    },
+    {
+      "gamma": 0.3,
+      "mode": "above",
+      "seed": 52,
+      "theta_deg": 103.02596694033336,
+      "min_clearance_m": 0.06062997188962144,
+      "time_to_goal_s": 7.8,
+      "recording": "safemppi/recordings/g0.3_s52/run_g0.3_s52.npz",
+      "events": "safemppi/recordings/g0.3_s52/events_run_g0.3_s52.pt",
+      "recording_sha256": "efa245d1ac064a6136c2685cc58731cd2feaf67e827273e45fb5858a96c35074",
+      "events_sha256": "dab720f98d93dffc1c58e78ce6e639c4ccae8f2e58a54af57bac3b75a94e2d6f"
+    },
+    {
+      "gamma": 0.5,
+      "mode": "below",
+      "seed": 12,
+      "theta_deg": -68.80473713261354,
+      "min_clearance_m": 0.04555368133860538,
+      "time_to_goal_s": 7.9,
+      "recording": "safemppi/recordings/g0.5_s12/run_g0.5_s12.npz",
+      "events": "safemppi/recordings/g0.5_s12/events_run_g0.5_s12.pt",
+      "recording_sha256": "9078a796e8a9776f066e02cfbb802e9e30838bd15d2c4acef50fa1fa6020f701",
+      "events_sha256": "34bfe09a780da30dbb5a4a2383d404b2ea70ac62f2a22d650dfee1328cf588b9"
+    },
+    {
+      "gamma": 1.0,
+      "mode": "below",
+      "seed": 48,
+      "theta_deg": -105.84888531480095,
+      "min_clearance_m": 0.01745943708206521,
+      "time_to_goal_s": 7.7,
+      "recording": "safemppi/recordings/g1.0_s48/run_g1_s48.npz",
+      "events": "safemppi/recordings/g1.0_s48/events_run_g1_s48.pt",
+      "recording_sha256": "452880a6430025da071d9668b56364b38a7ed4b75c6b5105cb223dd1c774879c",
+      "events_sha256": "c65ba23e5620e52a0d2330313d3bc163149900e4f072c729e029cd78e4bd0328"
+    }
+  ]
+}
