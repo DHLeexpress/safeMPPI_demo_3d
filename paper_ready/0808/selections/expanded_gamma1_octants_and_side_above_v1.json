@@ -1,0 +1,64 @@
+{
+  "schema": "paper_ready_ball_trajectory_selection_v2",
+  "policy": "expanded_reserve_G_nfe12",
+  "status": "APPROVED",
+  "purpose": "Fill the four previously empty gamma=1 octants and add two gamma=0.1 above-side references that avoid the straight-over-ball route.",
+  "selection_rule": "Terminal SUCCESS, strict positive Euclidean goal progress at every executed state knot, terminal path efficiency above 0.99, then prefer smooth trajectories with positive clearance. Gamma=0.1 side-above representatives are selected near the 45-degree and 135-degree above boundaries.",
+  "physical_gpu": 3,
+  "trajectories": [
+    {
+      "gamma": 1.0,
+      "seed": 93962,
+      "expected_mode": "right",
+      "expected_theta_deg": -178.81915488978893,
+      "expected_sector_8": 0,
+      "role": "gamma1_missing_octant",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 92406,
+      "expected_mode": "below",
+      "expected_theta_deg": -95.23388012177888,
+      "expected_sector_8": 1,
+      "role": "gamma1_missing_octant",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 135329,
+      "expected_mode": "left",
+      "expected_theta_deg": -23.76554875617641,
+      "expected_sector_8": 3,
+      "role": "gamma1_missing_octant",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 1.0,
+      "seed": 137364,
+      "expected_mode": "above",
+      "expected_theta_deg": 85.74824790463911,
+      "expected_sector_8": 5,
+      "role": "gamma1_missing_octant",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 0.1,
+      "seed": 92851,
+      "expected_mode": "above",
+      "expected_theta_deg": 47.58362988031599,
+      "expected_sector_8": 5,
+      "role": "gamma0p1_left_side_above",
+      "physical_gpu": 3
+    },
+    {
+      "gamma": 0.1,
+      "seed": 91555,
+      "expected_mode": "above",
+      "expected_theta_deg": 129.6358005145838,
+      "expected_sector_8": 6,
+      "role": "gamma0p1_right_side_above",
+      "physical_gpu": 3
+    }
+  ]
+}

@@ -22,11 +22,12 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
     manifest = json.loads((BUNDLE / "bundle_manifest.json").read_text())
     assert manifest["counts"] == {
         "expanded_quality_v2_success": 16,
+        "expanded_supplement_v1_success": 6,
         "pretrained_success": 4,
         "pretrained_collision": 2,
         "safemppi_success": 4,
-        "total_trajectories": 26,
-        "frozen_100hz_references": 26,
+        "total_trajectories": 32,
+        "frozen_100hz_references": 32,
     }
     assert manifest["safemppi_status"] == "INCLUDED_AS_0806_SOURCE_SUPPLEMENT"
     assert manifest["expanded_policy"]["packaged_nfe"] == 12
@@ -35,6 +36,7 @@ def test_0808_manifest_and_frozen_trajectory_matrix() -> None:
 
     groups = {
         "expanded_quality_v2": (16, {"SUCCESS"}),
+        "expanded_supplement_v1": (6, {"SUCCESS"}),
         "pretrained_success": (4, {"SUCCESS"}),
         "pretrained_collisions": (2, {"COLLISION"}),
     }
@@ -52,15 +54,15 @@ def test_0808_flight_reference_contract() -> None:
     manifest = json.loads(
         (BUNDLE / "flight_references" / "manifest.json").read_text()
     )
-    assert manifest["count"] == 22
+    assert manifest["count"] == 28
     assert not manifest["contract"]["policy_or_planner_called_by_exporter"]
     assert manifest["contract"]["governor_application_count"] == 1
     assert manifest["contract"]["player_must_not_reapply_governor"]
 
     with (BUNDLE / "flight_references" / "FLIGHT_INDEX.csv").open(newline="") as handle:
         index = list(csv.DictReader(handle))
-    assert len(index) == 22
-    assert len({row["flight_id"] for row in index}) == 22
+    assert len(index) == 28
+    assert len({row["flight_id"] for row in index}) == 28
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"
         for row in index
@@ -95,6 +97,22 @@ def test_0808_player_rejects_known_collision() -> None:
     reference = player["load_reference"](collision_path)
     with pytest.raises(ValueError, match="hardware playback is forbidden"):
         player["stream_reference"](reference, lambda *_: None)
+
+
+def test_0808_expanded_angular_supplement() -> None:
+    summary = json.loads(
+        (BUNDLE / "quality" / "expanded_angular_supplement_v1_summary.json").read_text()
+    )
+    assert summary["status"] == "PASS"
+    assert summary["gamma1_sector_count"] == 8
+    assert summary["gamma1_sectors"] == list(range(8))
+    assert [
+        int(row["seed"]) for row in summary["gamma1_trajectories"]
+    ] == [93962, 92406, 138437, 135329, 144135, 137364, 141175, 142692]
+    side = summary["gamma0p1_side_above_trajectories"]
+    assert [int(row["seed"]) for row in side] == [92851, 91555]
+    assert 45.0 <= float(side[0]["theta_deg"]) < 90.0
+    assert 90.0 < float(side[1]["theta_deg"]) < 135.0
 
 
 def test_0808_safemppi_supplement() -> None:
@@ -149,8 +167,8 @@ def test_0808_safemppi_supplement() -> None:
 
     with (BUNDLE / "FLIGHT_INDEX_ALL.csv").open(newline="") as handle:
         combined = list(csv.DictReader(handle))
-    assert len(combined) == 26
-    assert len({row["flight_id"] for row in combined}) == 26
+    assert len(combined) == 32
+    assert len({row["flight_id"] for row in combined}) == 32
     assert sum(row["group"] == "safemppi_prominent_modes" for row in combined) == 4
     assert sum(
         row["hardware_eligibility"] == "SIMULATION_ONLY_KNOWN_COLLISION"

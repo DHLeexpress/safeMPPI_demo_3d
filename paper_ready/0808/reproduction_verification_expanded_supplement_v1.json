@@ -1,0 +1,24 @@
+{
+  "verification_date": "2026-08-08",
+  "bundle": "paper_ready/0808",
+  "base_git_commit": "3bc8eb902eafc7f1f5f64dd2e32bd782eb74dda3",
+  "helios_worktree": "/data3/research1/p0808_octants_3bc8eb9",
+  "helios_output": "/data3/research1/safeMPPI_remote_cli/audits/0808_expanded_octant_supplement_v1",
+  "result": "PASS",
+  "physical_gpu": 3,
+  "checkpoint_sha256": "c1a3c77fc956c57d02a0970c4e54fca942cee391a68275a58134361e00828056",
+  "config_sha256": "7508a7a76754270e6ffceae8ed9ba3946b5204f5a90d8542c78b55ce835444c2",
+  "sampling_temperature": 1.0,
+  "governor_application_count": 1,
+  "checks": {
+    "trajectory_count": 6,
+    "terminal_success_count": 6,
+    "repeat_count_per_trajectory": 2,
+    "repeat_array_comparison": "BIT_IDENTICAL",
+    "gamma1_combined_sector_count": 8,
+    "gamma1_combined_sectors": [0, 1, 2, 3, 4, 5, 6, 7],
+    "gamma0p1_side_above_count": 2,
+    "all_strictly_monotone_goal_progress": true,
+    "all_strictly_monotone_dense_goal_progress": true
+  }
+}

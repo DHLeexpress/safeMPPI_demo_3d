@@ -8,7 +8,7 @@ paper_ready/0808/minhyuk/runs/<run_id>/
 
 The authoritative operator index is
 [`../FLIGHT_INDEX_ALL.csv`](../FLIGHT_INDEX_ALL.csv).
-It contains 24 simulated successes and two known pretrained collisions. The
+It contains 30 simulated successes and two known pretrained collisions. The
 collision references are simulation-only negative controls and must not be
 sent to hardware unchanged.
 
@@ -35,7 +35,8 @@ sent to hardware unchanged.
 - `expanded_v1_reserve_G_nfe12.pt` is the only expanded checkpoint in this
   campaign. It was sampled with packaged **NFE 12**, not the pretrained
   checkpoint's NFE 16.
-- The 16 modes are **16 frozen seed trajectories**, not a discrete mode input
+- The original 16 modes plus the six-trajectory angular supplement are
+  **22 frozen seed trajectories**, not a discrete mode input
   accepted by the network. To fly a named `below/above/left/right` mode, use
   the corresponding frozen 100 Hz reference. Re-inference does not guarantee
   that mode.
@@ -46,6 +47,20 @@ sent to hardware unchanged.
   already contain governed position, velocity, and acceleration.
 - A future expanded checkpoint receives a new versioned campaign artifact;
   never replace Reserve G in place or alias it to a generic `expanded.pt`.
+
+### Expanded angular supplement
+
+- Gamma 1.0 now has exactly one frozen reference in each 45-degree crossing
+  section S0--S7. The complete seed/angle table is in `../README.md` and the
+  corresponding flight files are indexed as group `expanded_supplement_v1`
+  together with the four original gamma-1 references.
+- Gamma 0.1 adds left-side-above seed `92851` and right-side-above seed
+  `91555`. Prefer these two over straight-above seed `108992` when an overhead
+  suspension line makes the direct vertical route undesirable.
+- These are already generated and governed 100 Hz references. Do not run the
+  checkpoint, resample their seeds, or interpolate them during playback.
+- Every new reference remains subject to operator and hardware safety
+  approval; the geometric side label does not itself certify the real flight.
 
 ## SafeMPPI supplement
 

@@ -19,9 +19,17 @@ import numpy as np
 
 GROUPS = (
     ("expanded_quality_v2", "expanded_reserve_G_nfe12"),
+    ("expanded_supplement_v1", "expanded_reserve_G_nfe12"),
     ("pretrained_success", "pretrained_p0806_nfe16"),
     ("pretrained_collisions", "pretrained_p0806_nfe16"),
 )
+
+EXPECTED_COUNTS = {
+    "expanded_quality_v2": 16,
+    "expanded_supplement_v1": 6,
+    "pretrained_success": 4,
+    "pretrained_collisions": 2,
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -148,6 +156,11 @@ def main() -> int:
         help="trajectory root; defaults to BUNDLE/trajectories",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--reference-prefix",
+        type=Path,
+        help="manifest-relative prefix when OUTPUT is staged outside BUNDLE",
+    )
     args = parser.parse_args()
 
     bundle = args.bundle.resolve()
@@ -171,7 +184,7 @@ def main() -> int:
         group_output = output / group
         group_output.mkdir(parents=True, exist_ok=True)
         sources = sorted((trajectory_root / group).glob("*.npz"))
-        expected_count = 16 if group == "expanded_quality_v2" else (4 if group == "pretrained_success" else 2)
+        expected_count = EXPECTED_COUNTS[group]
         if len(sources) != expected_count:
             raise ValueError(f"expected {expected_count} {group} sources, got {len(sources)}")
         for source in sources:
@@ -194,7 +207,12 @@ def main() -> int:
             try:
                 flight_reference = target.relative_to(bundle).as_posix()
             except ValueError:
-                flight_reference = target.relative_to(output).as_posix()
+                relative_target = target.relative_to(output)
+                flight_reference = (
+                    (args.reference_prefix / relative_target).as_posix()
+                    if args.reference_prefix is not None
+                    else relative_target.as_posix()
+                )
             rows.append({
                 "flight_id": f"0808_{group}_{source.stem}",
                 "group": group,
@@ -214,10 +232,10 @@ def main() -> int:
                 **diagnostics,
             })
 
-    if len(rows) != 22:
-        raise ValueError(f"expected 22 flight references, got {len(rows)}")
+    if len(rows) != 28:
+        raise ValueError(f"expected 28 flight references, got {len(rows)}")
     manifest = {
-        "schema": "paper_ready_0808_frozen_100hz_references_v1",
+        "schema": "paper_ready_0808_frozen_100hz_references_v2",
         "status": "COMPLETE",
         "count": len(rows),
         "contract": {

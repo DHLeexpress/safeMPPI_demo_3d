@@ -1,8 +1,9 @@
 # 0808 single-sphere OOD coverage handoff
 
-This directory is the approved, self-contained `16 / 4 + 2 + 4` handoff:
+This directory is the approved, self-contained 32-reference handoff:
 
 - expanded policy v1: 16 successful trajectories (`4 gamma x 4 modes`)
+- expanded policy v1 supplement: 4 additional gamma-1 octants and 2 gamma-0.1 side-above trajectories
 - P0806 pretrained policy: 4 successful slight-above/left-boundary trajectories
 - P0806 pretrained policy: 2 reproducible sphere-collision trajectories
 - 0806 SafeMPPI: 4 successful prominent-class representatives (`1/gamma`)
@@ -34,8 +35,9 @@ device                 NVIDIA H100 NVL
 ```
 
 Exact array-level reproduction also binds each selection to the recorded
-physical GPU index. The approved expanded and collision trajectories use
-physical GPU 2; pretrained successes use physical GPU 3.
+physical GPU index. The original expanded and collision trajectories use
+physical GPU 2; the expanded supplement and pretrained successes use physical
+GPU 3.
 
 ## Approved trajectories
 
@@ -67,6 +69,41 @@ The full per-trajectory audit is in
 `quality/expanded_quality_v2_summary.json`. The 1,466 successful trajectories
 screened from the 2,080-rollout support bank are preserved in
 `quality/quality_search_all_successes_gpu2.json`.
+
+### Expanded angular supplement: frozen references
+
+The supplement is frozen under `trajectories/expanded_supplement_v1/`; its
+selection contract is
+`selections/expanded_gamma1_octants_and_side_above_v1.json`. These are exact
+rollouts, not requests to infer or resample the policy during flight.
+
+Together with the original four gamma-1 trajectories, the four new references
+fill every 45-degree crossing section exactly once:
+
+| section | angle range | crossing angle | seed | source |
+|---:|---|---:|---:|---|
+| S0 | [-180, -135) | -178.819 deg | 93962 | `expanded_supplement_v1` |
+| S1 | [-135, -90) | -95.234 deg | 92406 | `expanded_supplement_v1` |
+| S2 | [-90, -45) | -46.060 deg | 138437 | `expanded_quality_v2` |
+| S3 | [-45, 0) | -23.766 deg | 135329 | `expanded_supplement_v1` |
+| S4 | [0, 45) | 10.463 deg | 144135 | `expanded_quality_v2` |
+| S5 | [45, 90) | 85.748 deg | 137364 | `expanded_supplement_v1` |
+| S6 | [90, 135) | 120.564 deg | 141175 | `expanded_quality_v2` |
+| S7 | [135, 180) | 144.403 deg | 142692 | `expanded_quality_v2` |
+
+For gamma 0.1, two additional above trajectories avoid the nearly vertical
+straight-over-ball route:
+
+| role | crossing angle | seed | minimum clearance |
+|---|---:|---:|---:|
+| left-side above | 47.584 deg | 92851 | 0.22881 m |
+| straight above (original) | 93.353 deg | 108992 | 0.31964 m |
+| right-side above | 129.636 deg | 91555 | 0.21006 m |
+
+All six new trajectories are terminal successes and strictly reduce goal
+distance at every 10 Hz state knot and every stored 100 Hz dense knot. Two
+fresh runs per trajectory were array-level bit-identical. The exact audit is
+`quality/expanded_angular_supplement_v1_summary.json`.
 
 ### P0806 pretrained successes
 
@@ -122,6 +159,10 @@ logic, candidate-level recorder events, and reproduction instructions are in
 
 ![Expanded Reserve G four-mode trajectories across four gammas](figures/expanded_16_trajectory_review_3d.png)
 
+### Expanded angular supplement: gamma-1 octants and gamma-0.1 side-above paths
+
+![Expanded gamma-1 eight-section coverage and gamma-0.1 above alternatives](figures/expanded_angular_supplement_headon.png)
+
 ### Pretrained policy: four successes and two collisions
 
 ![Pretrained successful and collision trajectories](figures/pretrained_4_success_2_collision_review_3d.png)
@@ -133,7 +174,7 @@ logic, candidate-level recorder events, and reproduction instructions are in
 ## Frozen 100 Hz flight playback
 
 [`FLIGHT_INDEX_ALL.csv`](FLIGHT_INDEX_ALL.csv) is the authoritative map across
-all 26 frozen reference files. The original 22 policy references remain under
+all 32 frozen reference files. The 28 policy references are under
 [`flight_references/`](flight_references/); the four SafeMPPI references and
 their separate manifest are under
 [`safemppi/flight_references/`](safemppi/flight_references/).
@@ -145,7 +186,7 @@ first verifies the stored governed recurrence and then exports:
 time_s, position_ref, velocity_ref, acceleration_ref
 ```
 
-The maximum reconstruction error over the original 22 policy references is
+The maximum reconstruction error over the 28 policy references is
 `2.39e-7 m`. Maximum speed, vertical speed, and applied acceleration are
 `0.7000002 m/s`, `0.288648 m/s`, and `0.292304 m/s^2`, respectively.
 The four SafeMPPI references independently pass the same governed-recurrence,
@@ -166,7 +207,7 @@ their own `runs/<run_id>/` directories.
 checkpoints/       exact NFE-12 expanded and NFE-16 pretrained checkpoints
 config/            resolved canonical single-sphere task
 selections/        seeds, gamma/mode labels, expected first-crossing angles
-trajectories/      authoritative 16 / 4 + 2 NPZ files and rollout manifests
+trajectories/      authoritative 16 + 6 expanded / 4 + 2 pretrained NPZ files
 flight_references/  verified 100 Hz references and authoritative flight index
 figures/           approved 3D and head-on PNG/PDF galleries
 quality/           full search rows and strict progress/smoothness audit
@@ -187,13 +228,14 @@ Choose a new output directory that does not already exist:
 
 ```bash
 cd paper_ready/0808
-bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_16_4_plus_2
+bash REPRODUCE.sh /data3/research1/safeMPPI_remote_cli/reproductions/0808_32_reference_bundle
 ```
 
-The script regenerates 16 expanded successes on physical GPU 2, four
-pretrained successes on physical GPU 3, and two pretrained collisions on
-physical GPU 2. It requires two bit-identical runs for each trajectory, then
-reruns the quality validator and both galleries.
+The script regenerates 16 original expanded successes on physical GPU 2, six
+expanded supplemental successes on physical GPU 3, four pretrained successes
+on physical GPU 3, and two pretrained collisions on physical GPU 2. It
+requires two bit-identical runs for each policy trajectory, then reruns both
+expanded validators and all galleries.
 
 The SafeMPPI supplement has a separate deterministic reproduction entrypoint:
 
@@ -217,6 +259,10 @@ PYTHONPATH=runtime_snapshot python source/validate_expanded_quality_selection.py
   --trajectories trajectories/expanded_quality_v2 \
   --config config/task_config_resolved.json \
   --output /tmp/expanded_quality_v2_summary.json
+
+python source/validate_expanded_angular_supplement.py \
+  --bundle . \
+  --output /tmp/expanded_angular_supplement_v1_summary.json
 ```
 
 `SHA256SUMS` covers every file in this directory except itself. No commit or

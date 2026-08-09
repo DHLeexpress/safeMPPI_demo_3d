@@ -1,15 +1,16 @@
 {
-  "schema": "paper_ready_0808_single_sphere_handoff_v1",
+  "schema": "paper_ready_0808_single_sphere_handoff_v2",
   "status": "APPROVED",
-  "approved_composition": "16 expanded success / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
+  "approved_composition": "16 original expanded success + 6 expanded angular supplement / 4 pretrained success + 2 pretrained collision / 4 SafeMPPI success",
   "safemppi_status": "INCLUDED_AS_0806_SOURCE_SUPPLEMENT",
   "counts": {
     "expanded_quality_v2_success": 16,
+    "expanded_supplement_v1_success": 6,
     "pretrained_success": 4,
     "pretrained_collision": 2,
     "safemppi_success": 4,
-    "total_trajectories": 26,
-    "frozen_100hz_references": 26
+    "total_trajectories": 32,
+    "frozen_100hz_references": 32
   },
   "flight_references": {
     "manifest": "flight_references/manifest.json",
@@ -28,6 +29,11 @@
     "selection": "selections/expanded_quality_v2.json",
     "trajectories": "trajectories/expanded_quality_v2",
     "physical_gpu": 2,
+    "supplement_selection": "selections/expanded_gamma1_octants_and_side_above_v1.json",
+    "supplement_trajectories": "trajectories/expanded_supplement_v1",
+    "supplement_physical_gpu": 3,
+    "supplement_gamma1_sector_count": 8,
+    "supplement_gamma0p1_side_above_count": 2,
     "repeat_verification": "BIT_IDENTICAL"
   },
   "pretrained_policy": {

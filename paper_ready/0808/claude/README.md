@@ -13,7 +13,7 @@ paper_ready/0808/claude/runs/<run_id>/
 - Copy analysis or plotting code into the new Claude run before modifying it.
 - Join real logs to planned references by `flight_id` and exact SHA, not by
   filename similarity or directory order.
-- Use `../FLIGHT_INDEX_ALL.csv` as the authoritative 26-reference index.
+- Use `../FLIGHT_INDEX_ALL.csv` as the authoritative 32-reference index.
 - Preserve simulation failure, hardware abort, collision, and tracking error
   as distinct outcomes.
 - Record every input SHA, command, metric, figure, and Drive destination in a
