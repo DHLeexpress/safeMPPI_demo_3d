@@ -63,13 +63,27 @@ successful clearance 0.077 m. The same alpha with safety-only guidance produced
 ## Approval regimes
 
 - safety-dominant: `(reward, safety) = (0, 1)`
-- reward-dominant: `(reward, safety) = (1, 0)`
+- performance (reward-dominant): `(reward, safety) = (1, 0)`
 - balanced: `(reward, safety) = (0.5, 1)`
 
 The approval candidates use `alpha=0.5`; the full-strength `(1,1)` balanced
 setting is retained as a boundary ablation rather than promoted.
 
-The approval comparison uses the same four rollout seeds for every gamma and
-every regime, so the displayed qualitative and quantitative comparison is
-paired rather than cherry-picked. Reward-dominant also retains four additional
-seeds per gamma; all 32 reward-dominant trials collided.
+The original approval comparison uses the same four rollout seeds for every
+gamma and every regime. Performance also retains four additional seeds per
+gamma; all 32 reward-dominant trials collided.
+
+## Fixed-gamma paper comparison
+
+The site-facing paper comparison is fixed to gamma 0.1 to match the promoted
+Expanded policy. It uses a fresh common bank of eight seeds for safety,
+balanced, and performance:
+
+`314159, 314196, 314233, 314270, 314307, 314344, 314381, 314418`.
+
+Safety and balanced each record 5 successes and 3 collisions, no OOB or
+timeout, and mean successful clearances of 0.106 m and 0.126 m. Performance
+records 8 collisions. The previous gamma 0.3 paper trajectories were not
+deleted or rewritten; gamma 0.3, 0.5, and 1.0 remain in the not-paper-ready
+partition. The exact fresh arrays, combined site bank, and replacement audit
+are under `trajectories/cfmmppi/`.

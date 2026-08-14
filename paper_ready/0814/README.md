@@ -22,7 +22,7 @@ method, regime, gamma, episode, rollout seed, terminal status, route, source
 artifact, and row. The same seed is displayed in the site's focus selector and
 trajectory detail card.
 
-The site payload includes 290 view rows. Some are deliberate alternate views
+The site payload includes 298 view rows. Some are deliberate alternate views
 of the same frozen trajectory (for example `legacy-s4` and
 `legacy-s4-distinct`), so this is not a count of unique simulator rollouts.
 
@@ -39,9 +39,11 @@ of the same frozen trajectory (for example `legacy-s4` and
   provenance in [`paper_ready/common/PROVENANCE.md`](../common/PROVENANCE.md).
   This bundle stores only the selected bowling arrays and seed map; it does not
   fork that controller.
-- CFM–MPPI promotes gamma 0.3 by the predeclared balanced-regime ranking:
-  success rate, validity, stable-mode count, trajectory quality, then gamma.
-  The other gammas remain under `not-paper-ready-cfmmppi`.
+- CFM–MPPI is fixed to gamma 0.1 so its paper-ready comparison exactly matches
+  Expanded. The former gamma 0.3 paper bank is preserved under
+  `not-paper-ready-cfmmppi` together with gamma 0.5 and 1.0. The replacement is
+  a fresh, matched 8-seed bank for all three regimes; it is not a relabeling of
+  the older trajectories.
 
 ## CFM–MPPI contract
 
@@ -53,8 +55,15 @@ are excluded from selection. The fixed regimes are:
 | regime | normalized reward | normalized safety |
 |---|---:|---:|
 | safety | 0.0 | 1.0 |
-| reward | 1.0 | 0.0 |
+| performance | 1.0 | 0.0 |
 | balanced | 0.5 | 1.0 |
+
+At fixed gamma 0.1, safety and balanced each achieve 5/8 successes and 3/8
+collisions, with no OOB or timeout. Their successful mean clearances are
+0.106 m and 0.126 m, respectively. Performance is the expected
+reward-dominant boundary: 0/8 successes and 8/8 collisions. The eight exact
+rollout seeds are shared across all three regimes and recorded in
+`trajectories/cfmmppi/site_bank_manifest.json`.
 
 The complete definition, including CBF signed clearance, coefficient scales,
 MPPI sigma/lambda, warm start, and calibration boundary, is in
@@ -77,8 +86,9 @@ Then run on the recorded software stack and matching accelerator family:
 DEVICE=cuda:0 OUT=/tmp/0814_reproduction bash REPRODUCE.sh
 ```
 
-`REPRODUCE.sh` re-runs the selected PRE2/Expanded seeds and all CFM–MPPI
-approval banks. It passes `--verify-frozen` for the policy rollouts, so any
+`REPRODUCE.sh` re-runs the selected PRE2/Expanded seeds, the original CFM–MPPI
+approval banks, and the fresh matched gamma 0.1 bank. It passes
+`--verify-frozen` for the policy rollouts, so any
 state/control/dense-step mismatch aborts. Exact GPU floating-point identity is
 bound to the recorded runtime/device; cross-backend reruns are scientific
 replications but are not promised to be bit-identical.
@@ -105,4 +115,3 @@ directly rather than duplicated.
 - `environment.json` records runtime and device contracts.
 - `VERIFY.py` checks checksums, required seed metadata, CFM source-to-handoff
   tensor identity, and site seed exposure.
-

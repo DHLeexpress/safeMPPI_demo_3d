@@ -1,0 +1,41 @@
+{
+  "schema": "cfmmppi_fixed_gamma01_site_bank_v1",
+  "paper_ready_gamma": 0.1,
+  "replacement_scope": "only gamma 0.1; prior gamma 0.3/0.5/1.0 preserved",
+  "matched_fresh_seed_bank": [
+    314159,
+    314196,
+    314233,
+    314270,
+    314307,
+    314344,
+    314381,
+    314418
+  ],
+  "counts": {
+    "balanced": {
+      "0.1": 8,
+      "0.3": 4,
+      "0.5": 4,
+      "1.0": 4
+    },
+    "performance": {
+      "0.1": 8,
+      "0.3": 8,
+      "0.5": 8,
+      "1.0": 8
+    },
+    "safety": {
+      "0.1": 8,
+      "0.3": 4,
+      "0.5": 4,
+      "1.0": 4
+    }
+  },
+  "input_sha256": {
+    "fresh_gamma01": "fe1bbd3bccd4d85fcbcf315c7138ea847464602b963df884a6cf5ca607b6f4c5",
+    "prior_safety": "c4e08b2d22c40580dfbc7aa7a47d52e1bfb6adf875209cdd68c10f0acc68088f",
+    "prior_balanced": "72dc43c1c8e773c80ef3c4c87ae8369276a037113868c513c381ccbe48c817fa",
+    "prior_performance": "19bd94bc93a10e3b72a985e0fd7c40f950037d1b841d889946426de46a603e99"
+  }
+}

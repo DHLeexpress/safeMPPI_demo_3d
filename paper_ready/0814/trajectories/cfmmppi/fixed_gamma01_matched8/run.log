@@ -1,0 +1,194 @@
+[1/24] safety gamma=0.1 trial=0 SUCCESS clear=0.004
+[2/24] safety gamma=0.1 trial=1 SUCCESS clear=0.192
+[3/24] safety gamma=0.1 trial=2 SUCCESS clear=0.161
+[4/24] safety gamma=0.1 trial=3 SUCCESS clear=0.096
+[5/24] safety gamma=0.1 trial=4 COLLISION clear=-0.010
+[6/24] safety gamma=0.1 trial=5 COLLISION clear=-0.029
+[7/24] safety gamma=0.1 trial=6 COLLISION clear=-0.009
+[8/24] safety gamma=0.1 trial=7 SUCCESS clear=0.078
+[9/24] balanced gamma=0.1 trial=0 SUCCESS clear=0.083
+[10/24] balanced gamma=0.1 trial=1 SUCCESS clear=0.241
+[11/24] balanced gamma=0.1 trial=2 SUCCESS clear=0.080
+[12/24] balanced gamma=0.1 trial=3 COLLISION clear=-0.008
+[13/24] balanced gamma=0.1 trial=4 COLLISION clear=-0.010
+[14/24] balanced gamma=0.1 trial=5 COLLISION clear=-0.004
+[15/24] balanced gamma=0.1 trial=6 SUCCESS clear=0.107
+[16/24] balanced gamma=0.1 trial=7 SUCCESS clear=0.118
+[17/24] performance gamma=0.1 trial=0 COLLISION clear=-0.042
+[18/24] performance gamma=0.1 trial=1 COLLISION clear=-0.038
+[19/24] performance gamma=0.1 trial=2 COLLISION clear=-0.029
+[20/24] performance gamma=0.1 trial=3 COLLISION clear=-0.038
+[21/24] performance gamma=0.1 trial=4 COLLISION clear=-0.048
+[22/24] performance gamma=0.1 trial=5 COLLISION clear=-0.039
+[23/24] performance gamma=0.1 trial=6 COLLISION clear=-0.017
+[24/24] performance gamma=0.1 trial=7 COLLISION clear=-0.027
+{
+  "safety": {
+    "pooled": {
+      "attempts": 8,
+      "status_counts": {
+        "SUCCESS": 5,
+        "COLLISION": 3,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "success_rate": 0.625,
+      "collision_rate": 0.375,
+      "oob_rate": 0.0,
+      "timeout_rate": 0.0,
+      "mean_window_validity": 0.7604464285714285,
+      "successful_mean_clearance_m": 0.10628443760270145,
+      "successful_mean_time_to_goal_s": 7.6,
+      "successful_route_counts": {
+        "LLL": 0,
+        "LLR": 1,
+        "LRL": 4,
+        "LRR": 0,
+        "RLL": 0,
+        "RLR": 0,
+        "RRL": 0,
+        "RRR": 0
+      }
+    },
+    "per_gamma": {
+      "0.1": {
+        "attempts": 8,
+        "status_counts": {
+          "SUCCESS": 5,
+          "COLLISION": 3,
+          "OOB": 0,
+          "TIMEOUT": 0
+        },
+        "success_rate": 0.625,
+        "collision_rate": 0.375,
+        "oob_rate": 0.0,
+        "timeout_rate": 0.0,
+        "mean_window_validity": 0.7604464285714285,
+        "successful_mean_clearance_m": 0.10628443760270145,
+        "successful_mean_time_to_goal_s": 7.6,
+        "successful_route_counts": {
+          "LLL": 0,
+          "LLR": 1,
+          "LRL": 4,
+          "LRR": 0,
+          "RLL": 0,
+          "RLR": 0,
+          "RRL": 0,
+          "RRR": 0
+        }
+      }
+    }
+  },
+  "balanced": {
+    "pooled": {
+      "attempts": 8,
+      "status_counts": {
+        "SUCCESS": 5,
+        "COLLISION": 3,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "success_rate": 0.625,
+      "collision_rate": 0.375,
+      "oob_rate": 0.0,
+      "timeout_rate": 0.0,
+      "mean_window_validity": 0.7768518518518519,
+      "successful_mean_clearance_m": 0.12587253077366375,
+      "successful_mean_time_to_goal_s": 7.5,
+      "successful_route_counts": {
+        "LLL": 0,
+        "LLR": 1,
+        "LRL": 2,
+        "LRR": 0,
+        "RLL": 0,
+        "RLR": 1,
+        "RRL": 0,
+        "RRR": 0
+      }
+    },
+    "per_gamma": {
+      "0.1": {
+        "attempts": 8,
+        "status_counts": {
+          "SUCCESS": 5,
+          "COLLISION": 3,
+          "OOB": 0,
+          "TIMEOUT": 0
+        },
+        "success_rate": 0.625,
+        "collision_rate": 0.375,
+        "oob_rate": 0.0,
+        "timeout_rate": 0.0,
+        "mean_window_validity": 0.7768518518518519,
+        "successful_mean_clearance_m": 0.12587253077366375,
+        "successful_mean_time_to_goal_s": 7.5,
+        "successful_route_counts": {
+          "LLL": 0,
+          "LLR": 1,
+          "LRL": 2,
+          "LRR": 0,
+          "RLL": 0,
+          "RLR": 1,
+          "RRL": 0,
+          "RRR": 0
+        }
+      }
+    }
+  },
+  "performance": {
+    "pooled": {
+      "attempts": 8,
+      "status_counts": {
+        "SUCCESS": 0,
+        "COLLISION": 8,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "success_rate": 0.0,
+      "collision_rate": 1.0,
+      "oob_rate": 0.0,
+      "timeout_rate": 0.0,
+      "mean_window_validity": 0.375,
+      "successful_mean_clearance_m": null,
+      "successful_mean_time_to_goal_s": null,
+      "successful_route_counts": {
+        "LLL": 0,
+        "LLR": 0,
+        "LRL": 0,
+        "LRR": 0,
+        "RLL": 0,
+        "RLR": 0,
+        "RRL": 0,
+        "RRR": 0
+      }
+    },
+    "per_gamma": {
+      "0.1": {
+        "attempts": 8,
+        "status_counts": {
+          "SUCCESS": 0,
+          "COLLISION": 8,
+          "OOB": 0,
+          "TIMEOUT": 0
+        },
+        "success_rate": 0.0,
+        "collision_rate": 1.0,
+        "oob_rate": 0.0,
+        "timeout_rate": 0.0,
+        "mean_window_validity": 0.375,
+        "successful_mean_clearance_m": null,
+        "successful_mean_time_to_goal_s": null,
+        "successful_route_counts": {
+          "LLL": 0,
+          "LLR": 0,
+          "LRL": 0,
+          "LRR": 0,
+          "RLL": 0,
+          "RLR": 0,
+          "RRL": 0,
+          "RRR": 0
+        }
+      }
+    }
+  }
+}

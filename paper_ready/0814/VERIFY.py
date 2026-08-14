@@ -36,15 +36,18 @@ def check_hashes() -> int:
 
 
 def check_cfm_arrays(handoff: dict) -> int:
-    contracts = {
-        "safety": ROOT / "trajectories/cfmmppi/safety_raw_trajectories.pt",
-        "reward": ROOT / "trajectories/cfmmppi/reward_raw_trajectories.pt",
-        "balanced": ROOT / "trajectories/cfmmppi/balanced_raw_trajectories.pt",
-    }
+    contract = (
+        ROOT
+        / "trajectories/cfmmppi/site_bank_combined_raw_trajectories.pt"
+    )
     actual = {
-        (alias, float(row["gamma"]), int(row["trial"]), int(row["rollout_seed"])): row
-        for alias, path in contracts.items()
-        for row in torch.load(path, map_location="cpu", weights_only=False)
+        (
+            str(row["regime"]),
+            float(row["gamma"]),
+            int(row["trial"]),
+            int(row["rollout_seed"]),
+        ): row
+        for row in torch.load(contract, map_location="cpu", weights_only=False)
     }
     checked = 0
     for group in ("paper-ready-cfmmppi", "not-paper-ready-cfmmppi"):
@@ -58,6 +61,16 @@ def check_cfm_arrays(handoff: dict) -> int:
                 if not np.array_equal(np.asarray(row[field]), np.asarray(source[field])):
                     raise RuntimeError(f"CFM array mismatch {key}: {field}")
             checked += 1
+    paper_rows = handoff["groups"]["paper-ready-cfmmppi"]
+    not_paper_rows = handoff["groups"]["not-paper-ready-cfmmppi"]
+    if len(paper_rows) != 24 or {
+        float(row["gamma"]) for row in paper_rows
+    } != {0.1}:
+        raise RuntimeError("paper-ready CFM bank is not the matched gamma 0.1 bank")
+    if any(np.isclose(float(row["gamma"]), 0.1) for row in not_paper_rows):
+        raise RuntimeError("old gamma 0.1 CFM rows leaked into not-paper-ready")
+    if not any(np.isclose(float(row["gamma"]), 0.3) for row in not_paper_rows):
+        raise RuntimeError("prior paper-ready gamma 0.3 was not preserved")
     return checked
 
 

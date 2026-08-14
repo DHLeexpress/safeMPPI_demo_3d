@@ -73,7 +73,11 @@ def main() -> None:
                 })
     output = BUNDLE / "SITE_TRAJECTORY_INDEX.csv"
     with output.open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=tuple(rows[0]))
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=tuple(rows[0]),
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} indexed site rows to {output}")

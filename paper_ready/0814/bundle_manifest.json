@@ -39,7 +39,11 @@
     "legacy_site_rows": "trajectories/legacy_pre2_s4_site_rows.json",
     "seed_index": "SITE_TRAJECTORY_INDEX.csv",
     "selection_audit": "selections/paper_ready_bowling_selection.json",
-    "cfmmppi_promoted_gamma": 0.3,
+    "cfmmppi_promoted_gamma": 0.1,
+    "cfmmppi_fixed_gamma_reason": "match the expanded paper-ready gamma",
+    "cfmmppi_matched_seed_count_per_regime": 8,
+    "cfmmppi_fresh_bank": "trajectories/cfmmppi/fixed_gamma01_matched8/raw_trajectories.pt",
+    "cfmmppi_combined_site_bank": "trajectories/cfmmppi/site_bank_combined_raw_trajectories.pt",
     "pre2_expanded_promoted_gamma": 0.1
   }
 }

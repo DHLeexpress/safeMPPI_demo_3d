@@ -59,4 +59,15 @@ python "$BUNDLE/source/run_multisphere_cfm_mppi_bowling.py" \
   --goal-coefficient-max 0.25 --safety-coefficient-max 1.0 \
   --regimes-json '{"balanced_alpha05":{"goal":0.5,"safety":1.0}}'
 
+python "$BUNDLE/source/run_multisphere_cfm_mppi_bowling.py" \
+  --pretrain-dir "$BUNDLE/checkpoints/pre2" \
+  --task-config "$BUNDLE/config/task_config_resolved.json" \
+  --output "$OUT/cfmmppi_fixed_g01_matched8" \
+  --device "$DEVICE" --gammas 0.1 --trials 8 --seed 314159 \
+  --proposal-count 32 --elite-count 8 --copies-per-elite 32 \
+  --mppi-sigma 0.20 --mppi-lambda 0.10 \
+  --alpha-cbf 0.5 --cbf-margin-m 0.10 \
+  --goal-coefficient-max 0.25 --safety-coefficient-max 1.0 \
+  --regimes-json '{"safety":{"goal":0.0,"safety":1.0},"balanced":{"goal":0.5,"safety":1.0},"performance":{"goal":1.0,"safety":0.0}}'
+
 echo "Reproduction outputs: $OUT"

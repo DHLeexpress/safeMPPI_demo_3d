@@ -53,21 +53,23 @@ def _load_rows(paths: list[Path], expected_round: int) -> list[dict[str, Any]]:
 def _load_cfm_rows(specs: list[str]) -> tuple[list[dict[str, Any]], dict[str, Path]]:
     rows = []
     paths = {}
-    for spec in specs:
-        if "=" not in spec:
-            raise ValueError("--cfm-raw must use REGIME=PATH")
-        regime, raw_path = spec.split("=", 1)
-        regime = regime.strip()
+    for index, spec in enumerate(specs):
+        if "=" in spec:
+            regime, raw_path = spec.split("=", 1)
+            regime = regime.strip()
+        else:
+            regime, raw_path = None, spec
         path = Path(raw_path).expanduser().resolve()
-        if not regime or regime in paths:
-            raise ValueError(f"invalid or duplicate CFM--MPPI regime: {regime!r}")
+        path_key = regime or f"combined_{index}"
+        if regime == "" or path_key in paths:
+            raise ValueError(f"invalid or duplicate CFM--MPPI source: {path_key!r}")
         payload = torch.load(path, map_location="cpu", weights_only=False)
         if not isinstance(payload, list):
             raise ValueError(f"{path}: CFM--MPPI raw artifact must be a list")
-        paths[regime] = path
+        paths[path_key] = path
         for source in payload:
             row = dict(source)
-            row["regime"] = regime
+            row["regime"] = regime or str(source["regime"])
             row["episode"] = int(row.get("trial", row.get("episode", 0)))
             rows.append(row)
     return sorted(rows, key=lambda row: (
@@ -448,6 +450,11 @@ def main() -> None:
     parser.add_argument("--expanded-raw", type=Path, action="append", required=True)
     parser.add_argument("--safemppi-raw", type=Path)
     parser.add_argument("--cfm-raw", action="append", default=[])
+    parser.add_argument(
+        "--cfm-paper-gamma",
+        type=float,
+        help="fixed comparison gamma to promote instead of data-driven selection",
+    )
     parser.add_argument("--legacy-data", type=Path)
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -470,7 +477,13 @@ def main() -> None:
     cfm_gamma = None
     cfm_gamma_audit = None
     if cfm:
-        cfm_gamma, cfm_gamma_audit = _choose_cfm_gamma(cfm)
+        selected_by_data, cfm_gamma_audit = _choose_cfm_gamma(cfm)
+        cfm_gamma = (
+            float(args.cfm_paper_gamma)
+            if args.cfm_paper_gamma is not None else selected_by_data
+        )
+        if not any(np.isclose(cfm_gamma, gamma) for gamma in GAMMAS):
+            raise ValueError(f"CFM--MPPI paper gamma is not configured: {cfm_gamma:g}")
     chosen_gamma, gamma_audit = _choose_gamma(expanded)
     discovery_trials = _discovery_trials(expanded, chosen_gamma)
     assert discovery_trials is not None
@@ -555,9 +568,12 @@ def main() -> None:
         audit["cfmmppi"] = {
             "selected_gamma": cfm_gamma,
             "gamma_selection_rule": (
+                "fixed to the expanded paper-ready gamma for matched comparison"
+                if args.cfm_paper_gamma is not None else
                 "balanced success rate, then validity, stable mode count, "
                 "trajectory quality, gamma"
             ),
+            "data_driven_gamma_without_fixed_match": selected_by_data,
             "gamma_search": cfm_gamma_audit,
             "proposal_count": 32,
             "elite_count": 8,
