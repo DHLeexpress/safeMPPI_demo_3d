@@ -1,0 +1,234 @@
+{
+  "status": "CFM_MPPI_BOWLING_COMPLETE",
+  "method_contract": {
+    "generative_prior": "PRE2",
+    "nfe": 16,
+    "proposal_count": 32,
+    "elite_count": 8,
+    "copies_per_elite": 32,
+    "refinement_cost": "native_bowling_safemppi_soft_cost",
+    "verifier_or_hp_used_for_selection": false,
+    "cbf": "signed-clearance hdot+alpha*h; six spheres + six walls",
+    "gradient_normalization": "batch_global_reference_faithful",
+    "alpha_cbf": 0.5,
+    "cbf_margin_m": 0.1,
+    "goal_coefficient_max": 0.25,
+    "safety_coefficient_max": 1.0,
+    "mppi_sigma": 0.2,
+    "mppi_lambda": 0.1,
+    "regimes": {
+      "safety_alpha05": {
+        "goal": 0.0,
+        "safety": 1.0
+      }
+    }
+  },
+  "scene": {
+    "start": [
+      -2.0999999046325684,
+      1.5,
+      0.8999999761581421
+    ],
+    "goal": [
+      0.699999988079071,
+      -1.5,
+      0.8999999761581421
+    ],
+    "bounds": [
+      [
+        -2.5,
+        1.2999999999999998
+      ],
+      [
+        -2.1,
+        1.7999999999999998
+      ],
+      [
+        0.1,
+        1.7000000000000002
+      ]
+    ],
+    "spheres": [
+      [
+        -1.399999976158142,
+        0.75,
+        0.8999999761581421,
+        0.24050000309944153
+      ],
+      [
+        -1.0922139883041382,
+        -0.08539979159832001,
+        0.8999999761581421,
+        0.24050000309944153
+      ],
+      [
+        -0.5877858996391296,
+        0.38539978861808777,
+        0.8999999761581421,
+        0.24050000309944153
+      ],
+      [
+        -0.7844281196594238,
+        -0.9207995533943176,
+        0.8999999761581421,
+        0.24050000309944153
+      ],
+      [
+        -0.2799999713897705,
+        -0.44999998807907104,
+        0.8999999761581421,
+        0.24050000309944153
+      ],
+      [
+        0.2244281768798828,
+        0.020799582824110985,
+        0.8999999761581421,
+        0.24050000309944153
+      ]
+    ]
+  },
+  "summaries": {
+    "safety_alpha05": {
+      "pooled": {
+        "attempts": 16,
+        "status_counts": {
+          "SUCCESS": 11,
+          "COLLISION": 5,
+          "OOB": 0,
+          "TIMEOUT": 0
+        },
+        "success_rate": 0.6875,
+        "collision_rate": 0.3125,
+        "oob_rate": 0.0,
+        "timeout_rate": 0.0,
+        "mean_window_validity": 0.8713230056980057,
+        "successful_mean_clearance_m": 0.08692706976249398,
+        "successful_mean_time_to_goal_s": 7.745454545454547,
+        "successful_route_counts": {
+          "LLL": 0,
+          "LLR": 0,
+          "LRL": 0,
+          "LRR": 1,
+          "RLL": 0,
+          "RLR": 4,
+          "RRL": 1,
+          "RRR": 0
+        }
+      },
+      "per_gamma": {
+        "0.1": {
+          "attempts": 4,
+          "status_counts": {
+            "SUCCESS": 3,
+            "COLLISION": 1,
+            "OOB": 0,
+            "TIMEOUT": 0
+          },
+          "success_rate": 0.75,
+          "collision_rate": 0.25,
+          "oob_rate": 0.0,
+          "timeout_rate": 0.0,
+          "mean_window_validity": 0.8461538461538461,
+          "successful_mean_clearance_m": 0.10484663890373407,
+          "successful_mean_time_to_goal_s": 8.1,
+          "successful_route_counts": {
+            "LLL": 0,
+            "LLR": 0,
+            "LRL": 0,
+            "LRR": 0,
+            "RLL": 0,
+            "RLR": 2,
+            "RRL": 0,
+            "RRR": 0
+          }
+        },
+        "0.3": {
+          "attempts": 4,
+          "status_counts": {
+            "SUCCESS": 2,
+            "COLLISION": 2,
+            "OOB": 0,
+            "TIMEOUT": 0
+          },
+          "success_rate": 0.5,
+          "collision_rate": 0.5,
+          "oob_rate": 0.0,
+          "timeout_rate": 0.0,
+          "mean_window_validity": 0.7942307692307692,
+          "successful_mean_clearance_m": 0.060862731600258096,
+          "successful_mean_time_to_goal_s": 7.5,
+          "successful_route_counts": {
+            "LLL": 0,
+            "LLR": 0,
+            "LRL": 0,
+            "LRR": 0,
+            "RLL": 0,
+            "RLR": 1,
+            "RRL": 0,
+            "RRR": 0
+          }
+        },
+        "0.5": {
+          "attempts": 4,
+          "status_counts": {
+            "SUCCESS": 3,
+            "COLLISION": 1,
+            "OOB": 0,
+            "TIMEOUT": 0
+          },
+          "success_rate": 0.75,
+          "collision_rate": 0.25,
+          "oob_rate": 0.0,
+          "timeout_rate": 0.0,
+          "mean_window_validity": 0.9074074074074074,
+          "successful_mean_clearance_m": 0.03752046323742714,
+          "successful_mean_time_to_goal_s": 7.766666666666667,
+          "successful_route_counts": {
+            "LLL": 0,
+            "LLR": 0,
+            "LRL": 0,
+            "LRR": 1,
+            "RLL": 0,
+            "RLR": 1,
+            "RRL": 0,
+            "RRR": 0
+          }
+        },
+        "1": {
+          "attempts": 4,
+          "status_counts": {
+            "SUCCESS": 3,
+            "COLLISION": 1,
+            "OOB": 0,
+            "TIMEOUT": 0
+          },
+          "success_rate": 0.75,
+          "collision_rate": 0.25,
+          "oob_rate": 0.0,
+          "timeout_rate": 0.0,
+          "mean_window_validity": 0.9375,
+          "successful_mean_clearance_m": 0.13579033258781134,
+          "successful_mean_time_to_goal_s": 7.533333333333334,
+          "successful_route_counts": {
+            "LLL": 0,
+            "LLR": 0,
+            "LRL": 0,
+            "LRR": 0,
+            "RLL": 0,
+            "RLR": 0,
+            "RRL": 1,
+            "RRR": 0
+          }
+        }
+      }
+    }
+  },
+  "artifact_binding": {
+    "pretrained_sha256": "76b10a69b6f26d65533d4e617ccbf6fb77a2178ac030244c5a745c11a4d0a3c0",
+    "task_config_sha256": "baf3a8f3398cba147696ee783957b865968186e905279d1300a87477459792fc",
+    "source_sha256": {
+      "safe_mppi/lab_clutter_cfm_mppi.py": "1c61b7681b5e3233775c6f6507dfbf17985731a8edfdd0c2ad4ee75f09438321",
+      "scripts/run_multisphere_cfm_mppi_bowling.py": "3d50093205f958897824006649ee4aaddabd9f40eeea2a222fe7a694c8d4690d"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "paper_ready_0814_multisphere_bowling_v1",
+  "created_date": "2026-08-14",
+  "public_site": {
+    "project_id": "appgprj_6a7d565f17a8819199ee1c7bf6bbbcab",
+    "url": "https://s4-monotone-bowling-routes.leedo12663.chatgpt.site",
+    "artifact": "site/visualization.html"
+  },
+  "models": {
+    "pre2": {
+      "path": "checkpoints/pre2/pretrained.pt",
+      "sha256": "76b10a69b6f26d65533d4e617ccbf6fb77a2178ac030244c5a745c11a4d0a3c0",
+      "nfe": 16
+    },
+    "expanded_s4_r4": {
+      "path": "checkpoints/expanded/checkpoint_004.pt",
+      "sha256": "a37f93091bfc88340b7f2bab0d41cb889ff59a2caf00d737e58e57fbfa4cdb52",
+      "nfe": 16
+    }
+  },
+  "task_config": {
+    "path": "config/task_config_resolved.json",
+    "sha256": "baf3a8f3398cba147696ee783957b865968186e905279d1300a87477459792fc"
+  },
+  "deployment": {
+    "pre2_expanded": "faithful raw NFE16 M1 temperature1 E15 wall250 axis5 control0.05 speed400",
+    "cfmmppi": "PRE2 NFE16, 32 proposals, top8, 32 copies/elite, sigma0.2, lambda0.1, alpha0.5, margin0.1",
+    "verifier_or_progress_used_for_selection": false
+  },
+  "sources": {
+    "cfmmppi_core_sha256": "1c61b7681b5e3233775c6f6507dfbf17985731a8edfdd0c2ad4ee75f09438321",
+    "cfmmppi_runner_sha256": "3d50093205f958897824006649ee4aaddabd9f40eeea2a222fe7a694c8d4690d",
+    "runtime_snapshot": "runtime_snapshot/safe_mppi",
+    "existing_safemppi_handoff": "paper_ready/0808/safemppi",
+    "existing_safemppi_source_git_sha": "dabb5011dfc674864e1de275a1e1c2adab58f4af"
+  },
+  "trajectory_contract": {
+    "full_selected_arrays": "trajectories/paper_ready_bowling_handoff.pt",
+    "legacy_site_rows": "trajectories/legacy_pre2_s4_site_rows.json",
+    "seed_index": "SITE_TRAJECTORY_INDEX.csv",
+    "selection_audit": "selections/paper_ready_bowling_selection.json",
+    "cfmmppi_promoted_gamma": 0.3,
+    "pre2_expanded_promoted_gamma": 0.1
+  }
+}

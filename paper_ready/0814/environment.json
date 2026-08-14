@@ -1,0 +1,20 @@
+{
+  "schema": "paper_ready_0814_environment_v1",
+  "cfmmppi_source_snapshot_id": "5c8a57779f16-6e00a65d4e4e",
+  "cfmmppi_source_snapshot_original_path": "/home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-6e00a65d4e4e",
+  "helios_python": "/home/dohyun/miniforge3/envs/cfm_mppi/bin/python",
+  "python": "3.11.15",
+  "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
+  "numpy": "2.4.6",
+  "torch": "2.6.0+cu124",
+  "torch_cuda": "12.4",
+  "cudnn": 90100,
+  "gpu": "NVIDIA H100 NVL",
+  "cfmmppi_physical_gpu": 3,
+  "gpu_compute_capability": [9, 0],
+  "policy_site_bank_backend": "Apple MPS; exact frozen arrays are authoritative",
+  "controller_dt_s": 0.1,
+  "integration_substeps": 10,
+  "nfe": 16,
+  "notes": "GPU/backend affects floating-point identity. Use the frozen arrays and hashes for byte-identical handoff; use the recorded backend for rerun verification."
+}
