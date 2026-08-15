@@ -14,6 +14,10 @@ export PYTHONPATH="$BUNDLE/runtime_snapshot:$BUNDLE/source${PYTHONPATH:+:$PYTHON
 
 python "$BUNDLE/VERIFY.py"
 
+python "$BUNDLE/source/export_flight_references.py" \
+  --bundle "$BUNDLE" \
+  --output "$OUT/flight_references"
+
 python "$BUNDLE/source/reproduce_policy_site_rollouts.py" \
   --device "$DEVICE" \
   --model pre2 \

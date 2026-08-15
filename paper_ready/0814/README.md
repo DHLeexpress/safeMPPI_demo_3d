@@ -16,6 +16,59 @@ view를 모두 **γ=0.1**로 맞췄습니다.
 trajectories가 대응합니다. Frozen bundle은 CFM 세 regime을 모두 보존하므로 실제
 저장량은 PRE2 8 + R1 8 + Expanded 8 + CFM 24 + SafeMPPI 8 = **56**입니다.
 
+## Flight references — position, velocity, acceleration at 100 Hz
+
+`flight_references/` contains a ready-to-stream reference for every one of the
+56 frozen paper trajectories. Minhyuk must use these files instead of
+differentiating the displayed positions:
+
+```text
+time_s             (T,)    float64, uniformly spaced at 0.01 s
+position_ref       (T, 3)  float32, stored dense rollout positions
+velocity_ref       (T, 3)  float32, exact once-governed recurrence
+acceleration_ref   (T, 3)  float32, applied 10 Hz control held at 100 Hz
+```
+
+`applied_controls_10hz` and the 0806-compatible alias
+`executed_controls_10hz` are both included and are byte-identical. The player
+must not reapply the governor, interpolate, smooth, or differentiate position.
+The authoritative lookup table is `flight_references/FLIGHT_INDEX.csv`, and
+`flight_references/manifest.json` records the source row and SHA-256 for every
+reference.
+
+The 40-trajectory visible comparison is obtained by choosing one CFM regime.
+The package exports all three CFM regimes, so the reference count is 56:
+
+| method/view | reference count | hardware status |
+|---|---:|---|
+| PRE2 | 8 | simulated successes; operator approval required |
+| Less-expanded R1 | 8 | simulated successes; operator approval required |
+| Expanded S4 | 8 | simulated successes; operator approval required |
+| CFM–MPPI safety | 8 | 5 success / 3 known collision |
+| CFM–MPPI balanced | 8 | 5 success / 3 known collision |
+| CFM–MPPI performance | 8 | 8 known collision |
+| SafeMPPI | 8 | simulated successes; operator approval required |
+
+Every non-successful CFM reference is marked `SIMULATION_ONLY_KNOWN_COLLISION`
+in the index and must never be sent to hardware. Successful references still
+require the normal operator and hardware safety approval.
+
+Validation-only playback example:
+
+```bash
+python minhyuk/frozen_reference_player.py \
+  --reference flight_references/expanded/gamma_0p1_e227_seed_100399_100hz.npz
+```
+
+The player validates the arrays and sends no command by itself. Connect its
+`send_full_state(position, velocity, acceleration)` callback only inside the
+versioned hardware runner. To regenerate the references from the frozen
+handoff without running any planner or policy:
+
+```bash
+python source/export_flight_references.py --bundle . --output /tmp/0814_refs
+```
+
 `SITE_TRAJECTORY_INDEX.csv`가 View → method/regime/γ/episode/rollout seed/status/
 route/source row를 잇는 authoritative index입니다. 사이트의 focus selector와
 trajectory card에도 같은 seed가 표시됩니다.

@@ -46,7 +46,9 @@
     "less_expanded_evaluator_sha256": "9cd0ae52da44cf4295598466353d555402760b8908a5a050180e1434e8528874",
     "less_expanded_runner_sha256": "d4a7a3f8e22c88c0b153114e43ac453464c4edadffab2d8d9b9f1d335a985acc",
     "less_expanded_expansion_sha256": "98af22653a6eaaf8b5a22a0d73955ae69bce24a98c312fdad1828a9d11f11230",
-    "less_expanded_task_adapter_sha256": "f22398cc412dcb6faa6ce2063c569064c56ff43e390594c4dacd1363fddcd63a"
+    "less_expanded_task_adapter_sha256": "f22398cc412dcb6faa6ce2063c569064c56ff43e390594c4dacd1363fddcd63a",
+    "flight_reference_exporter_sha256": "0cd39e109242261a74415958d947980a05fe162551d2c2588185ea42bcc86e8c",
+    "flight_reference_player_sha256": "eb8c60334427eeb6ec16ab234010329186028ba7f967bda7dee59a560660820c"
   },
   "trajectory_contract": {
     "full_selected_arrays": "trajectories/paper_ready_bowling_handoff.pt",
@@ -66,6 +68,16 @@
     "safemppi_selected_count": 8,
     "safemppi_combined_site_bank": "trajectories/safemppi/site_bank_combined_raw_trajectories.pt",
     "visible_trajectory_count_per_cfm_regime": 40,
-    "frozen_paper_trajectory_count_all_cfm_regimes": 56
+    "frozen_paper_trajectory_count_all_cfm_regimes": 56,
+    "flight_reference_index": "flight_references/FLIGHT_INDEX.csv",
+    "flight_reference_manifest": "flight_references/manifest.json",
+    "flight_reference_count_all_cfm_regimes": 56,
+    "flight_reference_rate_hz": 100,
+    "flight_reference_fields": [
+      "position_ref",
+      "velocity_ref",
+      "acceleration_ref"
+    ],
+    "flight_player_must_not_reapply_governor": true
   }
 }

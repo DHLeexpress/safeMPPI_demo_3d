@@ -5,12 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 import torch
 
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "source"))
+
+from export_flight_references import paper_rows, reconstruct_reference  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -142,6 +146,64 @@ def check_safemppi_arrays(handoff: dict) -> int:
     return checked
 
 
+def check_flight_references(handoff: dict) -> int:
+    manifest = json.loads((ROOT / "flight_references/manifest.json").read_text())
+    if manifest.get("status") != "COMPLETE" or int(manifest.get("count", -1)) != 56:
+        raise RuntimeError("flight-reference manifest is not complete at 56 rows")
+    config = json.loads((ROOT / "config/task_config_resolved.json").read_text())
+    mppi = config["safemppi"]
+    roster = {(group, index): row for group, index, row in paper_rows(handoff)}
+    seen: set[tuple[str, int]] = set()
+    required = {
+        "time_s", "position_ref", "velocity_ref", "acceleration_ref",
+        "raw_controls_10hz", "applied_controls_10hz", "executed_controls_10hz",
+    }
+    for run in manifest["runs"]:
+        key = (str(run["source_group"]), int(run["source_row"]))
+        if key not in roster or key in seen:
+            raise RuntimeError(f"invalid or duplicate flight-reference source {key}")
+        seen.add(key)
+        path = ROOT / str(run["flight_reference"])
+        if sha256(path) != str(run["flight_reference_sha256"]):
+            raise RuntimeError(f"flight-reference SHA mismatch: {path}")
+        expected, _ = reconstruct_reference(
+            roster[key],
+            dt=float(mppi["dt"]),
+            substeps=int(mppi["integration_substeps"]),
+            max_speed=float(mppi["max_speed"]),
+            max_vertical_speed=float(mppi["max_vertical_speed"]),
+        )
+        with np.load(path, allow_pickle=False) as archive:
+            missing = required.difference(archive.files)
+            if missing:
+                raise RuntimeError(f"flight reference {path} is missing {sorted(missing)}")
+            for field in (
+                "time_s", "position_ref", "velocity_ref", "acceleration_ref",
+                "raw_controls_10hz", "applied_controls_10hz",
+            ):
+                if not np.array_equal(np.asarray(archive[field]), expected[field]):
+                    raise RuntimeError(f"flight-reference array mismatch {key}: {field}")
+            if not np.array_equal(
+                np.asarray(archive["executed_controls_10hz"]),
+                np.asarray(archive["applied_controls_10hz"]),
+            ):
+                raise RuntimeError(f"0806 control alias mismatch: {key}")
+            count = len(archive["time_s"])
+            for field in ("position_ref", "velocity_ref", "acceleration_ref"):
+                if archive[field].shape != (count, 3):
+                    raise RuntimeError(f"invalid {field} shape in {path}")
+            if count > 1 and not np.allclose(
+                np.diff(archive["time_s"]), 0.01, atol=1.0e-9, rtol=0.0
+            ):
+                raise RuntimeError(f"flight reference is not 100 Hz: {path}")
+            if not all(np.isfinite(archive[field]).all() for field in required):
+                raise RuntimeError(f"non-finite flight-reference value: {path}")
+        seen.add(key)
+    if seen != set(roster):
+        raise RuntimeError(f"flight references do not cover the frozen roster: {seen ^ set(roster)}")
+    return len(seen)
+
+
 def main() -> None:
     selection = json.loads(
         (ROOT / "selections/paper_ready_bowling_selection.json").read_text()
@@ -167,11 +229,13 @@ def main() -> None:
     less_expanded_count = check_less_expanded_arrays(handoff)
     cfm_count = check_cfm_arrays(handoff)
     safemppi_count = check_safemppi_arrays(handoff)
+    flight_reference_count = check_flight_references(handoff)
     hash_count = check_hashes()
     print(
         f"OK: {hash_count} file hashes, {row_count} selected rows, "
         f"{less_expanded_count} exact Expanded R1 rows, {cfm_count} exact CFM rows, "
-        f"{safemppi_count} exact SafeMPPI rows"
+        f"{safemppi_count} exact SafeMPPI rows, "
+        f"{flight_reference_count} exact 100 Hz flight references"
     )
 
 
