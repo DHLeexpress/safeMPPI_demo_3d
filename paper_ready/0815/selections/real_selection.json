@@ -1,0 +1,196 @@
+{
+  "gamma": 0.3,
+  "effective_margin_m": 0.16,
+  "string_radius_m": 0.1,
+  "hard_z_band_m": [
+    0.20279998779296876,
+    1.6068000078201294
+  ],
+  "groups": {
+    "real-paper-ready-pre2": {
+      "selected": 8,
+      "selection_note": "Narrative roster: LLL\u00d76 + RRR\u00d72.",
+      "modes": [
+        "LLL",
+        "RRR"
+      ],
+      "seeds": [
+        814304648,
+        814302021,
+        814302406,
+        814302317,
+        814304295,
+        814302407,
+        814301373,
+        814304759
+      ],
+      "sampling_temperatures": [
+        1.4,
+        1.2,
+        1.2,
+        1.2,
+        1.4,
+        1.2,
+        1.4,
+        1.4
+      ],
+      "status_counts": {
+        "SUCCESS": 8,
+        "COLLISION": 0,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "all_string_valid": true
+    },
+    "real-paper-ready-less-expanded": {
+      "selected": 8,
+      "selection_note": "Four-mode R1 roster: LLL / LLR / RLL / RRR.",
+      "modes": [
+        "LLL",
+        "LLR",
+        "RLL",
+        "RRR"
+      ],
+      "seeds": [
+        814311152,
+        814311187,
+        814311146,
+        814311039,
+        814311210,
+        814311033,
+        814311162,
+        814310067
+      ],
+      "sampling_temperatures": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "status_counts": {
+        "SUCCESS": 8,
+        "COLLISION": 0,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "all_string_valid": true
+    },
+    "real-paper-ready-expanded": {
+      "selected": 8,
+      "selection_note": "S4 roster with monotone LLR seed 814323086 replacing 814321091.",
+      "modes": [
+        "LLL",
+        "LLR",
+        "LRL",
+        "RLL",
+        "RRL",
+        "RRR"
+      ],
+      "seeds": [
+        814320088,
+        814321275,
+        814321225,
+        814323086,
+        814321181,
+        814324192,
+        814321156,
+        814321368
+      ],
+      "sampling_temperatures": [
+        1.0,
+        1.0,
+        1.0,
+        1.2,
+        1.0,
+        1.4,
+        1.0,
+        1.0
+      ],
+      "status_counts": {
+        "SUCCESS": 8,
+        "COLLISION": 0,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "all_string_valid": true
+    },
+    "real-paper-ready-cfmmppi": {
+      "selected": 8,
+      "selection_note": "Safety/balanced successes plus two string-safe reward collisions.",
+      "modes": [
+        "LLR",
+        "RLR",
+        "RRL",
+        "RRR"
+      ],
+      "seeds": [
+        814330655,
+        814330433,
+        814330729,
+        814330359,
+        814330766,
+        814330322,
+        814330581,
+        814330729
+      ],
+      "sampling_temperatures": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "status_counts": {
+        "SUCCESS": 6,
+        "COLLISION": 2,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "all_string_valid": true
+    },
+    "real-paper-ready-safemppi": {
+      "selected": 8,
+      "selection_note": "Lateral-route roster: LLL / LLR / RRL / RRR, two each.",
+      "modes": [
+        "LLL",
+        "LLR",
+        "RRL",
+        "RRR"
+      ],
+      "seeds": [
+        814341039,
+        814341738,
+        814341504,
+        814341031,
+        814341870,
+        814341342,
+        814341765,
+        814341082
+      ],
+      "sampling_temperatures": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "status_counts": {
+        "SUCCESS": 8,
+        "COLLISION": 0,
+        "OOB": 0,
+        "TIMEOUT": 0
+      },
+      "all_string_valid": true
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema": "paper_ready_0815_real_bowling_handoff_v1",
+  "status": "COMPLETE",
+  "published_site": "https://s4-monotone-bowling-routes.leedo12663.chatgpt.site/",
+  "fixed_gamma": 0.3,
+  "views": 5,
+  "trajectories_per_view": 8,
+  "trajectory_count": 40,
+  "hardware_eligible_count": 38,
+  "simulation_only_count": 2,
+  "geometry": {
+    "measured_scene": "scene/bowling_scene.json",
+    "effective_margin_m": 0.16,
+    "string_no_go_radius_m": 0.1
+  },
+  "models": {
+    "pre2": {
+      "path": "../0814/checkpoints/pre2/pretrained.pt",
+      "sha256": "76b10a69b6f26d65533d4e617ccbf6fb77a2178ac030244c5a745c11a4d0a3c0"
+    },
+    "less_expanded_r1": {
+      "path": "../0814/checkpoints/less_expanded/checkpoint_001.pt",
+      "sha256": "7d5c5cc1f7e9b55ae2a803b8a3812264f38072cd74a416cd81b32b9810253f98"
+    },
+    "expanded_s4": {
+      "path": "../0814/checkpoints/expanded/checkpoint_004.pt",
+      "sha256": "a37f93091bfc88340b7f2bab0d41cb889ff59a2caf00d737e58e57fbfa4cdb52"
+    },
+    "safemppi": {
+      "path": "../0808/safemppi",
+      "source_commit": "dabb5011dfc674864e1de275a1e1c2adab58f4af"
+    }
+  },
+  "source_sha256": {
+    "../0814/source/real_bowling_scene.py": "9ea15a1f7be459d917f808ffe59bdbdc6197c6df670502b77d9856b09ba1a5f8",
+    "../0814/source/search_real_bowling_policy_rollouts.py": "97397a527d101319b91f3d78b11df47eade49a237d9a3aa61e2702d040e26f05",
+    "../0814/source/run_multisphere_cfm_mppi_bowling.py": "f6aa8d2fe45eb4ca1e10a252580eb6ed3f94d92768d13c624618604b136e9463",
+    "../0814/source/collect_paper_ready_safemppi_bowling.py": "d96c3fbbccbe501a6d28b9b90cc992181bfecee28a62b3d5a80875fafd5c9eda",
+    "../0814/runtime_snapshot/safe_mppi/lab_clutter_cfm_mppi.py": "29b91a5c224b596a6f66e1a8e76bb57a10352dc16c558ebff079a09cb8fcc66d",
+    "source/export_real_flight_references.py": "88eae6510d2d49974889a3678bcfebf9b5b03a436442c9b47cc0afef7c68a9a7"
+  },
+  "frozen_artifacts": {
+    "trajectory_archive": {
+      "path": "trajectories/real_selected_trajectories.pt",
+      "sha256": "0cfcc04ebfc88b76dad424d50e87b227ef5ed408052ced2572412473fdd5ec11"
+    },
+    "site": {
+      "path": "site/visualization.html",
+      "sha256": "db2a42d14ffbdd8109279d49cf59ae0ac68d059467a42295181da9df4db67101"
+    },
+    "scene": {
+      "path": "scene/bowling_scene.json",
+      "sha256": "2ea063a0eea626c284f84dedc11efe2b2dd6d877e633c47e5cb105dd0eaa7258"
+    },
+    "task_config": {
+      "path": "config/task_config_resolved.json",
+      "sha256": "baf3a8f3398cba147696ee783957b865968186e905279d1300a87477459792fc"
+    }
+  }
+}

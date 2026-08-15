@@ -329,6 +329,7 @@ def refine_plans(
         "generated_states": generated_states.detach(),
         "refined_costs": refined_cost.detach(),
         "refined_states": refined_states.detach(),
+        "refined_plans": refined.detach(),
         "best_refined_index": torch.tensor(best),
     }
 

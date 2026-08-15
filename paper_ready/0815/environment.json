@@ -1,0 +1,12 @@
+{
+  "capture_date": "2026-08-15",
+  "platform": "macOS-15.6-arm64-arm-64bit",
+  "python": "3.11.7",
+  "numpy": "1.26.4",
+  "torch": "2.11.0",
+  "capture_backend": "mps",
+  "published_fixed_gamma": 0.3,
+  "reference_rate_hz": 100,
+  "source_control_rate_hz": 10,
+  "note": "Changing accelerator family can preserve scientific reproduction without guaranteeing floating-point byte identity. Frozen NPZ playback is backend-independent."
+}

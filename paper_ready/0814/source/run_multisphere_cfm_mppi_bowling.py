@@ -17,7 +17,8 @@ import time
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_BUNDLE = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(_BUNDLE / "source"), str(_BUNDLE / "runtime_snapshot")]
 
 from safe_mppi.bowling_coverage import bowling_route_signature
 from safe_mppi.config import load_config
@@ -41,6 +42,11 @@ from safe_mppi.lab_clutter_pre2_multipair_expansion import (
 )
 from safe_mppi.lab_reference_flow_task import reference_window_validity_fraction
 from safe_mppi.lab_clutter_evaluation import _scene_config
+from real_bowling_scene import (
+    RealBowlingTask,
+    hard_path_diagnostics,
+    load_as_built_geometry,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +89,8 @@ def _parse_regimes(raw: str | None) -> dict[str, dict[str, float]]:
 
 
 def _state(task, spheres, seed: int) -> dict:
+    if hasattr(task, "new_state"):
+        return task.new_state(seed)
     env = task._environment(spheres)
     return {
         "x": env.start.copy(),
@@ -134,6 +142,35 @@ def _rollout(wrapped, task, config, spheres, gamma, seed, controller):
             goal_t, sphere_t, bounds_t, config.safemppi,
             refinement_generator, controller,
         )
+        hard_gate_valid_count = None
+        if hasattr(task, "physical_spheres"):
+            # The as-built flight-reference contract adds only a geometry
+            # gate: no H_P, verifier, or progress label participates.  Rank
+            # every hard-valid generated/refined plan by the unchanged native
+            # CFM--MPPI cost.
+            all_plans = torch.cat((proposals, diagnostics["refined_plans"]), dim=0)
+            all_costs = torch.cat((
+                diagnostics["generated_costs"], diagnostics["refined_costs"],
+            )).detach().cpu().numpy()
+            valid = []
+            for plan in all_plans:
+                plan_states, _, plan_dense = task._rollout_plan(
+                    state["x"], state["previous_applied"],
+                    plan.detach().cpu().numpy(),
+                )
+                plan_path = np.concatenate((
+                    plan_states[:1, :3], plan_dense.reshape(-1, 3),
+                ))
+                valid.append(hard_path_diagnostics(
+                    plan_path,
+                    spheres,
+                    task.physical_spheres,
+                    task.string_radius_m,
+                )["hard_valid"])
+            hard_gate_valid_count = int(sum(valid))
+            if hard_gate_valid_count:
+                masked = np.where(np.asarray(valid, bool), all_costs, np.inf)
+                selected = all_plans[int(np.argmin(masked))]
         predicted, applied_plan, dense_plan = task._rollout_plan(
             state["x"], state["previous_applied"],
             selected.detach().cpu().numpy(),
@@ -145,11 +182,14 @@ def _rollout(wrapped, task, config, spheres, gamma, seed, controller):
         controls.append(selected[0].detach().cpu().numpy().copy())
         applied.append(applied_plan[0].copy())
         dense.append(dense_plan[0].copy())
-        guidance_rows.append({
+        guidance_row = {
             **guidance,
             "generated_cost_min": float(diagnostics["generated_costs"].min().cpu()),
             "refined_cost_min": float(diagnostics["refined_costs"].min().cpu()),
-        })
+        }
+        if hard_gate_valid_count is not None:
+            guidance_row["hard_gate_valid_plan_count"] = hard_gate_valid_count
+        guidance_rows.append(guidance_row)
         previous_plan = selected.detach()
         state = updated
         terminal = task.terminal(state)
@@ -178,7 +218,7 @@ def _rollout(wrapped, task, config, spheres, gamma, seed, controller):
         name: float(np.mean([row[name] for row in guidance_rows]))
         for name in guidance_rows[0]
     } if guidance_rows else {}
-    return {
+    result = {
         "status": status,
         "states": states_array,
         "controls": controls_array,
@@ -196,6 +236,14 @@ def _rollout(wrapped, task, config, spheres, gamma, seed, controller):
         "mean_guidance": mean_guidance,
         "wall_time_s": time.perf_counter() - started,
     }
+    if hasattr(task, "physical_spheres"):
+        result["hard_constraints"] = hard_path_diagnostics(
+            dense_path,
+            spheres,
+            task.physical_spheres,
+            task.string_radius_m,
+        )
+    return result
 
 
 def _summary(rows):
@@ -239,6 +287,10 @@ def main() -> None:
     parser.add_argument("--gammas", default="0.1,0.3,0.5,1.0")
     parser.add_argument("--trials", type=int, default=8)
     parser.add_argument("--seed", type=int, default=314159)
+    parser.add_argument(
+        "--seeds", type=int, nargs="+",
+        help="run these exact rollout seeds instead of seed + 37*trial",
+    )
     parser.add_argument("--regimes-json")
     parser.add_argument("--proposal-count", type=int, default=32)
     parser.add_argument("--elite-count", type=int, default=8)
@@ -249,27 +301,38 @@ def main() -> None:
     parser.add_argument("--cbf-margin-m", type=float, default=0.0)
     parser.add_argument("--goal-coefficient-max", type=float, default=0.25)
     parser.add_argument("--safety-coefficient-max", type=float, default=0.50)
+    parser.add_argument(
+        "--as-built-scene-json",
+        type=Path,
+        help="use measured per-ball radii +0.16 m and the 0.10 m string gate",
+    )
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite {args.output}")
-    if args.trials < 1:
+    if args.trials < 1 and args.seeds is None:
         parser.error("trials must be positive")
     regimes = _parse_regimes(args.regimes_json)
     gammas = tuple(float(value) for value in args.gammas.split(","))
 
     config = load_config(args.task_config)
-    scene_spec = sphere_scene_spec_from_config(config)
+    geometry = (
+        load_as_built_geometry(args.as_built_scene_json)
+        if args.as_built_scene_json is not None else None
+    )
+    scene_spec = (
+        None if geometry is not None else sphere_scene_spec_from_config(config)
+    )
+    packed_dim = 25 if geometry is not None else scene_spec.packed_dim
     wrapped = load_lab_clutter_pre2_expansion_policy(
         args.pretrain_dir / "pretrained.pt",
-        verifier_suffix_dim=LAB_CLUTTER_GOVERNOR_DIM + scene_spec.packed_dim,
+        verifier_suffix_dim=LAB_CLUTTER_GOVERNOR_DIM + packed_dim,
     ).to(args.device).eval()
     wrapped.policy.nfe = 16
     wrapped.policy.flow.nfe = 16
     attach_reference_config(wrapped, config.safemppi)
     for parameter in wrapped.parameters():
         parameter.requires_grad_(False)
-    task = LabClutterPre2MultiPairExpansionTask(
-        config,
+    task_kwargs = dict(
         context_schema=wrapped.context_schema,
         device=args.device,
         verifier_mode="full_polytope",
@@ -278,11 +341,30 @@ def main() -> None:
         paired_scene_seed=args.seed,
         paired_scene_pair_count=5,
         paired_scene_max_replacements_per_slot=1,
-        scene_spec=scene_spec,
     )
-    spheres = bowling_123_spheres(task.env.start, task.env.goal, scene_spec.radius)
+    if geometry is None:
+        task = LabClutterPre2MultiPairExpansionTask(
+            config, scene_spec=scene_spec, **task_kwargs,
+        )
+        spheres = bowling_123_spheres(
+            task.env.start, task.env.goal, scene_spec.radius,
+        )
+    else:
+        task = RealBowlingTask(
+            config,
+            physical_spheres=geometry["physical_spheres"],
+            effective_spheres=geometry["effective_spheres"],
+            string_radius_m=geometry["string_radius_m"],
+            **task_kwargs,
+        )
+        spheres = geometry["effective_spheres"]
     rows = []
-    total = len(regimes) * len(gammas) * args.trials
+    rollout_seeds = (
+        list(args.seeds)
+        if args.seeds is not None else
+        [args.seed + trial * 37 for trial in range(args.trials)]
+    )
+    total = len(regimes) * len(gammas) * len(rollout_seeds)
     for regime_name, coefficients in regimes.items():
         controller = CfmMppiConfig(
             proposal_count=args.proposal_count,
@@ -298,8 +380,7 @@ def main() -> None:
             normalized_safety=coefficients["safety"],
         )
         for gamma in gammas:
-            for trial in range(args.trials):
-                rollout_seed = args.seed + trial * 37
+            for trial, rollout_seed in enumerate(rollout_seeds):
                 result = _rollout(
                     wrapped, task, config, spheres, gamma, rollout_seed, controller,
                 )
@@ -336,8 +417,9 @@ def main() -> None:
     args.output.mkdir(parents=True)
     torch.save(rows, args.output / "raw_trajectories.pt")
     source_files = (
-        ROOT / "safe_mppi/lab_clutter_cfm_mppi.py",
+        ROOT / "runtime_snapshot/safe_mppi/lab_clutter_cfm_mppi.py",
         Path(__file__).resolve(),
+        ROOT / "source/real_bowling_scene.py",
     )
     payload = {
         "status": "CFM_MPPI_BOWLING_COMPLETE",
@@ -358,12 +440,30 @@ def main() -> None:
             "mppi_sigma": args.mppi_sigma,
             "mppi_lambda": args.mppi_lambda,
             "regimes": regimes,
+            "rollout_seeds": rollout_seeds,
+            "as_built_geometry_gate": (
+                None if geometry is None else {
+                    "candidate_pool": "32 generated + 8 refined plans",
+                    "gate": "full-H dense effective-sphere and vertical-string clearance",
+                    "ranking_after_gate": "unchanged native CFM--MPPI cost",
+                    "hp_verifier_or_progress_used": False,
+                }
+            ),
         },
         "scene": {
             "start": task.env.start[:3].tolist(),
             "goal": task.env.goal.tolist(),
             "bounds": task.env.bounds.tolist(),
             "spheres": spheres.tolist(),
+            "physical_spheres": (
+                None if geometry is None else geometry["physical_spheres"].tolist()
+            ),
+            "effective_margin_m": (
+                None if geometry is None else geometry["effective_margin_m"]
+            ),
+            "string_radius_m": (
+                None if geometry is None else geometry["string_radius_m"]
+            ),
         },
         "summaries": summaries,
         "artifact_binding": {
