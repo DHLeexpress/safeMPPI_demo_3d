@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-run the PRE2/expanded site selections from their exact seeds."""
+"""Re-run the PRE2/R1/expanded site selections from their exact seeds."""
 from __future__ import annotations
 
 import argparse
@@ -12,8 +12,18 @@ import torch
 
 
 BUNDLE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BUNDLE / "runtime_snapshot"))
-sys.path.insert(0, str(BUNDLE / "source"))
+_early_model = (
+    sys.argv[sys.argv.index("--model") + 1]
+    if "--model" in sys.argv and sys.argv.index("--model") + 1 < len(sys.argv)
+    else None
+)
+if _early_model == "less-expanded":
+    _runtime_root = BUNDLE / "source_snapshots/less_expanded_r1_evaluation"
+    _scripts_root = _runtime_root / "scripts"
+else:
+    _runtime_root = BUNDLE / "runtime_snapshot"
+    _scripts_root = BUNDLE / "source"
+sys.path[:0] = [str(_scripts_root), str(_runtime_root)]
 
 from evaluate_multisphere_min_cost_deployment import _rollout  # noqa: E402
 from safe_mppi.bowling_coverage import bowling_route_signature  # noqa: E402
@@ -33,6 +43,7 @@ from safe_mppi.lab_clutter_pre2_multipair_expansion import (  # noqa: E402
 
 MODEL_GROUPS = {
     "pre2": ("paper-ready-pre2", "not-paper-ready-pre2"),
+    "less-expanded": ("paper-ready-less-expanded",),
     "expanded": ("paper-ready-expanded", "not-paper-ready-expanded"),
 }
 
@@ -47,6 +58,18 @@ def main() -> None:
     parser.add_argument("--model", choices=tuple(MODEL_GROUPS), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        help="roll out arbitrary seeds instead of the frozen site selection",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.1,
+        help="conditioning gamma used with --seeds (default: 0.1)",
+    )
+    parser.add_argument(
         "--verify-frozen",
         action="store_true",
         help="require array identity with the bundled selected trajectories",
@@ -54,6 +77,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite {args.output}")
+    if args.seeds and args.verify_frozen:
+        raise ValueError("--verify-frozen cannot be combined with --seeds")
 
     selection = json.loads(
         (BUNDLE / "selections/paper_ready_bowling_selection.json").read_text()
@@ -66,9 +91,14 @@ def main() -> None:
     ).to(args.device).eval()
     wrapped.policy.nfe = 16
     wrapped.policy.flow.nfe = 16
-    if args.model == "expanded":
+    if args.model in ("less-expanded", "expanded"):
+        checkpoint_path = (
+            BUNDLE / "checkpoints/less_expanded/checkpoint_001.pt"
+            if args.model == "less-expanded" else
+            BUNDLE / "checkpoints/expanded/checkpoint_004.pt"
+        )
         checkpoint = torch.load(
-            BUNDLE / "checkpoints/expanded/checkpoint_004.pt",
+            checkpoint_path,
             map_location="cpu",
             weights_only=False,
         )
@@ -104,13 +134,24 @@ def main() -> None:
         weights_only=False,
     )["groups"]
     output = {}
-    for group in MODEL_GROUPS[args.model]:
+    groups = (
+        [f"custom-{args.model}"]
+        if args.seeds else list(MODEL_GROUPS[args.model])
+    )
+    for group in groups:
         output[group] = []
         expected_by_key = {
             (float(row["gamma"]), int(row["episode"]), int(row["rollout_seed"])): row
-            for row in frozen[group]
+            for row in frozen.get(group, [])
         }
-        for selected in selection["groups"][group]:
+        selected_rows = (
+            [
+                {"gamma": args.gamma, "episode": index, "seed": seed}
+                for index, seed in enumerate(args.seeds)
+            ]
+            if args.seeds else selection["groups"][group]
+        )
+        for selected in selected_rows:
             gamma = float(selected["gamma"])
             episode = int(selected["episode"])
             seed = int(selected["seed"])

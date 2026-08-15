@@ -1,0 +1,18 @@
+{
+  "schema": "paper_ready_less_expanded_r1_source_provenance_v1",
+  "expansion_source_id": "5c8a57779f16-1cf210b2e2ee",
+  "expansion_source_original_path": "/home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-1cf210b2e2ee",
+  "expansion_source_bundled_path": "source_snapshots/less_expanded_r1",
+  "evaluation_source_id": "5c8a57779f16-5ab0794c77dd",
+  "evaluation_source_original_path": "/home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-5ab0794c77dd",
+  "evaluation_source_bundled_path": "source_snapshots/less_expanded_r1_evaluation",
+  "checkpoint": "checkpoints/less_expanded/checkpoint_001.pt",
+  "checkpoint_sha256": "7d5c5cc1f7e9b55ae2a803b8a3812264f38072cd74a416cd81b32b9810253f98",
+  "round1_raw_bank": "trajectories/less_expanded/r1_only_bowling_raw_trajectories.pt",
+  "round1_raw_bank_sha256": "88a6b10f2d31c2523914f1be27e70c0344baff27caf2af2ed82f43eff3c9c997",
+  "expansion_runner_sha256": "d4a7a3f8e22c88c0b153114e43ac453464c4edadffab2d8d9b9f1d335a985acc",
+  "expansion_loop_sha256": "98af22653a6eaaf8b5a22a0d73955ae69bce24a98c312fdad1828a9d11f11230",
+  "multipair_task_sha256": "f22398cc412dcb6faa6ce2063c569064c56ff43e390594c4dacd1363fddcd63a",
+  "evaluation_runner_sha256": "3e9f922bb8322a2740b91497b5aa4e29736a8d5dd0f72e00adda27a1739b6586",
+  "evaluator_sha256": "9cd0ae52da44cf4295598466353d555402760b8908a5a050180e1434e8528874"
+}

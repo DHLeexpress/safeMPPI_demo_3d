@@ -1,0 +1,122 @@
+{
+  "taskspace": {
+    "origin": [
+      -2.5,
+      -1.7,
+      0.25
+    ],
+    "size": [
+      3.8,
+      3.5,
+      1.3
+    ],
+    "start": [
+      -2.1,
+      1.5,
+      0.9,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "goal": [
+      0.7,
+      -1.5,
+      0.9
+    ],
+    "reach_radius": 0.2,
+    "max_steps": 250
+  },
+  "obstacles": {
+    "spheres": [
+      [
+        -0.7,
+        0.0,
+        0.9,
+        0.354
+      ]
+    ],
+    "cylinders": []
+  },
+  "safety": {
+    "safe_min": [
+      -2.5,
+      -1.7,
+      0.25
+    ],
+    "safe_max": [
+      1.3,
+      1.8,
+      1.55
+    ]
+  },
+  "safemppi": {
+    "sampling_mode": "mode1_centroid_anisotropic",
+    "horizon": 10,
+    "dt": 0.1,
+    "num_samples": 512,
+    "temperature": 0.02,
+    "noise_sigma": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "demo_u_max": 0.3,
+    "platform_u_max": 3.0,
+    "sensing_range": 2.0,
+    "polytope_faces": 80,
+    "centroid_gain": 0.0,
+    "centroid_smooth": 0.0,
+    "centroid_eps": 0.15,
+    "sigma_aniso": 1.0,
+    "urgency_floor": 0.0,
+    "warm_start": true,
+    "initial_control": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "running_goal_weight": 0.25,
+    "terminal_goal_weight": 80.0,
+    "control_weight": 0.05,
+    "smooth_weight": 0.35,
+    "soft_clearance_weight": 0.0,
+    "soft_clearance_target": 0.3,
+    "progress_weight": 2.0,
+    "z_bias_plane": 0.9,
+    "z_bias_temperature": 0.08,
+    "z_bias_weight": 0.0,
+    "max_speed": 0.7,
+    "max_vertical_speed": 0.3,
+    "integration_substeps": 10,
+    "deployment_accel_smooth": 0.4,
+    "taskspace_exponential_weight": 5.0,
+    "taskspace_exponential_temperature": 0.05,
+    "robot_radius": 0.0,
+    "obstacle_margin": 0.0,
+    "safety_margin": 0.0,
+    "predict_gain": 0.0,
+    "zoh_guard": 0.0
+  },
+  "data": {
+    "gammas": [
+      0.1,
+      0.3,
+      0.5,
+      1.0
+    ],
+    "episodes_per_gamma": 1,
+    "seed_start": 0,
+    "rollout_dynamics": "minhyuk_reference_governor",
+    "acceptance": "nominal_safe_success",
+    "max_attempts_per_gamma": 500
+  },
+  "stage1": {
+    "title": "Stage 1: fixed single-ball OOD expansion",
+    "physical_sphere_radius_m": 0.254,
+    "vehicle_inflation_m": 0.1,
+    "modeled_radius_m": 0.354,
+    "pretrained_domain": "path-focused randomized vertical cylinders",
+    "expansion_domain": "one fixed midpoint sphere"
+  },
+  "taskspace_rationale": "Stage-1 single ball with the SAME symmetric z taskspace as configs/lab_clutter_spheres_center_anchored_n3to6_v1.json: z in [0.25, 1.55], exactly +/-0.65 m about the 0.9 m start-goal plane. The legacy t128 box was z in [0.4, 2.0], i.e. only 0.5 m below the plane but 1.1 m above it; with a modeled sphere radius of 0.354 m that leaves about 0.15 m of usable band for a below pass versus 0.75 m above, so 'below' coverage was geometrically cramped rather than merely unlearned. Here below and above are exact mirror images, so a 25%-each route split is attainable and coverage measures the policy, not the box."
+}

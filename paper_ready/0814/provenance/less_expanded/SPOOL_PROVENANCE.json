@@ -1,0 +1,8 @@
+{
+  "config_hash": "1e29491aa246c07c8be5370e77a0dc04f0d39de16088a3632784b7d70913489d",
+  "name": "dense_z0711__speed400_band05_inner50",
+  "physical_gpu": 0,
+  "pretrained_sha256": "76b10a69b6f26d65533d4e617ccbf6fb77a2178ac030244c5a745c11a4d0a3c0",
+  "source_id": "5c8a57779f16-1cf210b2e2ee",
+  "task_config_sha256": "1ebac9ff40ae410406ebd03dda55d9dbc9482ff6f4ca0a2323af2301295ab6a6"
+}

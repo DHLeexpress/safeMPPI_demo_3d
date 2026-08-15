@@ -1,0 +1,297 @@
+<div id="winner-bowling-comparison">
+  <div class="wbc-head">
+    <div>
+      <div class="wbc-kicker">MULTI-SPHERE · WINNER AUDIT</div>
+      <h2>Committed learning set ↔ fixed bowling deployment</h2>
+      <p>Same bowling scene, same 50 seeds/γ, raw M8 + E15 + speed400 + 5% cost-band margin. No verifier label enters deployment selection.</p>
+    </div>
+    <div class="wbc-contract">NFE 16 · M8 · 200 attempts/checkpoint</div>
+  </div>
+
+  <div class="wbc-compare" id="wbc-compare"></div>
+
+  <div class="wbc-controls" aria-label="3D comparison controls">
+    <label>Dataset
+      <select id="wbc-dataset">
+        <option value="bowling-compare">Bowling · PRE ↔ after R3</option>
+        <option value="bowling-pre">Bowling · PRE only</option>
+        <option value="bowling-r3">Bowling · after R3 only</option>
+        <option value="committed-all">Winner · all committed R1–R5</option>
+        <option value="committed-r1">Winner · committed R1</option>
+        <option value="committed-r2">Winner · committed R2</option>
+        <option value="committed-r3">Winner · committed R3</option>
+        <option value="committed-r4">Winner · committed R4</option>
+        <option value="committed-r5">Winner · committed R5</option>
+      </select>
+    </label>
+    <label>γ
+      <select id="wbc-gamma">
+        <option value="all">All</option>
+        <option value="0.1">0.1</option>
+        <option value="0.3">0.3</option>
+        <option value="0.5">0.5</option>
+        <option value="1">1.0</option>
+      </select>
+    </label>
+    <label>Outcome
+      <select id="wbc-status">
+        <option value="SUCCESS">Success</option>
+        <option value="all">All</option>
+        <option value="COLLISION">Collision</option>
+        <option value="OOB">OOB</option>
+        <option value="TIMEOUT">Timeout</option>
+      </select>
+    </label>
+    <label>Route
+      <select id="wbc-route">
+        <option value="all">All routes</option>
+        <option value="LLL">LLL</option><option value="LLR">LLR</option>
+        <option value="LRL">LRL</option><option value="LRR">LRR</option>
+        <option value="RLL">RLL</option><option value="RLR">RLR</option>
+        <option value="RRL">RRL</option><option value="RRR">RRR</option>
+        <option value="ambiguous">Ambiguous / failed</option>
+      </select>
+    </label>
+    <label>Color
+      <select id="wbc-color">
+        <option value="checkpoint">Checkpoint</option>
+        <option value="gamma">Gamma</option>
+        <option value="round">Round</option>
+        <option value="route">Route</option>
+        <option value="status">Outcome</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="wbc-stage">
+    <div id="wbc-plot" role="img" aria-label="Interactive three-dimensional committed and bowling trajectories"></div>
+    <div class="wbc-side">
+      <div id="wbc-stats" class="wbc-stats"></div>
+      <div class="wbc-rounds" id="wbc-rounds"></div>
+      <div class="wbc-detail" id="wbc-detail">Rotate/zoom the scene. Click a randomized committed path to reveal its exact six-sphere world.</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  #winner-bowling-comparison { color: var(--foreground); font-family: var(--font-sans); }
+  #winner-bowling-comparison * { box-sizing: border-box; }
+  .wbc-head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:14px; }
+  .wbc-head h2 { margin:2px 0 5px; font-size:22px; letter-spacing:-.02em; }
+  .wbc-head p { margin:0; color:var(--muted-foreground); font-size:12px; max-width:760px; }
+  .wbc-kicker { color:var(--primary); font-size:10px; font-weight:800; letter-spacing:.16em; }
+  .wbc-contract { flex:0 0 auto; padding:7px 10px; border:1px solid var(--border); border-radius:999px; color:var(--muted-foreground); font-size:11px; }
+  .wbc-compare { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+  .wbc-model { border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:var(--card); }
+  .wbc-model strong { font-size:12px; }
+  .wbc-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; margin-top:7px; }
+  .wbc-metric { min-width:0; }
+  .wbc-metric span { display:block; color:var(--muted-foreground); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }
+  .wbc-metric b { display:block; margin-top:1px; font-size:14px; font-variant-numeric:tabular-nums; }
+  .wbc-controls { display:grid; grid-template-columns:2.1fr repeat(4,1fr); gap:8px; margin:10px 0; }
+  .wbc-controls label { color:var(--muted-foreground); font-size:10px; font-weight:650; }
+  .wbc-controls select { width:100%; margin-top:3px; padding:7px 8px; border:1px solid var(--border); border-radius:7px; background:var(--background); color:var(--foreground); font-size:11px; }
+  .wbc-stage { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:10px; }
+  #wbc-plot { height:590px; min-height:470px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--card); }
+  .wbc-side { display:flex; flex-direction:column; gap:8px; }
+  .wbc-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .wbc-stat { border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--card); }
+  .wbc-stat span { display:block; color:var(--muted-foreground); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+  .wbc-stat b { display:block; margin-top:2px; font-size:16px; font-variant-numeric:tabular-nums; }
+  .wbc-rounds { border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--card); }
+  .wbc-round-row { display:grid; grid-template-columns:27px 1fr 43px; gap:6px; align-items:center; margin:5px 0; font-size:10px; }
+  .wbc-bar { height:7px; border-radius:8px; overflow:hidden; background:var(--muted); }
+  .wbc-bar i { display:block; height:100%; background:var(--primary); border-radius:8px; }
+  .wbc-detail { margin-top:auto; min-height:92px; border:1px solid var(--border); border-radius:8px; padding:9px; color:var(--muted-foreground); background:var(--card); font-size:10px; line-height:1.45; }
+  @media (max-width:850px) {
+    .wbc-stage { grid-template-columns:1fr; }
+    .wbc-side { display:grid; grid-template-columns:1fr 1fr; }
+    .wbc-detail { margin:0; }
+    .wbc-controls { grid-template-columns:repeat(2,1fr); }
+  }
+  @media (max-width:560px) {
+    .wbc-head { align-items:flex-start; flex-direction:column; }
+    .wbc-compare { grid-template-columns:1fr; }
+    .wbc-metrics { grid-template-columns:repeat(5,1fr); }
+    .wbc-stage .wbc-side { grid-template-columns:1fr; }
+    #wbc-plot { height:480px; }
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script>
+(() => {
+  const DATA = __WINNER_BOWLING_DATA__;
+  const root = document.getElementById('winner-bowling-comparison');
+  const plot = root.querySelector('#wbc-plot');
+  const dataset = root.querySelector('#wbc-dataset');
+  const gamma = root.querySelector('#wbc-gamma');
+  const status = root.querySelector('#wbc-status');
+  const route = root.querySelector('#wbc-route');
+  const color = root.querySelector('#wbc-color');
+  const stats = root.querySelector('#wbc-stats');
+  const detail = root.querySelector('#wbc-detail');
+  let selectedId = null;
+  let curveRows = [];
+
+  const gammaColors = {'0.1':'#3b82f6','0.3':'#14b8a6','0.5':'#f59e0b','1':'#ef4444'};
+  const roundColors = ['#64748b','#2563eb','#0891b2','#16a34a','#ca8a04','#dc2626'];
+  const statusColors = {SUCCESS:'#16a34a',COLLISION:'#dc2626',OOB:'#9333ea',TIMEOUT:'#64748b'};
+  const routeColors = {LLL:'#2563eb',LLR:'#0891b2',LRL:'#14b8a6',LRR:'#65a30d',RLL:'#ca8a04',RLR:'#ea580c',RRL:'#dc2626',RRR:'#9333ea'};
+  const checkpointColors = {PRE:'#64748b',R3:'#0ea5e9'};
+
+  function decodePath(encoded) {
+    const q = [encoded[0].slice()];
+    for (let i=0; i<encoded[1].length; i+=3) {
+      const p = q[q.length-1];
+      q.push([p[0]+encoded[1][i], p[1]+encoded[1][i+1], p[2]+encoded[1][i+2]]);
+    }
+    return q.map(p => p.map(v => v/1000));
+  }
+  function pct(value) { return `${(100*value).toFixed(value >= .995 ? 0 : 1)}%`; }
+  function fmt(value, digits=3) { return value == null ? '—' : Number(value).toFixed(digits); }
+  function summaryCard(label, summary, bowling) {
+    return `<div class="wbc-model"><strong>${label}</strong><div class="wbc-metrics">
+      <div class="wbc-metric"><span>SR</span><b>${pct(summary.SR)}</b></div>
+      <div class="wbc-metric"><span>CR</span><b>${pct(summary.CR)}</b></div>
+      <div class="wbc-metric"><span>OOB</span><b>${pct(summary.OOB)}</b></div>
+      <div class="wbc-metric"><span>Valid</span><b>${pct(summary.window_validity)}</b></div>
+      <div class="wbc-metric"><span>Routes</span><b>${bowling.coverage_count}/8</b></div>
+    </div></div>`;
+  }
+  const preSummary = DATA.bowlingMeta.summary['0'];
+  const r3Summary = DATA.bowlingMeta.summary['3'];
+  root.querySelector('#wbc-compare').innerHTML =
+    summaryCard('PRE · fixed bowling', preSummary.pooled, preSummary.bowling) +
+    summaryCard('After R3 · fixed bowling', r3Summary.pooled, r3Summary.bowling);
+
+  root.querySelector('#wbc-rounds').innerHTML = '<strong style="font-size:10px">Winner committed by round</strong>' +
+    DATA.rounds.map(row => `<div class="wbc-round-row"><span>R${row.round}</span><div class="wbc-bar"><i style="width:${100*row.count/40}%"></i></div><b>${row.count}</b></div>`).join('') +
+    `<div style="margin-top:7px;color:var(--muted-foreground);font-size:9px">Total 146 · R3 cumulative 71<br>R3 optimizer step 5,700</div>`;
+
+  function candidateRows() {
+    let rows;
+    if (dataset.value === 'bowling-compare') rows = DATA.bowling;
+    else if (dataset.value === 'bowling-pre') rows = DATA.bowling.filter(r => r.checkpoint === 'PRE');
+    else if (dataset.value === 'bowling-r3') rows = DATA.bowling.filter(r => r.checkpoint === 'R3');
+    else if (dataset.value === 'committed-all') rows = DATA.committed;
+    else rows = DATA.committed.filter(r => r.round === Number(dataset.value.split('r')[1]));
+    if (gamma.value !== 'all') rows = rows.filter(r => Number(r.gamma) === Number(gamma.value));
+    if (status.value !== 'all') rows = rows.filter(r => r.status === status.value);
+    if (route.value !== 'all') {
+      rows = route.value === 'ambiguous' ? rows.filter(r => !r.route) : rows.filter(r => r.route === route.value);
+    }
+    return rows;
+  }
+
+  function lineColor(row) {
+    if (color.value === 'gamma') return gammaColors[String(row.gamma)];
+    if (color.value === 'round') return roundColors[row.round] || '#64748b';
+    if (color.value === 'route') return routeColors[row.route] || statusColors[row.status] || '#64748b';
+    if (color.value === 'status') return statusColors[row.status] || '#64748b';
+    return checkpointColors[row.checkpoint] || gammaColors[String(row.gamma)] || '#64748b';
+  }
+
+  function rowLabel(row) {
+    const routeLabel = row.route ? ` · ${row.route}` : '';
+    return row.kind === 'bowling'
+      ? `${row.checkpoint} · γ=${row.gamma} · #${row.episode}${routeLabel} · ${row.status}`
+      : `R${row.round} · γ=${row.gamma} · episode ${row.episode}`;
+  }
+
+  function trajectoryTrace(row) {
+    const xyz = decodePath(row.path);
+    const label = rowLabel(row);
+    return {
+      type:'scatter3d', mode:'lines', name:label, showlegend:false,
+      x:xyz.map(p=>p[0]), y:xyz.map(p=>p[1]), z:xyz.map(p=>p[2]),
+      hovertemplate:`${label}<extra></extra>`,
+      customdata:xyz.map(()=>row.id),
+      line:{color:lineColor(row), width:7}, opacity:1,
+    };
+  }
+
+  function trajectoryGroups(rows) {
+    const groups = new Map();
+    rows.filter(row => row.id !== selectedId).forEach(row => {
+      const key = lineColor(row);
+      if (!groups.has(key)) groups.set(key,{x:[],y:[],z:[],text:[],customdata:[]});
+      const group=groups.get(key), xyz=decodePath(row.path), label=rowLabel(row);
+      xyz.forEach(point=>{group.x.push(point[0]);group.y.push(point[1]);group.z.push(point[2]);group.text.push(label);group.customdata.push(row.id)});
+      group.x.push(null);group.y.push(null);group.z.push(null);group.text.push('');group.customdata.push(null);
+    });
+    return [...groups.entries()].map(([stroke,group])=>({
+      type:'scatter3d',mode:'lines',showlegend:false,...group,
+      line:{color:stroke,width:2.2},opacity:.3,
+      hovertemplate:'%{text}<extra></extra>'
+    }));
+  }
+
+  function sphereTrace(sphere, index, selected) {
+    const [cx,cy,cz,r] = sphere;
+    const x=[], y=[], z=[];
+    for (let i=0; i<=10; i++) {
+      const theta = Math.PI*i/10, xr=[], yr=[], zr=[];
+      for (let j=0; j<=18; j++) {
+        const phi = 2*Math.PI*j/18;
+        xr.push(cx+r*Math.sin(theta)*Math.cos(phi));
+        yr.push(cy+r*Math.sin(theta)*Math.sin(phi));
+        zr.push(cz+r*Math.cos(theta));
+      }
+      x.push(xr); y.push(yr); z.push(zr);
+    }
+    return {type:'surface',x,y,z,showscale:false,hoverinfo:'skip',opacity:selected?.kind==='committed'?.33:.42,
+      colorscale:[[0, selected?.kind==='committed'?'#f59e0b':'#94a3b8'],[1, selected?.kind==='committed'?'#f59e0b':'#94a3b8']],name:`sphere ${index+1}`};
+  }
+
+  function boxTrace() {
+    const b=DATA.bounds;
+    const corners=[[b[0][0],b[1][0],b[2][0]],[b[0][1],b[1][0],b[2][0]],[b[0][1],b[1][1],b[2][0]],[b[0][0],b[1][1],b[2][0]],[b[0][0],b[1][0],b[2][1]],[b[0][1],b[1][0],b[2][1]],[b[0][1],b[1][1],b[2][1]],[b[0][0],b[1][1],b[2][1]]];
+    const edges=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    const x=[],y=[],z=[]; edges.forEach(([a,c])=>{[a,c].forEach(i=>{x.push(corners[i][0]);y.push(corners[i][1]);z.push(corners[i][2]);});x.push(null);y.push(null);z.push(null);});
+    return {type:'scatter3d',mode:'lines',x,y,z,hoverinfo:'skip',showlegend:false,line:{color:'#94a3b8',width:2},opacity:.38};
+  }
+
+  function render() {
+    const rows = candidateRows();
+    curveRows = rows;
+    const selected = rows.find(r => r.id === selectedId) || null;
+    let spheres = [];
+    if (dataset.value.startsWith('bowling')) spheres = DATA.bowlingMeta.scene.spheres;
+    else if (selected?.spheres) spheres = selected.spheres;
+    const traces = [boxTrace(), ...spheres.map((s,i)=>sphereTrace(s,i,selected)), ...trajectoryGroups(rows), ...(selected?[trajectoryTrace(selected)]:[]),
+      {type:'scatter3d',mode:'markers',x:[DATA.start[0],DATA.goal[0]],y:[DATA.start[1],DATA.goal[1]],z:[DATA.start[2],DATA.goal[2]],
+       marker:{size:6,color:['#16a34a','#dc2626']},text:['START','GOAL'],hovertemplate:'%{text}<extra></extra>',showlegend:false}];
+    const successes=rows.filter(r=>r.status==='SUCCESS').length;
+    const routes=new Set(rows.filter(r=>r.status==='SUCCESS'&&r.route).map(r=>r.route));
+    const counts={COLLISION:0,OOB:0,TIMEOUT:0}; rows.forEach(r=>{if(counts[r.status]!=null)counts[r.status]++;});
+    stats.innerHTML = [
+      ['Shown',rows.length],['Success',successes],['Routes',`${routes.size}/8`],['Collision',counts.COLLISION],['OOB',counts.OOB],['Timeout',counts.TIMEOUT]
+    ].map(([a,b])=>`<div class="wbc-stat"><span>${a}</span><b>${b}</b></div>`).join('');
+    if (!selectedId) detail.textContent = dataset.value.startsWith('committed')
+      ? 'Randomized scenes are aggregated in one frame. Click any path to reveal the exact six spheres for that committed trajectory.'
+      : 'Fixed bowling 1–2–3 scene. Filter by checkpoint, γ, route, or failure outcome.';
+    return Plotly.react(plot,traces,{
+      margin:{l:0,r:0,t:3,b:0},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',showlegend:false,
+      scene:{aspectmode:'data',camera:{eye:{x:1.35,y:1.5,z:.9}},
+        xaxis:{title:'x (m)',range:DATA.bounds[0],gridcolor:'#64748b33',zeroline:false},
+        yaxis:{title:'y (m)',range:DATA.bounds[1],gridcolor:'#64748b33',zeroline:false},
+        zaxis:{title:'z (m)',range:DATA.bounds[2],gridcolor:'#64748b33',zeroline:false}},
+      uirevision:'winner-bowling-v1'
+    },{responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});
+  }
+
+  function handleClick(event) {
+    const id = event.points?.[0]?.customdata;
+    const row = curveRows.find(value => value.id === id);
+    if (!row) return;
+    selectedId = row.id;
+    detail.innerHTML = row.kind === 'committed'
+      ? `<b>${row.id}</b><br>${row.steps} steps · ${row.member || 'paired member'} · scene ${row.sceneHash}<br>Its exact six-sphere scene is now shown.`
+      : `<b>${row.id}</b><br>${row.status}${row.route ? ` · route ${row.route}` : ''} · clearance ${fmt(row.clearance)} m · validity ${pct(row.validity)}`;
+    render();
+  }
+  [dataset,gamma,status,route,color].forEach(control=>control.addEventListener('change',()=>{selectedId=null;render();}));
+  render().then(() => plot.on('plotly_click', handleClick));
+})();
+</script>

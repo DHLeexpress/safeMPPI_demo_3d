@@ -1,0 +1,18 @@
+{
+  "schema": "safemppi_gamma01_extended_site_bank_v1",
+  "base_sha256": "fb1c6bf51eec10172d6576df01abfb9cfed55316e42bf8473212171b8113c45b",
+  "extension_sha256": "bbc12207d213b58e72025098f7e15ffaa817b446fae647ce0c3b67a521ba104f",
+  "output_sha256": "b9751271140a9e9fd0de4b5308d31a8a189f97b11d42b13726417a83ac5178f9",
+  "base_rows": 800,
+  "extension_rows": 600,
+  "combined_rows": 1400,
+  "gamma01_rows": 1100,
+  "extension_episode_range": [
+    500,
+    1099
+  ],
+  "extension_seed_range": [
+    245000,
+    245599
+  ]
+}

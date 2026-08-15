@@ -74,6 +74,74 @@ def check_cfm_arrays(handoff: dict) -> int:
     return checked
 
 
+def check_fixed_gamma_contracts(handoff: dict) -> None:
+    """Enforce the four fixed-gamma paper handoff counts."""
+    groups = handoff["groups"]
+    for group in (
+        "paper-ready-pre2", "paper-ready-less-expanded", "paper-ready-expanded"
+    ):
+        rows = groups[group]
+        if len(rows) != 8 or {float(row["gamma"]) for row in rows} != {0.1}:
+            raise RuntimeError(f"{group} must contain exactly 8 gamma 0.1 rows")
+
+    cfm_rows = groups["paper-ready-cfmmppi"]
+    regimes = {"safety", "balanced", "performance"}
+    if {str(row["regime"]) for row in cfm_rows} != regimes:
+        raise RuntimeError("paper-ready CFM bank is missing a required regime")
+    for regime in regimes:
+        rows = [row for row in cfm_rows if row["regime"] == regime]
+        if len(rows) != 8 or {float(row["gamma"]) for row in rows} != {0.1}:
+            raise RuntimeError(f"CFM {regime} must contain exactly 8 gamma 0.1 rows")
+
+    safe_rows = [
+        row for row in groups["paper-ready-safemppi"]
+        if np.isclose(float(row["gamma"]), 0.1)
+    ]
+    if len(safe_rows) != 8:
+        raise RuntimeError("paper-ready SafeMPPI must contain 8 gamma 0.1 rows")
+
+
+def check_less_expanded_arrays(handoff: dict) -> int:
+    payload = torch.load(
+        ROOT / "trajectories/less_expanded/r1_only_bowling_raw_trajectories.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    actual = {
+        (float(row["gamma"]), int(row["episode"]), int(row["rollout_seed"])): row
+        for row in payload["1"]
+    }
+    checked = 0
+    for row in handoff["groups"]["paper-ready-less-expanded"]:
+        key = (float(row["gamma"]), int(row["episode"]), int(row["rollout_seed"]))
+        source = actual[key]
+        for field in ("states", "controls", "applied_controls", "dense_steps"):
+            if not np.array_equal(np.asarray(row[field]), np.asarray(source[field])):
+                raise RuntimeError(f"Expanded R1 array mismatch {key}: {field}")
+        checked += 1
+    return checked
+
+
+def check_safemppi_arrays(handoff: dict) -> int:
+    contract = ROOT / "trajectories/safemppi/site_bank_combined_raw_trajectories.pt"
+    payload = torch.load(contract, map_location="cpu", weights_only=False)
+    actual = {
+        (float(row["gamma"]), int(row["episode"]), int(row["rollout_seed"])): row
+        for row in payload["safemppi"]
+    }
+    checked = 0
+    for row in handoff["groups"]["paper-ready-safemppi"]:
+        key = (float(row["gamma"]), int(row["episode"]), int(row["rollout_seed"]))
+        source = actual[key]
+        for field in (
+            "states", "controls", "applied_controls", "dense_positions"
+        ):
+            if not np.array_equal(np.asarray(row[field]), np.asarray(source[field])):
+                raise RuntimeError(f"SafeMPPI array mismatch {key}: {field}")
+        checked += 1
+    return checked
+
+
 def main() -> None:
     selection = json.loads(
         (ROOT / "selections/paper_ready_bowling_selection.json").read_text()
@@ -95,11 +163,15 @@ def main() -> None:
             row_count += 1
     if 'id="regime"' not in site or "exact rollout seed" not in site:
         raise RuntimeError("site is missing interactive regime/seed controls")
+    check_fixed_gamma_contracts(handoff)
+    less_expanded_count = check_less_expanded_arrays(handoff)
     cfm_count = check_cfm_arrays(handoff)
+    safemppi_count = check_safemppi_arrays(handoff)
     hash_count = check_hashes()
     print(
         f"OK: {hash_count} file hashes, {row_count} selected rows, "
-        f"{cfm_count} exact CFM rows"
+        f"{less_expanded_count} exact Expanded R1 rows, {cfm_count} exact CFM rows, "
+        f"{safemppi_count} exact SafeMPPI rows"
     )
 
 

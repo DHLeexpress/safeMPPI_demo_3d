@@ -1,0 +1,101 @@
+{
+  "taskspace": {
+    "origin": [
+      -2.5,
+      -1.7,
+      0.0
+    ],
+    "size": [
+      3.8,
+      3.5,
+      1.5
+    ],
+    "start": [
+      -2.1,
+      1.5,
+      0.6,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "goal": [
+      0.7,
+      -1.5,
+      1.2
+    ],
+    "reach_radius": 0.35,
+    "max_steps": 250
+  },
+  "obstacles": {
+    "spheres": [
+      [
+        -0.541,
+        -0.416,
+        1.217,
+        0.379
+      ]
+    ],
+    "cylinders": []
+  },
+  "safety": {
+    "safe_min": [
+      -2.5,
+      -1.7,
+      0.4
+    ],
+    "safe_max": [
+      1.3,
+      1.8,
+      2.0
+    ]
+  },
+  "safemppi": {
+    "sampling_mode": "mode1_centroid_anisotropic",
+    "horizon": 10,
+    "dt": 0.1,
+    "num_samples": 512,
+    "temperature": 0.1,
+    "noise_sigma": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "demo_u_max": 0.3,
+    "platform_u_max": 3.0,
+    "sensing_range": 2.0,
+    "polytope_faces": 80,
+    "centroid_gain": 0.2,
+    "centroid_smooth": 0.25,
+    "centroid_eps": 0.15,
+    "sigma_aniso": 2.5,
+    "urgency_floor": 0.02,
+    "warm_start": true,
+    "initial_control": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "running_goal_weight": 0.25,
+    "terminal_goal_weight": 80.0,
+    "control_weight": 0.05,
+    "smooth_weight": 0.35,
+    "soft_clearance_weight": 60.0,
+    "soft_clearance_target": 0.3,
+    "progress_weight": 2.0,
+    "z_bias_plane": 1.35,
+    "z_bias_temperature": 0.12,
+    "z_bias_weight": 2.0,
+    "robot_radius": 0.0,
+    "obstacle_margin": 0.0,
+    "safety_margin": 0.0,
+    "predict_gain": 0.0,
+    "zoh_guard": 0.0
+  },
+  "data": {
+    "gammas": [
+      0.3
+    ],
+    "episodes_per_gamma": 1,
+    "seed_start": 0
+  }
+}

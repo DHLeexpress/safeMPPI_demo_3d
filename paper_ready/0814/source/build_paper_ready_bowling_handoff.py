@@ -357,6 +357,40 @@ def _select_balanced_eight(rows: list[dict[str, Any]], gamma: float) -> list[dic
     return selected
 
 
+def _select_less_expanded_eight(
+    rows: list[dict[str, Any]], gamma: float = 0.1,
+) -> list[dict[str, Any]]:
+    """Choose eight R1 successes: route balance first, then paper quality."""
+    eligible = [
+        row for row in _successful(rows, gamma)
+        if row["paper_quality"]["hard_z_pass"]
+        and row["paper_quality"]["hard_goal_progress_pass"]
+    ]
+    by_route = {
+        route: sorted(
+            [row for row in eligible if row["stable_route"] == route],
+            key=lambda row: (row["paper_quality"]["quality_score"], int(row["episode"])),
+        )
+        for route in ROUTES
+    }
+    selected = []
+    depth = 0
+    while len(selected) < 8:
+        added = False
+        for route in ROUTES:
+            if depth < len(by_route[route]):
+                selected.append(by_route[route][depth])
+                added = True
+                if len(selected) == 8:
+                    break
+        if not added:
+            break
+        depth += 1
+    if len(selected) != 8:
+        raise ValueError(f"Expanded R1 has only {len(selected)} paper-eligible rows")
+    return selected
+
+
 def _encode_states(states: Any) -> dict[str, Any]:
     values = np.asarray(states, np.float64)
     positions = np.rint(values[:, :3] * 1000.0).astype(np.int64)
@@ -448,6 +482,10 @@ def main() -> None:
     parser.add_argument("--pre2-eval", type=Path, required=True)
     parser.add_argument("--pre2-raw", type=Path, action="append", required=True)
     parser.add_argument("--expanded-raw", type=Path, action="append", required=True)
+    parser.add_argument("--less-expanded-raw", type=Path)
+    parser.add_argument("--less-expanded-checkpoint", type=Path)
+    parser.add_argument("--less-expanded-source-manifest", type=Path)
+    parser.add_argument("--less-expanded-source-id")
     parser.add_argument("--safemppi-raw", type=Path)
     parser.add_argument("--cfm-raw", action="append", default=[])
     parser.add_argument(
@@ -466,6 +504,11 @@ def main() -> None:
     goal = scene["goal"]
     pre2 = _annotate(_load_rows(args.pre2_raw, 0), goal)
     expanded = _annotate(_load_rows(args.expanded_raw, 4), goal)
+    less_expanded = None
+    if args.less_expanded_raw is not None:
+        less_expanded = _annotate(_load_rows([args.less_expanded_raw], 1), goal)
+        if args.less_expanded_checkpoint is None:
+            raise ValueError("--less-expanded-checkpoint is required with R1 raw data")
     safemppi = None
     if args.safemppi_raw is not None:
         raw = torch.load(args.safemppi_raw, map_location="cpu", weights_only=False)
@@ -493,6 +536,9 @@ def main() -> None:
     paper_pre2 = _select_pre2(pre2, chosen_gamma, discovery_trials)
     groups: dict[str, list[dict[str, Any]] | None] = {
         "paper-ready-pre2": paper_pre2,
+        "paper-ready-less-expanded": (
+            None if less_expanded is None else _select_less_expanded_eight(less_expanded)
+        ),
         "paper-ready-expanded": paper_expanded,
         "paper-ready-cfmmppi": None if not cfm else [
             row for row in cfm if np.isclose(float(row["gamma"]), cfm_gamma)
@@ -564,6 +610,26 @@ def main() -> None:
                 for gamma in GAMMAS
             },
         }
+    if less_expanded is not None:
+        less_rows = groups["paper-ready-less-expanded"]
+        audit["less_expanded"] = {
+            "source_round": 1,
+            "gamma": 0.1,
+            "attempts": int(sum(np.isclose(float(row["gamma"]), 0.1) for row in less_expanded)),
+            "successes": int(sum(
+                np.isclose(float(row["gamma"]), 0.1) and row["status"] == "SUCCESS"
+                for row in less_expanded
+            )),
+            "selected_count": len(less_rows),
+            "selected_modes": sorted({row["stable_route"] for row in less_rows}),
+            "checkpoint_sha256": _sha256(args.less_expanded_checkpoint),
+            "source_manifest_sha256": (
+                _sha256(args.less_expanded_source_manifest)
+                if args.less_expanded_source_manifest else None
+            ),
+            "source_id": args.less_expanded_source_id,
+            "selection": "hard z-band + positive goal progress; route balance, then quality score",
+        }
     if cfm:
         audit["cfmmppi"] = {
             "selected_gamma": cfm_gamma,
@@ -614,6 +680,11 @@ def main() -> None:
         payload["groups"]["paper-ready-safemppi"] = [
             _viz_row(row, "SafeMPPI") for row in groups["paper-ready-safemppi"]
         ]
+    if groups["paper-ready-less-expanded"] is not None:
+        payload["groups"]["paper-ready-less-expanded"] = [
+            _viz_row(row, "Expanded R1")
+            for row in groups["paper-ready-less-expanded"]
+        ]
     for name in ("paper-ready-cfmmppi", "not-paper-ready-cfmmppi"):
         if groups[name] is not None:
             payload["groups"][name] = [
@@ -644,6 +715,14 @@ def main() -> None:
             "pre2_eval": _sha256(args.pre2_eval),
             **{f"pre2_raw_{i}": _sha256(path) for i, path in enumerate(args.pre2_raw)},
             **{f"expanded_raw_{i}": _sha256(path) for i, path in enumerate(args.expanded_raw)},
+            **(
+                {"less_expanded_raw": _sha256(args.less_expanded_raw)}
+                if args.less_expanded_raw else {}
+            ),
+            **(
+                {"less_expanded_checkpoint": _sha256(args.less_expanded_checkpoint)}
+                if args.less_expanded_checkpoint else {}
+            ),
             **({"safemppi_raw": _sha256(args.safemppi_raw)} if args.safemppi_raw else {}),
             **{
                 f"cfmmppi_{regime}": _sha256(path)

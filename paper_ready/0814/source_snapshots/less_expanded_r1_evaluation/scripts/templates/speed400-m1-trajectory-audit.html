@@ -1,0 +1,238 @@
+<div id="speed400-m1-trajectory-audit">
+  <div class="s4-head">
+    <div>
+      <div class="s4-kicker">FAITHFUL DEPLOYMENT · SPEED400</div>
+      <h2>R1 → R9 behavior, failures, and bowling coverage</h2>
+    </div>
+    <div class="s4-contract" id="s4-contract"></div>
+  </div>
+
+  <div class="s4-controls" aria-label="trajectory filters">
+    <label>Scene
+      <select id="s4-dataset">
+        <option value="random">Fixed unseen random bank</option>
+        <option value="bowling">Fixed bowling 1–2–3</option>
+      </select>
+    </label>
+    <label>Round
+      <select id="s4-round">
+        <option value="1">R1</option><option value="3">R3</option>
+        <option value="5" selected>R5</option><option value="7">R7</option>
+        <option value="9">R9</option>
+      </select>
+    </label>
+    <label>Outcome
+      <select id="s4-status">
+        <option value="all">Success + collision + OOB</option>
+        <option value="SUCCESS">Success</option>
+        <option value="COLLISION">Collision</option>
+        <option value="OOB">OOB</option>
+      </select>
+    </label>
+    <label>γ
+      <select id="s4-gamma">
+        <option value="all">All γ</option>
+        <option value="0.1">0.1</option><option value="0.3">0.3</option>
+        <option value="0.5">0.5</option><option value="1">1.0</option>
+      </select>
+    </label>
+    <label id="s4-route-wrap">Route
+      <select id="s4-route">
+        <option value="all">All routes</option>
+        <option value="LLL">LLL</option><option value="LLR">LLR</option>
+        <option value="LRL">LRL</option><option value="LRR">LRR</option>
+        <option value="RLL">RLL</option><option value="RLR">RLR</option>
+        <option value="RRL">RRL</option><option value="RRR">RRR</option>
+      </select>
+    </label>
+    <label>Selected path
+      <select id="s4-trajectory"></select>
+    </label>
+  </div>
+
+  <div class="s4-stage">
+    <div id="s4-plot" role="img" aria-label="Interactive three-dimensional trajectories with state dots"></div>
+    <div class="s4-side">
+      <div id="s4-selected" class="s4-selected"></div>
+      <table class="s4-table" aria-label="Round metrics and bowling coverage">
+        <thead><tr><th>Round</th><th>SR</th><th>CR</th><th>OOB</th><th>Valid</th><th>Clear.</th><th>TtG</th><th>Bowling</th></tr></thead>
+        <tbody id="s4-metrics"></tbody>
+      </table>
+      <div class="s4-coverage" id="s4-coverage"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+  #speed400-m1-trajectory-audit { color:var(--foreground); font-family:var(--font-sans); }
+  #speed400-m1-trajectory-audit * { box-sizing:border-box; }
+  .s4-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:10px; }
+  .s4-head h2 { margin:2px 0 0; font-size:21px; letter-spacing:-.02em; }
+  .s4-kicker { color:var(--primary); font-size:10px; font-weight:800; letter-spacing:.14em; }
+  .s4-contract { color:var(--muted-foreground); font-size:10px; text-align:right; }
+  .s4-controls { display:grid; grid-template-columns:1.25fr .55fr 1.15fr .55fr .75fr 1.55fr; gap:7px; margin:8px 0; }
+  .s4-controls label { color:var(--muted-foreground); font-size:9px; font-weight:700; letter-spacing:.03em; }
+  .s4-controls select { width:100%; margin-top:3px; padding:6px 7px; border:1px solid var(--border); border-radius:6px; background:var(--background); color:var(--foreground); font-size:10px; }
+  .s4-stage { display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:10px; }
+  #s4-plot { height:610px; min-height:480px; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .s4-side { min-width:0; display:flex; flex-direction:column; gap:9px; }
+  .s4-selected { min-height:64px; padding-bottom:8px; border-bottom:1px solid var(--border); font-size:10px; line-height:1.45; color:var(--muted-foreground); }
+  .s4-selected b { color:var(--foreground); font-size:11px; }
+  .s4-table { width:100%; border-collapse:collapse; font-size:9px; font-variant-numeric:tabular-nums; }
+  .s4-table th { color:var(--muted-foreground); font-weight:700; text-align:right; padding:4px 3px; border-bottom:1px solid var(--border); }
+  .s4-table th:first-child,.s4-table td:first-child { text-align:left; }
+  .s4-table td { text-align:right; padding:5px 3px; border-bottom:1px solid color-mix(in srgb,var(--border) 55%,transparent); cursor:pointer; }
+  .s4-table tr[aria-current="true"] td { color:var(--primary); font-weight:800; }
+  .s4-coverage { margin-top:auto; font-size:9px; color:var(--muted-foreground); }
+  .s4-route-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:3px; margin-top:5px; }
+  .s4-route-cell { padding:4px 1px; text-align:center; border:1px solid var(--border); color:var(--muted-foreground); }
+  .s4-route-cell[data-on="true"] { color:var(--foreground); border-color:var(--primary); font-weight:800; }
+  @media (max-width:900px) {
+    .s4-controls { grid-template-columns:repeat(3,1fr); }
+    .s4-stage { grid-template-columns:1fr; }
+    .s4-side { display:grid; grid-template-columns:1fr; }
+    #s4-plot { height:530px; }
+  }
+  @media (max-width:540px) {
+    .s4-head { display:block; }
+    .s4-contract { margin-top:4px; text-align:left; }
+    .s4-controls { grid-template-columns:repeat(2,1fr); }
+    .s4-table { font-size:8px; }
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script>
+(() => {
+  const DATA = __SPEED400_M1_TRAJECTORY_DATA__;
+  const root = document.getElementById('speed400-m1-trajectory-audit');
+  const plot = root.querySelector('#s4-plot');
+  const dataset = root.querySelector('#s4-dataset');
+  const round = root.querySelector('#s4-round');
+  const status = root.querySelector('#s4-status');
+  const gamma = root.querySelector('#s4-gamma');
+  const route = root.querySelector('#s4-route');
+  const routeWrap = root.querySelector('#s4-route-wrap');
+  const trajectory = root.querySelector('#s4-trajectory');
+  const selected = root.querySelector('#s4-selected');
+  const css = getComputedStyle(root);
+  const token = name => css.getPropertyValue(name).trim();
+  const colors = {
+    success:token('--viz-series-2'), collision:token('--viz-series-4'),
+    oob:token('--viz-series-6'), neutral:token('--muted-foreground'),
+    sphere:token('--viz-series-3'), selected:token('--primary'),
+    foreground:token('--foreground'), border:token('--border'),
+    background:token('--background')
+  };
+  const routeColors = DATA.routes.reduce((value,key,index) => {
+    value[key] = token(`--viz-series-${index % 6 + 1}`); return value;
+  }, {});
+  root.querySelector('#s4-contract').textContent = DATA.contract;
+
+  function pct(value) { return value == null ? '—' : `${(100*value).toFixed(1)}%`; }
+  function num(value,digits=3) { return value == null ? '—' : Number(value).toFixed(digits); }
+  function decode(encoded) {
+    const points=[encoded.p0.slice()];
+    for (let i=0;i<encoded.dp.length;i+=3) {
+      const p=points[points.length-1];
+      points.push([p[0]+encoded.dp[i],p[1]+encoded.dp[i+1],p[2]+encoded.dp[i+2]]);
+    }
+    return points.map((p,i)=>[p[0]/1000,p[1]/1000,p[2]/1000,encoded.speed[i]/1000]);
+  }
+  function pathLabel(row) {
+    return `R${row.round} · γ=${row.gamma} · #${row.episode} · ${row.status}${row.route ? ` · ${row.route}` : ''}`;
+  }
+  function rowColor(row) {
+    if (dataset.value === 'bowling' && row.route) return routeColors[row.route];
+    if (row.status === 'SUCCESS') return colors.success;
+    if (row.status === 'COLLISION') return colors.collision;
+    return colors.oob;
+  }
+  function filtered() {
+    let rows = DATA[dataset.value].filter(row => row.round === Number(round.value));
+    if (status.value !== 'all') rows = rows.filter(row => row.status === status.value);
+    if (gamma.value !== 'all') rows = rows.filter(row => Number(row.gamma) === Number(gamma.value));
+    if (dataset.value === 'bowling' && route.value !== 'all') rows = rows.filter(row => row.route === route.value);
+    return rows;
+  }
+  function updateTrajectoryOptions(rows) {
+    const previous=trajectory.value;
+    trajectory.innerHTML=rows.map(row=>`<option value="${row.id}">${pathLabel(row)}</option>`).join('');
+    if (rows.some(row=>row.id===previous)) trajectory.value=previous;
+  }
+  function sphereTrace(sphere,index) {
+    const [cx,cy,cz,r]=sphere,x=[],y=[],z=[];
+    for(let i=0;i<=8;i++) {
+      const t=Math.PI*i/8,xr=[],yr=[],zr=[];
+      for(let j=0;j<=14;j++) {
+        const p=2*Math.PI*j/14;
+        xr.push(cx+r*Math.sin(t)*Math.cos(p));yr.push(cy+r*Math.sin(t)*Math.sin(p));zr.push(cz+r*Math.cos(t));
+      }
+      x.push(xr);y.push(yr);z.push(zr);
+    }
+    return {type:'surface',x,y,z,showscale:false,hoverinfo:'skip',opacity:.34,
+      colorscale:[[0,colors.sphere],[1,colors.sphere]],name:`sphere ${index+1}`};
+  }
+  function boxTrace() {
+    const b=DATA.bounds,c=[[b[0][0],b[1][0],b[2][0]],[b[0][1],b[1][0],b[2][0]],[b[0][1],b[1][1],b[2][0]],[b[0][0],b[1][1],b[2][0]],[b[0][0],b[1][0],b[2][1]],[b[0][1],b[1][0],b[2][1]],[b[0][1],b[1][1],b[2][1]],[b[0][0],b[1][1],b[2][1]]];
+    const e=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]],x=[],y=[],z=[];
+    e.forEach(([a,d])=>{[a,d].forEach(i=>{x.push(c[i][0]);y.push(c[i][1]);z.push(c[i][2])});x.push(null);y.push(null);z.push(null)});
+    return {type:'scatter3d',mode:'lines',x,y,z,hoverinfo:'skip',showlegend:false,line:{color:colors.border,width:2},opacity:.45};
+  }
+  function pathTrace(row,isSelected) {
+    const p=decode(row.states),label=pathLabel(row);
+    const custom=p.map((point,i)=>[row.id,label,(i*DATA.dt).toFixed(1),point[3].toFixed(3)]);
+    return {type:'scatter3d',mode:'lines+markers',name:label,showlegend:false,
+      x:p.map(v=>v[0]),y:p.map(v=>v[1]),z:p.map(v=>v[2]),customdata:custom,
+      line:{color:rowColor(row),width:isSelected?7:2.5},
+      marker:{color:rowColor(row),size:isSelected?2.8:1.6,opacity:isSelected?1:.66},opacity:isSelected?1:.44,
+      hovertemplate:'%{customdata[1]}<br>t=%{customdata[2]} s · speed=%{customdata[3]} m/s<extra></extra>'};
+  }
+  function terminalTrace(row) {
+    const p=decode(row.states).at(-1);
+    return {type:'scatter3d',mode:'markers',x:[p[0]],y:[p[1]],z:[p[2]],showlegend:false,
+      marker:{size:6,color:rowColor(row),symbol:'diamond'},hovertemplate:`${row.status} terminal<extra></extra>`};
+  }
+  function renderMetrics() {
+    const tbody=root.querySelector('#s4-metrics');
+    tbody.innerHTML=DATA.metrics.map(value=>`<tr data-round="${value.round}" aria-current="${Number(round.value)===value.round}">
+      <td>R${value.round}</td><td>${pct(value.SR)}</td><td>${pct(value.CR)}</td><td>${pct(value.OOB)}</td>
+      <td>${pct(value.validity)}</td><td>${num(value.clearance)}</td><td>${num(value.ttg,1)}</td><td>${value.coverage}/8</td></tr>`).join('');
+    tbody.querySelectorAll('tr').forEach(rowElement=>rowElement.addEventListener('click',()=>{
+      round.value=rowElement.dataset.round; refresh();
+    }));
+    const metric=DATA.metrics.find(value=>value.round===Number(round.value));
+    root.querySelector('#s4-coverage').innerHTML=`<b>R${metric.round} bowling projected coverage · ${metric.coverage}/8</b>
+      <div class="s4-route-grid">${DATA.routes.map(code=>`<div class="s4-route-cell" data-on="${metric.routes.includes(code)}">${code}</div>`).join('')}</div>`;
+  }
+  function renderSelected(row) {
+    if (!row) { selected.textContent='No path matches the current filters.'; return; }
+    selected.innerHTML=`<b>${pathLabel(row)}</b><br>${row.steps} state intervals · ${num(row.steps*DATA.dt,1)} s recorded · mean |z−0.9| ${num(row.meanAbsZ09)} m<br>clearance ${num(row.minClearance)} m · validity ${pct(row.validity)}${row.kind==='random'?` · scene ${row.sceneHash}`:''}`;
+  }
+  function render() {
+    routeWrap.style.display=dataset.value==='bowling'?'block':'none';
+    if (dataset.value==='random') route.value='all';
+    const rows=filtered(); updateTrajectoryOptions(rows);
+    const focus=rows.find(row=>row.id===trajectory.value)||rows[0]||null;
+    if (focus) trajectory.value=focus.id;
+    const spheres=dataset.value==='bowling'?DATA.bowlingSpheres:(focus?.spheres||[]);
+    const traces=[boxTrace(),...spheres.map(sphereTrace),...rows.map(row=>pathTrace(row,row===focus))];
+    if (focus) traces.push(terminalTrace(focus));
+    traces.push({type:'scatter3d',mode:'markers+text',x:[DATA.start[0],DATA.goal[0]],y:[DATA.start[1],DATA.goal[1]],z:[DATA.start[2],DATA.goal[2]],text:['START','GOAL'],textposition:'top center',showlegend:false,hoverinfo:'text',marker:{size:6,color:[colors.success,colors.collision]}});
+    renderSelected(focus);renderMetrics();
+    return Plotly.react(plot,traces,{margin:{l:0,r:0,t:3,b:0},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',showlegend:false,
+      scene:{aspectmode:'data',camera:{eye:{x:1.35,y:1.45,z:.8}},
+        xaxis:{title:'x (m)',range:DATA.bounds[0],color:colors.foreground,gridcolor:colors.border,zeroline:false},
+        yaxis:{title:'y (m)',range:DATA.bounds[1],color:colors.foreground,gridcolor:colors.border,zeroline:false},
+        zaxis:{title:'z (m)',range:DATA.bounds[2],color:colors.foreground,gridcolor:colors.border,zeroline:false}},
+      uirevision:'speed400-m1-r13579'}, {responsive:true,displaylogo:false,modeBarButtonsToRemove:['select2d','lasso2d']});
+  }
+  function refresh() { render(); }
+  [dataset,round,status,gamma,route].forEach(control=>control.addEventListener('change',refresh));
+  trajectory.addEventListener('change',render);
+  render().then(()=>plot.on('plotly_click',event=>{
+    const id=event.points?.[0]?.customdata?.[0];
+    if(id&&[...trajectory.options].some(option=>option.value===id)){trajectory.value=id;render();}
+  }));
+})();
+</script>

@@ -1,0 +1,25 @@
+{
+  "status": "PREPARED_NOT_LAUNCHED",
+  "reason": "physical GPU1 is occupied by authoritative PID 3100849; capture must start only after it exits",
+  "script": "/Users/dhl/Documents/safeMPPI_demo_3d/scripts/run_speed400_m1_trajectory_visual_gpu1.py",
+  "staged_source": "/home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-5ab0794c77dd",
+  "remote_spec": "/data3/research1/safeMPPI_remote_cli/direct_runs/0812_pre2_speed400_faithful_gpu1/control/spec.json",
+  "remote_output": "/data3/research1/safeMPPI_remote_cli/direct_runs/0812_pre2_speed400_faithful_gpu1/trajectory_visual_gpu1_cuda",
+  "contract": {
+    "rounds": [1, 3, 5, 7, 9],
+    "sources": ["fixed unseen random scene bank", "fixed bowling_123"],
+    "attempts_per_checkpoint": 200,
+    "NFE": 16,
+    "samples_per_step": 1,
+    "sampling_temperature": 1.0,
+    "execution_obstacle_exponential": [15.0, 0.6, 0.15],
+    "wall": [250.0, 0.15],
+    "axis": [5.0, 1.1],
+    "control_weight": 0.05,
+    "obstacle_conditioned_speed_weight": 400.0,
+    "cost_band_fraction": 0.05,
+    "verifier_or_progress_used_for_selection": false,
+    "full_state_control_capture": true
+  },
+  "launch_after_pid_3100849_exits": "CUDA_VISIBLE_DEVICES=1 nohup /home/dohyun/miniforge3/envs/cfm_mppi/bin/python /home/dohyun/.cache/safeMPPI_demo_3d/5c8a57779f16-5ab0794c77dd/scripts/run_speed400_m1_trajectory_visual_gpu1.py --spec /data3/research1/safeMPPI_remote_cli/direct_runs/0812_pre2_speed400_faithful_gpu1/control/spec.json --output-base /data3/research1/safeMPPI_remote_cli/direct_runs/0812_pre2_speed400_faithful_gpu1/trajectory_visual_gpu1_cuda > /data3/research1/safeMPPI_remote_cli/direct_runs/0812_pre2_speed400_faithful_gpu1/trajectory_visual_gpu1_cuda.log 2>&1 < /dev/null &"
+}

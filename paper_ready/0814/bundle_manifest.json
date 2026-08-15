@@ -12,6 +12,12 @@
       "sha256": "76b10a69b6f26d65533d4e617ccbf6fb77a2178ac030244c5a745c11a4d0a3c0",
       "nfe": 16
     },
+    "less_expanded_r1": {
+      "path": "checkpoints/less_expanded/checkpoint_001.pt",
+      "sha256": "7d5c5cc1f7e9b55ae2a803b8a3812264f38072cd74a416cd81b32b9810253f98",
+      "nfe": 16,
+      "expansion_source_id": "5c8a57779f16-1cf210b2e2ee"
+    },
     "expanded_s4_r4": {
       "path": "checkpoints/expanded/checkpoint_004.pt",
       "sha256": "a37f93091bfc88340b7f2bab0d41cb889ff59a2caf00d737e58e57fbfa4cdb52",
@@ -32,7 +38,15 @@
     "cfmmppi_runner_sha256": "3d50093205f958897824006649ee4aaddabd9f40eeea2a222fe7a694c8d4690d",
     "runtime_snapshot": "runtime_snapshot/safe_mppi",
     "existing_safemppi_handoff": "paper_ready/0808/safemppi",
-    "existing_safemppi_source_git_sha": "dabb5011dfc674864e1de275a1e1c2adab58f4af"
+    "existing_safemppi_source_git_sha": "dabb5011dfc674864e1de275a1e1c2adab58f4af",
+    "less_expanded_source_snapshot": "source_snapshots/less_expanded_r1",
+    "less_expanded_evaluation_source_id": "5c8a57779f16-5ab0794c77dd",
+    "less_expanded_evaluation_source_snapshot": "source_snapshots/less_expanded_r1_evaluation",
+    "less_expanded_evaluation_runner_sha256": "3e9f922bb8322a2740b91497b5aa4e29736a8d5dd0f72e00adda27a1739b6586",
+    "less_expanded_evaluator_sha256": "9cd0ae52da44cf4295598466353d555402760b8908a5a050180e1434e8528874",
+    "less_expanded_runner_sha256": "d4a7a3f8e22c88c0b153114e43ac453464c4edadffab2d8d9b9f1d335a985acc",
+    "less_expanded_expansion_sha256": "98af22653a6eaaf8b5a22a0d73955ae69bce24a98c312fdad1828a9d11f11230",
+    "less_expanded_task_adapter_sha256": "f22398cc412dcb6faa6ce2063c569064c56ff43e390594c4dacd1363fddcd63a"
   },
   "trajectory_contract": {
     "full_selected_arrays": "trajectories/paper_ready_bowling_handoff.pt",
@@ -44,6 +58,14 @@
     "cfmmppi_matched_seed_count_per_regime": 8,
     "cfmmppi_fresh_bank": "trajectories/cfmmppi/fixed_gamma01_matched8/raw_trajectories.pt",
     "cfmmppi_combined_site_bank": "trajectories/cfmmppi/site_bank_combined_raw_trajectories.pt",
-    "pre2_expanded_promoted_gamma": 0.1
+    "pre2_expanded_promoted_gamma": 0.1,
+    "less_expanded_fixed_gamma": 0.1,
+    "less_expanded_selected_count": 8,
+    "less_expanded_raw_bank": "trajectories/less_expanded/r1_only_bowling_raw_trajectories.pt",
+    "safemppi_fixed_gamma": 0.1,
+    "safemppi_selected_count": 8,
+    "safemppi_combined_site_bank": "trajectories/safemppi/site_bank_combined_raw_trajectories.pt",
+    "visible_trajectory_count_per_cfm_regime": 40,
+    "frozen_paper_trajectory_count_all_cfm_regimes": 56
   }
 }
