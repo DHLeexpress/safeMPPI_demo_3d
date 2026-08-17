@@ -26,8 +26,8 @@ scene의 simulation reference이므로 bowling용 56개 flight roster에는 합�
 
 `fixed_cylinder_safemppi_gamma03/`에는 이와 구별되는 **한 fixed episode의
 SafeMPPI controller rollout** 8개가 있습니다. 같은 여섯 cylinder boundary와
-γ=0.3을 유지하고 rollout seed만 바꿉니다. 96-seed screen에서 dominant
-`ALL_LEFT=37`, `ALL_RIGHT=24`, middle `LRLRLR=23`, `RRLRLL=3`이 관찰됐고,
+γ=0.3을 유지하고 rollout seed만 바꿉니다. 384-seed screen에서 dominant
+`ALL_LEFT=165`, `ALL_RIGHT=81`, middle `LRLRLR=61`, `RRLRLL=25`가 관찰됐고,
 frozen roster는 all-left 3 + all-right 3 + middle 2입니다. 이 sub-bundle은
 자체 `README.md`, `REPRODUCE.py`, `VERIFY.py`, raw rollout, 100 Hz full-state
 flight reference, source SHA256을 포함합니다.

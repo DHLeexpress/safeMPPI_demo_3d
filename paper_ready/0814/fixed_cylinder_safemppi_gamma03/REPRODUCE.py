@@ -33,14 +33,14 @@ CYLINDERS = np.asarray([
     [0.19599999487400055, -0.9599999785423279, 0.20000000298023224],
 ], np.float32)
 ROSTER = (
-    ("ALL_LEFT", "LLLLLL", 820565),
-    ("ALL_LEFT", "LLLLLL", 820534),
-    ("ALL_LEFT", "LLLLLL", 820578),
-    ("ALL_RIGHT", "RRRRRR", 820586),
-    ("ALL_RIGHT", "RRRRRR", 820514),
-    ("ALL_RIGHT", "RRRRRR", 820560),
-    ("MIDDLE", "LRLRLR", 820577),
-    ("MIDDLE", "RRLRLL", 820544),
+    ("ALL_LEFT", "LLLLLL", 820864),
+    ("ALL_LEFT", "LLLLLL", 820701),
+    ("ALL_LEFT", "LLLLLL", 820723),
+    ("ALL_RIGHT", "RRRRRR", 820829),
+    ("ALL_RIGHT", "RRRRRR", 820870),
+    ("ALL_RIGHT", "RRRRRR", 820764),
+    ("MIDDLE", "LRLRLR", 820518),
+    ("MIDDLE", "RRLRLL", 820627),
 )
 EXPECTED_SOURCE_SHA256 = {
     "safe_mppi/controller.py": "dfc91a26ccac2818c902215bf4d9a06e405d5878e5c6af0be2f75c4f68106dad",
@@ -93,10 +93,16 @@ def geometry(points: np.ndarray) -> dict[str, float]:
         np.arccos(np.clip(np.sum(directions[1:] * directions[:-1], axis=1), -1.0, 1.0))
         if len(directions) > 1 else np.zeros(0)
     )
+    dz = np.abs(np.asarray(points, float)[:, 2] - 0.9)
     return {
         "path_length_m": float(lengths.sum()),
         "total_turn_radians": float(turns.sum()),
         "mean_turn_radians": float(turns.mean()) if len(turns) else 0.0,
+        "mean_abs_z_minus_0p9_m": float(dz.mean()),
+        "p90_abs_z_minus_0p9_m": float(np.quantile(dz, 0.9)),
+        "max_abs_z_minus_0p9_m": float(dz.max()),
+        "fraction_within_0p05_m": float(np.mean(dz <= 0.05)),
+        "fraction_within_0p10_m": float(np.mean(dz <= 0.10)),
     }
 
 
@@ -268,12 +274,21 @@ def main() -> int:
         "kind": "exact SafeMPPI rollouts on one fixed symmetric six-cylinder episode",
         "gamma": GAMMA,
         "screening": {
-            "trials": 96,
-            "nominal_safe_successes": 87,
-            "all_left": 37,
-            "all_right": 24,
-            "middle": 26,
-            "signature_counts": {"LLLLLL": 37, "RRRRRR": 24, "LRLRLR": 23, "RRLRLL": 3},
+            "trials": 384,
+            "seed_range_inclusive": [820500, 820883],
+            "nominal_safe_successes": 333,
+            "all_left": 165,
+            "all_right": 81,
+            "middle": 87,
+            "signature_counts": {"LLLLLL": 165, "RRRRRR": 81, "LRLRLR": 61, "RRLRLL": 25, "LRLRLL": 1},
+        },
+        "z_selection": {
+            "target_z_m": 0.9,
+            "primary_metric": "mean_abs_z_minus_0p9_m",
+            "secondary_metric": "p90_abs_z_minus_0p9_m",
+            "minimum_selected_clearance_m": 0.012,
+            "selected_mean_abs_z_minus_0p9_m": [row["mean_abs_z_minus_0p9_m"] for row in rows],
+            "selected_p90_abs_z_minus_0p9_m": [row["p90_abs_z_minus_0p9_m"] for row in rows],
         },
         "frozen_roster": {"all_left": 3, "all_right": 3, "middle": 2, "total": 8},
         "scene": scene,

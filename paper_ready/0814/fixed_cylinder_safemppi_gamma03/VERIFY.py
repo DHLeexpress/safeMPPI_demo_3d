@@ -39,6 +39,8 @@ def main() -> int:
     }:
         raise RuntimeError("signature roster changed")
     expected_scene = np.asarray(manifest["scene"]["cylinders"], np.float32)
+    if manifest["screening"]["trials"] != 384:
+        raise RuntimeError("z=0.9 screening contract changed")
     for row in rows:
         raw = np.load(ROOT / row["raw_rollout_file"], allow_pickle=False)
         ref = np.load(ROOT / row["flight_reference_file"], allow_pickle=False)
@@ -52,6 +54,11 @@ def main() -> int:
             raise RuntimeError("signature metadata mismatch")
         if bool(ref["hardware_eligible"]):
             raise RuntimeError("simulation reference marked hardware eligible")
+        mean_abs_z = float(np.mean(np.abs(raw["dense_positions"][:, 2] - 0.9)))
+        if not np.isclose(mean_abs_z, row["mean_abs_z_minus_0p9_m"], atol=1.0e-7):
+            raise RuntimeError("z=0.9 score metadata mismatch")
+        if mean_abs_z > 0.05 or row["min_clearance_m"] < 0.012:
+            raise RuntimeError("selected trajectory violates z/clearance curation")
         if max(
             row["max_dense_position_reconstruction_error_m"],
             row["max_knot_position_reconstruction_error_m"],

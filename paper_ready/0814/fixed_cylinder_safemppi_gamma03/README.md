@@ -13,9 +13,12 @@ The same six obstacle boundaries are used for every trajectory:
   right.
 - `MIDDLE`: 2 weaving references (`LRLRLR`, `RRLRLL`).
 
-In the 96-seed fixed-scene screen, 87 rollouts were nominal-safe successes:
-`LLLLLL=37`, `RRRRRR=24`, `LRLRLR=23`, `RRLRLL=3`. Thus the two outside
-routes are dominant and the roster retains two distinct middle signatures.
+In the 384-seed fixed-scene screen, 333 rollouts were nominal-safe successes:
+`LLLLLL=165`, `RRRRRR=81`, `LRLRLR=61`, `RRLRLL=25`, `LRLRLL=1`. Thus the
+two outside routes are dominant and the roster retains two distinct middle
+signatures. Within each frozen route quota, the final references prioritize
+small mean and p90 absolute deviation from `z=0.9`, while retaining at least
+`0.012 m` modeled clearance.
 
 ## Files
 
@@ -54,7 +57,7 @@ python paper_ready/0814/fixed_cylinder_safemppi_gamma03/REPRODUCE.py \
 The eight frozen rollout seeds are:
 
 ```text
-ALL_LEFT : 820565 820534 820578
-ALL_RIGHT: 820586 820514 820560
-MIDDLE   : 820577 (LRLRLR), 820544 (RRLRLL)
+ALL_LEFT : 820864 820701 820723
+ALL_RIGHT: 820829 820870 820764
+MIDDLE   : 820518 (LRLRLR), 820627 (RRLRLL)
 ```
