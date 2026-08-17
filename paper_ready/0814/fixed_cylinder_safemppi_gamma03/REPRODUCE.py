@@ -23,22 +23,24 @@ from safe_mppi.environment import TaskEnvironment  # noqa: E402
 
 
 GAMMA = 0.3
-SCENE_NAME = "axis3_outer_pair"
+SCENE_NAME = "axis2_outer_pairs_six"
 CYLINDERS = np.asarray([
-    [-1.4279999732971191, 0.7799999713897705, 0.20000000298023224],
-    [-0.3490934669971466, 0.3275127708911896, 0.20000000298023224],
-    [-1.0509065389633179, -0.3275127708911896, 0.20000000298023224],
-    [0.02800000086426735, -0.7799999713897705, 0.20000000298023224],
+    [-1.4839999675750732, 0.8399999737739563, 0.20000000298023224],
+    [-0.5730934739112854, 0.5675127506256104, 0.20000000298023224],
+    [-1.2749065160751343, -0.08751276135444641, 0.20000000298023224],
+    [0.1549065262079239, -0.21248723566532135, 0.20000000298023224],
+    [-0.5469065308570862, -0.8675127625465393, 0.20000000298023224],
+    [0.19599999487400055, -0.9599999785423279, 0.20000000298023224],
 ], np.float32)
 ROSTER = (
-    ("ALL_LEFT", "LLLL", 819585),
-    ("ALL_LEFT", "LLLL", 819574),
-    ("ALL_LEFT", "LLLL", 819558),
-    ("ALL_RIGHT", "RRRR", 819510),
-    ("ALL_RIGHT", "RRRR", 819552),
-    ("ALL_RIGHT", "RRRR", 819520),
-    ("MIDDLE", "LRLR", 819546),
-    ("MIDDLE", "RRLL", 819507),
+    ("ALL_LEFT", "LLLLLL", 820565),
+    ("ALL_LEFT", "LLLLLL", 820534),
+    ("ALL_LEFT", "LLLLLL", 820578),
+    ("ALL_RIGHT", "RRRRRR", 820586),
+    ("ALL_RIGHT", "RRRRRR", 820514),
+    ("ALL_RIGHT", "RRRRRR", 820560),
+    ("MIDDLE", "LRLRLR", 820577),
+    ("MIDDLE", "RRLRLL", 820544),
 )
 EXPECTED_SOURCE_SHA256 = {
     "safe_mppi/controller.py": "dfc91a26ccac2818c902215bf4d9a06e405d5878e5c6af0be2f75c4f68106dad",
@@ -258,20 +260,20 @@ def main() -> int:
         "goal": np.asarray(env.goal, float).tolist(),
         "bounds": np.asarray(env.bounds, float).tolist(),
         "cylinders": CYLINDERS.astype(float).tolist(),
-        "description": "two axis cylinders at fractions 0.24/0.76 and one symmetric outer pair at fraction 0.50",
+        "description": "six-cylinder symmetric episode: axis cylinders at fractions 0.22/0.82 and outer pairs at 0.42/0.68 with lateral offsets +/-0.48 m",
     }
     (output / "scene.json").write_text(json.dumps(scene, indent=2) + "\n")
     manifest = {
-        "schema": "fixed_scene_safemppi_gamma03_v1",
-        "kind": "exact SafeMPPI rollouts on one fixed symmetric cylinder episode",
+        "schema": "fixed_scene_safemppi_gamma03_v2",
+        "kind": "exact SafeMPPI rollouts on one fixed symmetric six-cylinder episode",
         "gamma": GAMMA,
         "screening": {
             "trials": 96,
             "nominal_safe_successes": 87,
-            "all_left": 57,
-            "all_right": 27,
-            "middle": 3,
-            "signature_counts": {"LLLL": 57, "RRRR": 27, "LRLR": 2, "RRLL": 1},
+            "all_left": 37,
+            "all_right": 24,
+            "middle": 26,
+            "signature_counts": {"LLLLLL": 37, "RRRRRR": 24, "LRLRLR": 23, "RRLRLL": 3},
         },
         "frozen_roster": {"all_left": 3, "all_right": 3, "middle": 2, "total": 8},
         "scene": scene,

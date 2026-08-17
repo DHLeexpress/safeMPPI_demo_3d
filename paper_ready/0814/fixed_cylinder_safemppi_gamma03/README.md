@@ -1,21 +1,21 @@
 # Fixed-scene SafeMPPI · gamma 0.3
 
 This bundle freezes eight **SafeMPPI controller rollouts** on one fixed,
-axis-symmetric vertical-cylinder episode. It is not a PRE2 rollout bank.
+axis-symmetric six-cylinder episode. It is not a PRE2 rollout bank.
 
 ## Intended visual story
 
-The same four obstacle boundaries are used for every trajectory:
+The same six obstacle boundaries are used for every trajectory:
 
-- `ALL_LEFT` (`LLLL`): 3 references that pass every cylinder boundary on the
+- `ALL_LEFT` (`LLLLLL`): 3 references that pass every cylinder boundary on the
   left.
-- `ALL_RIGHT` (`RRRR`): 3 references that pass every cylinder boundary on the
+- `ALL_RIGHT` (`RRRRRR`): 3 references that pass every cylinder boundary on the
   right.
-- `MIDDLE`: 2 rare weaving references (`LRLR`, `RRLL`).
+- `MIDDLE`: 2 weaving references (`LRLRLR`, `RRLRLL`).
 
 In the 96-seed fixed-scene screen, 87 rollouts were nominal-safe successes:
-`LLLL=57`, `RRRR=27`, `LRLR=2`, `RRLL=1`. Thus the two outside routes are the
-dominant behaviors and middle routes are genuinely rare.
+`LLLLLL=37`, `RRRRRR=24`, `LRLRLR=23`, `RRLRLL=3`. Thus the two outside
+routes are dominant and the roster retains two distinct middle signatures.
 
 ## Files
 
@@ -54,7 +54,7 @@ python paper_ready/0814/fixed_cylinder_safemppi_gamma03/REPRODUCE.py \
 The eight frozen rollout seeds are:
 
 ```text
-ALL_LEFT : 819585 819574 819558
-ALL_RIGHT: 819510 819552 819520
-MIDDLE   : 819546 (LRLR), 819507 (RRLL)
+ALL_LEFT : 820565 820534 820578
+ALL_RIGHT: 820586 820514 820560
+MIDDLE   : 820577 (LRLRLR), 820544 (RRLRLL)
 ```

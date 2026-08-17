@@ -35,7 +35,7 @@ def main() -> int:
     }:
         raise RuntimeError("route-family roster changed")
     if Counter(row["signature"] for row in rows) != {
-        "LLLL": 3, "RRRR": 3, "LRLR": 1, "RRLL": 1,
+        "LLLLLL": 3, "RRRRRR": 3, "LRLRLR": 1, "RRLRLL": 1,
     }:
         raise RuntimeError("signature roster changed")
     expected_scene = np.asarray(manifest["scene"]["cylinders"], np.float32)
@@ -58,7 +58,9 @@ def main() -> int:
             row["max_knot_velocity_reconstruction_error_mps"],
         ) > 2.0e-6:
             raise RuntimeError("reference recurrence error too large")
-    print("PASS: 8 fixed-scene SafeMPPI gamma=0.3 references verified")
+    if expected_scene.shape != (6, 3):
+        raise RuntimeError("fixed scene is not the six-cylinder episode")
+    print("PASS: 8 fixed six-cylinder SafeMPPI gamma=0.3 references verified")
     return 0
 
 
