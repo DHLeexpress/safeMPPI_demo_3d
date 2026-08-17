@@ -16,6 +16,14 @@ view를 모두 **γ=0.1**로 맞췄습니다.
 trajectories가 대응합니다. Frozen bundle은 CFM 세 regime을 모두 보존하므로 실제
 저장량은 PRE2 8 + R1 8 + Expanded 8 + CFM 24 + SafeMPPI 8 = **56**입니다.
 
+별도로 `mirrored_cylinder_gamma03/`에는 PRE2의 실제 pretraining law였던
+randomized vertical-cylinder scene에서 고른 γ=0.3 reference 8개가 있습니다.
+네 개의 exact axis-180 source/mirror pair로 구성되어 있으며, start-goal 축 기준
+`LLL`부터 `RRR`까지 8개 lateral signature를 하나씩 담았습니다. 사이트 View는
+`paper-ready-pre2-mirrored-cylinder-gamma0p3`입니다. 이 묶음은 서로 다른 random
+scene의 simulation reference이므로 bowling용 56개 flight roster에는 합산하지
+않습니다.
+
 ## Flight references — position, velocity, acceleration at 100 Hz
 
 `flight_references/` contains a ready-to-stream reference for every one of the

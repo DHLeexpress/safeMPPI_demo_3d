@@ -78,6 +78,11 @@
       "velocity_ref",
       "acceleration_ref"
     ],
-    "flight_player_must_not_reapply_governor": true
+    "flight_player_must_not_reapply_governor": true,
+    "mirrored_cylinder_gamma03_bundle": "mirrored_cylinder_gamma03",
+    "mirrored_cylinder_gamma03_manifest": "mirrored_cylinder_gamma03/manifest.json",
+    "mirrored_cylinder_gamma03_view": "paper-ready-pre2-mirrored-cylinder-gamma0p3",
+    "mirrored_cylinder_gamma03_count": 8,
+    "mirrored_cylinder_gamma03_hardware_eligible": false
   }
 }
